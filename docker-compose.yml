@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  etsy-oauth-server:
+    build: .
+    container_name: etsy-oauth-server
+    ports:
+      - "3003:3003"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3003
+      - DEBUG=false
+      - DOCKER_ENV=true
+    env_file:
+      - .env
+    volumes:
+      # Mount the .env file for persistent configuration
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 
