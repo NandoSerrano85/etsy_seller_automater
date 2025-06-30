@@ -1,15 +1,19 @@
 // eslint-disable-next-line no-unused-vars
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
+import { useAuth } from '../contexts/AuthContext';
+import { useApi } from '../hooks/useApi';
 import MockupsGallery from '../components/MockupsGallery';
 import DesignFilesGallery from '../components/DesignFilesGallery';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const Home = () => {
+  const { user, isAuthenticated } = useAuth();
+  const api = useApi();
+  
   const [oauthData, setOauthData] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +39,7 @@ const Home = () => {
   const [expandedOrders, setExpandedOrders] = useState([]);
 
   useEffect(() => {
-    // Check for access token in localStorage
+    // Check for Etsy access token in localStorage (for backward compatibility)
     const token = localStorage.getItem('etsy_access_token');
     if (token) {
       setAccessToken(token);
@@ -44,8 +48,8 @@ const Home = () => {
     // Fetch OAuth data from the backend
     const fetchOAuthData = async () => {
       try {
-        const response = await axios.get('/api/oauth-data');
-        setOauthData(response.data);
+        const response = await api.get('/api/oauth-data');
+        setOauthData(response);
       } catch (err) {
         setError('Failed to load OAuth configuration');
         console.error('Error fetching OAuth data:', err);
@@ -55,66 +59,74 @@ const Home = () => {
     };
 
     fetchOAuthData();
-  }, []);
+  }, [api]);
 
   const fetchTopSellers = useCallback(async () => {
+    if (!accessToken) return;
+    
     try {
-      const response = await axios.get(`/api/top-sellers?access_token=${accessToken}&year=${currentYear}`);
-      setTopSellers(response.data.top_sellers);
+      const response = await api.get(`/api/top-sellers?access_token=${accessToken}&year=${currentYear}`);
+      setTopSellers(response.top_sellers);
     } catch (err) {
       console.error('Error fetching top sellers:', err);
     }
-  }, [accessToken, currentYear]);
+  }, [accessToken, currentYear, api]);
 
   const fetchMonthlyAnalytics = useCallback(async () => {
+    if (!accessToken) return;
+    
     try {
-      const response = await axios.get(`/api/monthly-analytics?access_token=${accessToken}&year=${currentYear}`);
-      setMonthlyAnalytics(response.data);
+      const response = await api.get(`/api/monthly-analytics?access_token=${accessToken}&year=${currentYear}`);
+      setMonthlyAnalytics(response);
     } catch (err) {
       console.error('Error fetching monthly analytics:', err);
     }
-  }, [accessToken, currentYear]);
+  }, [accessToken, currentYear, api]);
 
   const fetchDesigns = useCallback(async () => {
+    if (!accessToken) return;
+    
     try {
-      const response = await axios.get(`/api/shop-listings?access_token=${accessToken}&limit=50`);
-      setDesigns(response.data.designs);
+      const response = await api.get(`/api/shop-listings?access_token=${accessToken}&limit=50`);
+      setDesigns(response.designs);
     } catch (err) {
       console.error('Error fetching designs:', err);
     }
-  }, [accessToken]);
+  }, [accessToken, api]);
 
   const fetchLocalImages = useCallback(async () => {
     try {
-      const response = await axios.get('/api/local-images');
-      console.log('Local images response:', response.data);
-      setLocalImages(response.data.images || []);
+      const response = await api.get('/api/local-images');
+      console.log('Local images response:', response);
+      setLocalImages(response.images || []);
     } catch (err) {
       console.error('Error fetching local images:', err);
       setLocalImages([]);
     }
-  }, []);
+  }, [api]);
 
   const fetchMockupImages = useCallback(async () => {
     try {
-      const response = await axios.get('/api/mockup-images');
-      console.log('Mockup images response:', response.data);
-      setMockupImages(response.data.images || []);
+      const response = await api.get('/api/mockup-images');
+      console.log('Mockup images response:', response);
+      setMockupImages(response.images || []);
     } catch (err) {
       console.error('Error fetching mockup images:', err);
       setMockupImages([]);
     }
-  }, []);
+  }, [api]);
 
   const fetchOrders = useCallback(async () => {
+    if (!accessToken) return;
+    
     try {
-      const response = await axios.get(`/api/orders?access_token=${accessToken}`);
-      console.log('Orders response:', response.data);
-      setOrders(response.data.orders || []);
+      const response = await api.get(`/api/orders?access_token=${accessToken}`);
+      console.log('Orders response:', response);
+      setOrders(response.orders || []);
       
       // Calculate summary
-      const totalOrders = response.data.orders?.length || 0;
-      const totalItems = response.data.orders?.reduce((sum, order) => 
+      const totalOrders = response.orders?.length || 0;
+      const totalItems = response.orders?.reduce((sum, order) => 
         sum + (order.items?.reduce((itemSum, item) => itemSum + (item.quantity || 0), 0) || 0), 0
       ) || 0;
       
@@ -124,12 +136,12 @@ const Home = () => {
       setOrders([]);
       setOrdersSummary({ totalOrders: 0, totalItems: 0 });
     }
-  }, [accessToken]);
+  }, [accessToken, api]);
 
   const createPrintfile = async () => {
     setCreatingPrintfile(true);
     try {
-      const response = await axios.get('/api/create-gang-sheets');
+      await api.get('/api/create-gang-sheets');
       alert('Printfile created successfully!');
     } catch (err) {
       console.error('Error creating printfile:', err);
@@ -324,8 +336,8 @@ const Home = () => {
                 <button 
                   onClick={async () => {
                     try {
-                      const response = await axios.get('/api/oauth-data-legacy');
-                      const legacyAuthUrl = `${response.data.oauthConnectUrl}?response_type=${response.data.responseType}&redirect_uri=${response.data.redirectUri}&scope=${response.data.scopes}&client_id=${response.data.clientId}&state=${response.data.state}&code_challenge=${response.data.codeChallenge}&code_challenge_method=${response.data.codeChallengeMethod}`;
+                      const response = await api.get('/api/oauth-data-legacy');
+                      const legacyAuthUrl = `${response.oauthConnectUrl}?response_type=${response.responseType}&redirect_uri=${response.redirectUri}&scope=${response.scopes}&client_id=${response.clientId}&state=${response.state}&code_challenge=${response.codeChallenge}&code_challenge_method=${response.codeChallengeMethod}`;
                       window.open(legacyAuthUrl, '_blank');
                     } catch (err) {
                       console.error('Error getting legacy OAuth data:', err);
@@ -368,6 +380,11 @@ const Home = () => {
                 <h2 className="text-3xl font-bold text-gray-900 mb-4">
                   Welcome to Your Dashboard
                 </h2>
+                {user && (
+                  <p className="text-lg text-gray-600 mb-4">
+                    Hello, <span className="font-semibold text-blue-600">{user.email}</span>!
+                  </p>
+                )}
                 <p className="text-lg text-gray-600 mb-8">
                   Get insights into your shop performance, manage your designs, and use powerful tools to grow your business.
                 </p>

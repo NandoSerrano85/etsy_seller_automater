@@ -20,86 +20,83 @@ A comprehensive tool for Etsy sellers to automate listing creation, manage shop 
 - Docker (for containerized deployment)
 - Etsy Developer Account
 
-### Option 1: Docker Deployment (Recommended)
+### 1. **Clone the Repository**
+```sh
+git clone <repo-url>
+cd etsy_seller_automater
+```
 
-The easiest way to run the application is using Docker:
+### 2. **Environment Setup**
+- Copy or create a `.env` file in the project root. For local development, use:
+  ```env
+  DATABASE_URL=postgresql://postgres:postgres@localhost:5432/etsydb
+  JWT_SECRET_KEY=supersecretkey
+  ```
+- For Docker Compose, the correct `DATABASE_URL` is set automatically.
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd etsy_seller_automater
-   ```
+### 3. **Running the Application**
 
-2. **Configure environment variables**
-   Create a `.env` file in the project root:
-   ```env
-   CLIENT_ID=your_etsy_client_id
-   SHOP_NAME=your_shop_name
-   SHOP_URL=https://www.etsy.com/shop/your_shop_name
-   LOCAL_ROOT_PATH=/path/to/your/local/files
-   ```
+Use the provided `run_docker.sh` script for all modes:
 
-3. **Run with Docker**
-   
-   **Development Mode** (separate frontend and backend containers):
-   ```bash
-   ./run_docker.sh dev
-   ```
-   
-   **Production Mode** (single container with built frontend):
-   ```bash
-   ./run_docker.sh prod
-   ```
+#### **Development with Docker Compose**
+Runs backend, frontend, and database in containers (recommended for most users):
+```sh
+./run_docker.sh dev
+```
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend:  [http://localhost:3003](http://localhost:3003)
+- API Docs: [http://localhost:3003/docs](http://localhost:3003/docs)
 
-4. **Access the application**
-   - Development: Frontend at http://localhost:3000, Backend at http://localhost:3003
-   - Production: Application at http://localhost:3003
+#### **Production Mode (Docker Compose, single container)**
+```sh
+./run_docker.sh prod
+```
+- App: [http://localhost:3003](http://localhost:3003)
 
-### Option 2: Local Development
+#### **Local Backend (no Docker)**
+Runs backend using your local Python and connects to your local PostgreSQL:
+```sh
+./run_docker.sh local
+```
+- The script will ensure `.env` uses `localhost` for the database host.
+- Make sure your local PostgreSQL is running and has a database named `etsydb`.
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd etsy_seller_automater
-   ```
+#### **Other Commands**
+- Stop all containers: `./run_docker.sh stop`
+- Clean all containers/images/volumes: `./run_docker.sh clean`
+- Show logs: `./run_docker.sh logs`
+- Run backend tests: `./run_docker.sh test`
 
-2. **Set up Python environment**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+## DATABASE_URL Host Explained
 
-3. **Set up frontend**
-   ```bash
-   cd frontend
-   npm install
-   ```
+| How you run backend      | DATABASE_URL host | How to start backend         |
+|-------------------------|-------------------|-----------------------------|
+| Locally (not Docker)    | localhost         | `./run_docker.sh local`     |
+| Docker Compose          | db                | `./run_docker.sh dev`       |
 
-4. **Configure environment variables**
-   Create a `.env` file in the project root:
-   ```env
-   CLIENT_ID=your_etsy_client_id
-   SHOP_NAME=your_shop_name
-   SHOP_URL=https://www.etsy.com/shop/your_shop_name
-   LOCAL_ROOT_PATH=/path/to/your/local/files
-   ```
+- **Never use `db` as the host for local development.**
+- **Never use `localhost` as the host inside Docker Compose.**
 
-5. **Start the servers**
-   ```bash
-   # Terminal 1: Start backend
-   source .venv/bin/activate
-   cd server
-   python -m uvicorn main:app --reload --host 0.0.0.0 --port 3003
-   
-   # Terminal 2: Start frontend
-   cd frontend
-   npm start
-   ```
+## Troubleshooting
 
-6. **Access the application**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:3003
+### **Database Connection Errors**
+- **Error: `could not translate host name "db" to address: Name or service not known`**
+  - You are running the backend locally but your `.env` uses `db` as the host. Use `./run_docker.sh local` to fix this automatically.
+
+- **Error: `could not connect to server: Connection refused`**
+  - Your local PostgreSQL is not running, or the database/user/password is incorrect.
+
+- **Error: `could not translate host name "localhost" to address` (in Docker Compose)**
+  - You are running in Docker Compose but your `.env` uses `localhost`. Use `./run_docker.sh dev` to use the correct host.
+
+### **General Tips**
+- Always use the `run_docker.sh` script to avoid host confusion.
+- If you switch between local and Docker Compose, the script will update your `.env` as needed.
+- For persistent data, Docker Compose uses a named volume for PostgreSQL.
+
+## More Information
+- API documentation: [http://localhost:3003/docs](http://localhost:3003/docs)
+- For advanced configuration, see `docker-compose.yml` and `.env`.
 
 ## Docker Management
 
@@ -284,37 +281,6 @@ etsy_seller_automater/
    ```bash
    ./run_docker.sh prod
    ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **OAuth Redirect Issues**
-   - Ensure your Etsy app is configured with the correct redirect URI
-   - The redirect URI should be: `http://localhost:3000/oauth/redirect`
-
-2. **Image Loading Issues**
-   - Check that the local images path exists and contains PNG files
-   - Verify file permissions
-
-3. **API Connection Issues**
-   - Ensure both frontend and backend servers are running
-   - Check that the backend is accessible on port 3003
-
-4. **Docker Issues**
-   - Make sure Docker is running
-   - Check container logs: `./run_docker.sh logs`
-   - Clean up and rebuild: `./run_docker.sh clean && ./run_docker.sh dev`
-
-5. **Test Issues**
-   - Ensure test dependencies are installed: `pip install pytest pytest-asyncio httpx`
-   - Run tests in Docker: `./run_docker.sh test`
-
-### Logs
-
-- Frontend logs: Check browser console or `./run_docker.sh logs`
-- Backend logs: Check terminal where uvicorn is running or `./run_docker.sh logs`
-- Test logs: Check test output or run with `-v` flag for verbose output
 
 ## Contributing
 

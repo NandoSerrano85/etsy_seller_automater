@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useApi } from '../hooks/useApi';
 
 const MaskCreator = () => {
+  const api = useApi();
   const [mockupImage, setMockupImage] = useState(null);
   const [points, setPoints] = useState([]);
   const [drawingMode, setDrawingMode] = useState('point'); // 'point' or 'rectangle'
@@ -213,26 +215,16 @@ const MaskCreator = () => {
 
   const saveMasks = async () => {
     try {
-      const response = await fetch('/api/masks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          masks: masks.map(mask => mask.points),
-          imageType: 'UVDTF 16oz'
-        }),
+      await api.post('/api/masks', {
+        masks: masks.map(mask => mask.points),
+        imageType: 'UVDTF 16oz'
       });
 
-      if (response.ok) {
-        alert('Masks saved successfully!');
-        // Reset for next use
-        setMasks([]);
-        setCurrentMaskIndex(0);
-        setPoints([]);
-      } else {
-        alert('Failed to save masks');
-      }
+      alert('Masks saved successfully!');
+      // Reset for next use
+      setMasks([]);
+      setCurrentMaskIndex(0);
+      setPoints([]);
     } catch (error) {
       console.error('Error saving masks:', error);
       alert('Error saving masks');

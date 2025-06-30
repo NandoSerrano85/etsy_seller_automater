@@ -1,12 +1,18 @@
-from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File
+from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File, Depends, Security
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import os, requests, time, json, glob, tempfile, shutil
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 from pprint import pprint
+import uuid
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
 
 # Import OAuth logic from etsy_oath_token
 from server.engine.etsy_api_engine import EtsyAPI
@@ -31,11 +37,29 @@ from server.constants import (
 # Import mockup engine
 from server.engine.mockup_engine import process_uploaded_mockups
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-dotenv_path = os.path.join(project_root, '.env')
-load_dotenv(dotenv_path)
+# Import models
+from server.api.models import Base, User, OAuthToken, get_db
 
-# Pydantic models for request validation
+# JWT settings and security
+SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'supersecretkey')
+ALGORITHM = 'HS256'
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: timedelta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + expires_delta
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 class MaskPoint(BaseModel):
     x: float
     y: float
@@ -43,6 +67,27 @@ class MaskPoint(BaseModel):
 class MaskData(BaseModel):
     masks: List[List[MaskPoint]]
     imageType: str
+
+def decode_access_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError:
+        return None
+
+def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security), db: Session = Depends(get_db)):
+    token = credentials.credentials
+    payload = decode_access_token(token)
+    if not payload or 'user_id' not in payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    user = db.query(User).filter(User.id == payload['user_id']).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+dotenv_path = os.path.join(project_root, '.env')
+load_dotenv(dotenv_path)
 
 # Create the main FastAPI app
 app = FastAPI(title="Etsy Seller Automaker", version="1.0.0")
@@ -205,7 +250,7 @@ async def oauth_callback(request: Request):
         )
 
 @app.get('/api/user-data')
-async def get_user_data(access_token: str):
+async def get_user_data(access_token: str, current_user: User = Depends(get_current_user)):
     """API endpoint to get user data for the frontend."""
     oauth_vars = get_oauth_variables()
     
@@ -235,7 +280,7 @@ async def get_user_data(access_token: str):
         raise HTTPException(status_code=400, detail=ERROR_MESSAGES['user_data_failed'])
 
 @app.get('/api/top-sellers')
-async def get_top_sellers(access_token: str, year: int = None):
+async def get_top_sellers(access_token: str, year: Optional[int] = None, current_user: User = Depends(get_current_user)):
     """API endpoint to get top sellers for the year."""
     oauth_vars = get_oauth_variables()
     
@@ -366,7 +411,7 @@ async def get_top_sellers(access_token: str, year: int = None):
         raise HTTPException(status_code=500, detail=f"Failed to fetch top sellers: {str(e)}")
 
 @app.get('/api/shop-listings')
-async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0):
+async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0, current_user: User = Depends(get_current_user)):
     """API endpoint to get shop listings/designs."""
     oauth_vars = get_oauth_variables()
     
@@ -464,7 +509,7 @@ async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0)
         raise HTTPException(status_code=500, detail=f"Failed to fetch shop listings: {str(e)}")
 
 @app.post('/api/masks')
-async def create_masks(mask_data: MaskData):
+async def create_masks(mask_data: MaskData, current_user: User = Depends(get_current_user)):
     """API endpoint to save mask data from the React frontend."""
     try:
         # Convert MaskPoint objects to dictionaries
@@ -498,7 +543,7 @@ async def create_masks(mask_data: MaskData):
         raise HTTPException(status_code=500, detail=f"Failed to save masks: {str(e)}")
 
 @app.get('/api/create-gang-sheets')
-async def get_etsy_item_summary():
+async def get_etsy_item_summary(current_user: User = Depends(get_current_user)):
     """API endpoint to get item summary from Etsy."""
     etsy_api = EtsyAPI()
     item_summary = etsy_api.fetch_open_orders_items(os.getenv('LOCAL_ROOT_PATH'), "UVDTF 16oz")
@@ -515,7 +560,7 @@ async def get_etsy_item_summary():
     return item_summary
 
 @app.get('/api/local-images')
-async def get_local_images():
+async def get_local_images(current_user: User = Depends(get_current_user)):
     """API endpoint to get list of local PNG images."""
     try:
         # Path to the UVDTF 16oz images directory
@@ -543,7 +588,7 @@ async def get_local_images():
         return {"images": [], "error": str(e)}
 
 @app.get('/api/local-images/{filename}')
-async def serve_local_image(filename: str):
+async def serve_local_image(filename: str, current_user: User = Depends(get_current_user)):
     """API endpoint to serve local PNG images."""
     try:
         # Path to the UVDTF 16oz images directory
@@ -559,7 +604,7 @@ async def serve_local_image(filename: str):
         raise HTTPException(status_code=500, detail="Error serving image")
 
 @app.get('/api/monthly-analytics')
-async def get_monthly_analytics(access_token: str, year: int = None):
+async def get_monthly_analytics(access_token: str, year: Optional[int] = None, current_user: User = Depends(get_current_user)):
     """API endpoint to get monthly analytics for the year."""
     oauth_vars = get_oauth_variables()
     
@@ -806,7 +851,7 @@ async def get_monthly_analytics(access_token: str, year: int = None):
         raise HTTPException(status_code=500, detail=f"Failed to fetch monthly analytics: {str(e)}")
 
 @app.get('/api/mockup-images')
-async def get_mockup_images():
+async def get_mockup_images(current_user: User = Depends(get_current_user)):
     """API endpoint to get list of local mockup images."""
     try:
         # Path to the mockup images directory
@@ -829,7 +874,7 @@ async def get_mockup_images():
         return {"images": [], "error": str(e)}
 
 @app.get('/api/mockup-images/{filename}')
-async def serve_mockup_image(filename: str):
+async def serve_mockup_image(filename: str, current_user: User = Depends(get_current_user)):
     """API endpoint to serve local mockup images."""
     try:
         mockup_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/Mockups/Cup Wraps/"
@@ -842,7 +887,7 @@ async def serve_mockup_image(filename: str):
         raise HTTPException(status_code=500, detail="Error serving mockup image")
 
 @app.post('/api/upload-mockup')
-async def upload_mockup(files: List[UploadFile] = File(...)):
+async def upload_mockup(files: List[UploadFile] = File(...), current_user: User = Depends(get_current_user)):
     try:
         # Define the target directory for uploaded files
         target_dir = "/Users/fserrano/Desktop/Desktop/NookTransfers/Origin/16oz/"
@@ -910,7 +955,7 @@ async def upload_mockup(files: List[UploadFile] = File(...)):
         )
 
 @app.get('/api/orders')
-async def get_orders(access_token: str):
+async def get_orders(access_token: str, current_user: User = Depends(get_current_user)):
     """API endpoint to get active orders from Etsy."""
     oauth_vars = get_oauth_variables()
     
@@ -1027,4 +1072,54 @@ async def serve_frontend_routes(full_path: str):
     if os.path.exists(index_path):
         return FileResponse(index_path)
     else:
-        return {"message": ERROR_MESSAGES['frontend_not_built']} 
+        return {"message": ERROR_MESSAGES['frontend_not_built']}
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+@app.post('/api/register')
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_password = get_password_hash(user.password)
+    new_user = User(email=user.email, hashed_password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"success": True, "user_id": new_user.id}
+
+@app.post('/api/login')
+def login_user(user: UserLogin, db: Session = Depends(get_db)):
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if not db_user or not verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    access_token = create_access_token({"sub": db_user.email, "user_id": db_user.id})
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "id": db_user.id,
+            "email": db_user.email,
+            "created_at": db_user.created_at
+        }
+    }
+
+@app.get('/api/verify-token')
+def verify_token(current_user: User = Depends(get_current_user)):
+    """Verify if the current token is valid and return user data."""
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "created_at": current_user.created_at
+    }
+
+# Example usage for a protected endpoint:
+# @app.get('/api/protected')
+# def protected_route(current_user: User = Depends(get_current_user)):
+#     return {"message": f"Hello, {current_user.email}"} 

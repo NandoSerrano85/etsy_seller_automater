@@ -52,6 +52,7 @@ show_usage() {
     echo "Options:"
     echo "  dev     - Run in development mode (separate frontend and backend containers)"
     echo "  prod    - Run in production mode (single container with built frontend)"
+    echo "  local   - Run backend locally (not Docker Compose)"
     echo "  test    - Run tests in the backend container"
     echo "  stop    - Stop all containers"
     echo "  clean   - Stop and remove all containers and images"
@@ -61,6 +62,7 @@ show_usage() {
     echo "Examples:"
     echo "  $0 dev     # Start development environment"
     echo "  $0 prod    # Start production environment"
+    echo "  $0 local   # Run backend locally"
     echo "  $0 test    # Run tests"
     echo "  $0 stop    # Stop all containers"
 }
@@ -98,6 +100,20 @@ run_prod() {
     echo ""
     print_status "To view logs: $0 logs"
     print_status "To stop: $0 stop"
+}
+
+# Function to run backend locally (not Docker Compose)
+run_local() {
+    print_status "Running backend locally (not Docker Compose)..."
+    check_env
+    if ! grep -q 'localhost' .env; then
+        print_warning "Your .env DATABASE_URL does not use 'localhost'. Updating for local dev."
+        sed -i '' 's/db/localhost/g' .env
+        print_success ".env updated to use localhost."
+    fi
+    print_status "Make sure your local PostgreSQL is running and has a database named 'etsydb'."
+    print_status "Starting backend with: python server/main.py"
+    python3 server/main.py
 }
 
 # Function to run tests
@@ -163,6 +179,9 @@ case "${1:-help}" in
         ;;
     prod)
         run_prod
+        ;;
+    local)
+        run_local
         ;;
     test)
         run_tests

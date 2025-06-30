@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const Header = () => {
-  const [isConnected, setIsConnected] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem('etsy_access_token');
-    setIsConnected(!!token);
-  }, []);
+  const { user, isAuthenticated, logout } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem('etsy_access_token');
-    setIsConnected(false);
-    window.location.reload();
+    logout();
+    navigate('/login');
   };
 
   return (
@@ -22,30 +18,45 @@ const Header = () => {
           <Link to="/" className="flex items-center space-x-2">
             <h1 className="text-xl font-bold text-gray-900">Etsy Seller Automaker</h1>
           </Link>
-          <nav className="flex items-center space-x-8">
-            <Link to="/" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
-              Home
-            </Link>
-            <Link to="/mask-creator" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
-              Mask Creator
-            </Link>
-            <a 
-              href="https://developer.etsy.com/documentation/essentials/authentication" 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium"
-            >
-              Documentation
-            </a>
-            {isConnected && (
-              <button 
-                onClick={handleLogout} 
-                className="text-gray-700 hover:text-red-600 transition-colors duration-200 font-medium bg-transparent border-none cursor-pointer"
+          
+          {isAuthenticated() ? (
+            <nav className="flex items-center space-x-8">
+              <Link to="/" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
+                Home
+              </Link>
+              <Link to="/mask-creator" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
+                Mask Creator
+              </Link>
+              <a 
+                href="https://developer.etsy.com/documentation/essentials/authentication" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium"
               >
-                Disconnect
-              </button>
-            )}
-          </nav>
+                Documentation
+              </a>
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-600">
+                  Welcome, {user?.email}
+                </span>
+                <button 
+                  onClick={handleLogout} 
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors duration-200 font-medium"
+                >
+                  Logout
+                </button>
+              </div>
+            </nav>
+          ) : (
+            <nav className="flex items-center space-x-4">
+              <Link 
+                to="/login" 
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 font-medium"
+              >
+                Login
+              </Link>
+            </nav>
+          )}
         </div>
       </div>
     </header>

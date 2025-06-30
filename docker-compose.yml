@@ -1,6 +1,21 @@
-version: '3.8'
-
 services:
+  # Database Service
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: etsydb
+    expose:
+      - "5432"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - etsy-network
+
   # Backend Service
   backend:
     build:
@@ -15,6 +30,7 @@ services:
       - DEBUG=false
       - DOCKER_ENV=true
       - FRONTEND_URL=http://localhost:3000
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/etsydb
     env_file:
       - .env
     volumes:
@@ -34,6 +50,8 @@ services:
       start_period: 40s
     networks:
       - etsy-network
+    depends_on:
+      - db
 
   # Frontend Service
   frontend:
@@ -44,7 +62,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://backend:3003 # TODO: Must match backend service name
+      - REACT_APP_API_URL=http://localhost:3003 # TODO: Must match backend service name
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:
@@ -63,4 +81,5 @@ networks:
     driver: bridge
 
 volumes:
-  node_modules: 
+  node_modules:
+  pgdata: 
