@@ -227,13 +227,14 @@ class EtsyAPI:
             "price": price,
             "who_made": "i_did",
             "when_made": "made_to_order",
-            "taxonomy_id": self.taxonomy_id if self.taxonomy_id else 66,
+            "taxonomy_id": self.taxonomy_id if self.taxonomy_id else 1071,
             "tags": tags[:13],  # Etsy allows max 13 tags
             "materials": materials[:13],  # Etsy allows max 13 materials
             "shop_section_id": self.shop_section_id,
             "shipping_profile_id": self.shipping_profile_id if self.shipping_profile_id else 1,
             "return_policy_id": self.return_policy_id if self.return_policy_id else 1,
             "state": "draft",
+            "shop_section_id": self.shop_section_id if self.shop_section_id else 52993337,
         }
         headers = {
             'x-api-key': self.client_id,
@@ -401,6 +402,7 @@ class EtsyAPI:
         receipts = resp.json().get('results', [])
         item_summary = {}
         item_summary[item_type] = {'Title':[], 'Size':[], 'Total':[]}
+        item_summary["Total QTY"] = 0
         for receipt in receipts:
             receipt_id = receipt['receipt_id']
             transactions_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts/{receipt_id}/transactions"
@@ -420,6 +422,7 @@ class EtsyAPI:
                     item_summary[item_type]['Title'].append(key)
                     item_summary[item_type]['Size'].append("")
                     item_summary[item_type]['Total'].append(quantity)
+                item_summary["Total QTY"] += quantity
         print("\nOpen Orders Item Summary:")
         for k,v in item_summary[item_type].items():
             print(f"{k}: {v}")
@@ -434,4 +437,5 @@ class EtsyAPI:
         for root, dirs, files in os.walk(image_dir):
             for file in files:
                 if file.lower().endswith(extensions) and pattern.search(file):
-                    return file.split(".")[0]
+                    full_path = os.path.join(root, file)
+                    return full_path

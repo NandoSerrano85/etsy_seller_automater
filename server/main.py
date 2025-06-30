@@ -42,7 +42,6 @@ def run_server():
         app, 
         host=host, 
         port=port, 
-        debug=debug,
         log_level="info"
     )
 

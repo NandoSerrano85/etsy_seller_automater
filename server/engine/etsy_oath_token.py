@@ -1,17 +1,27 @@
-from dotenv import load_dotenv, set_key
-import os, hashlib, base64, secrets, random, string, time, subprocess
-
-# Import constants
+import os, hashlib, base64, secrets, random, string, time, subprocess, json
+from dotenv import load_dotenv
 from server.constants import DEFAULTS
 
 # Get the project root directory (2 levels up from this file)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 dotenv_path = os.path.join(project_root, '.env')
+state_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../state.json')
 load_dotenv(dotenv_path)
+
+# Helper functions for state.json
+
+def read_state():
+    if os.path.exists(state_path):
+        with open(state_path, 'r') as f:
+            return json.load(f)
+    return {}
+
+def write_state(data):
+    with open(state_path, 'w') as f:
+        json.dump(data, f)
 
 # Load or generate necessary environment variables
 clientID = os.getenv('CLIENT_ID')
-redirectUri = os.getenv('REDIRECT_URI')
 
 # Generate a secure code verifier and code challenge
 def generate_code_verifier_and_challenge():
@@ -19,21 +29,44 @@ def generate_code_verifier_and_challenge():
     code_challenge = base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest()).decode('utf-8').replace('=', '')
     return code_verifier, code_challenge
 
-def generate_and_store_state():
+def generate_and_store_state(state_data):
     state = ''.join(random.choices(string.ascii_lowercase + string.digits, k=DEFAULTS['state_length']))
-    set_key(dotenv_path, 'STATE_ID', state)
+    state_data['STATE_ID'] = state
+    write_state(state_data)
     return state
 
-# Check if code_challenge and client_verifier exist, if not create them
-clientVerifier = os.getenv('CLIENT_VERIFIER')
-codeChallenge = os.getenv('CODE_CHALLENGE')
+# Load or initialize state.json
+def ensure_state():
+    state_data = read_state()
+    changed = False
+    if 'CLIENT_VERIFIER' not in state_data or 'CODE_CHALLENGE' not in state_data:
+        verifier, challenge = generate_code_verifier_and_challenge()
+        state_data['CLIENT_VERIFIER'] = verifier
+        state_data['CODE_CHALLENGE'] = challenge
+        changed = True
+    if 'STATE_ID' not in state_data:
+        state_data['STATE_ID'] = generate_and_store_state(state_data)
+        changed = True
+    if changed:
+        write_state(state_data)
+    return state_data
 
-if not clientVerifier or not codeChallenge:
-    clientVerifier, codeChallenge = generate_code_verifier_and_challenge()
-    set_key(dotenv_path, "CLIENT_VERIFIER", clientVerifier)
-    set_key(dotenv_path, "CODE_CHALLENGE", codeChallenge)
-    
-state = generate_and_store_state()
+state_data = ensure_state()
+clientVerifier = state_data['CLIENT_VERIFIER']
+codeChallenge = state_data['CODE_CHALLENGE']
+state = state_data['STATE_ID']
+
+def get_redirect_uri():
+    """Get the correct redirect URI for OAuth flow."""
+    # Temporarily use the working legacy redirect URI until Etsy app is updated
+    # return "http://localhost:3003/oauth/redirect"
+    # TODO: Change back to frontend redirect URI after updating Etsy app
+    return "http://localhost:3000/oauth/redirect"
+
+def get_redirect_uri_legacy():
+    """Get legacy redirect URI for testing."""
+    # Fallback to backend redirect URI if frontend is not configured
+    return "http://localhost:3003/oauth/redirect"
 
 def run_upload_script():
     """Function to run a script specified in the .env file."""
@@ -54,7 +87,7 @@ def get_oauth_variables():
     """Get OAuth variables for use in routes."""
     return {
         'clientID': clientID,
-        'redirectUri': redirectUri,
+        'redirectUri': get_redirect_uri(),
         'clientVerifier': clientVerifier,
         'codeChallenge': codeChallenge,
         'state': state,
@@ -62,14 +95,16 @@ def get_oauth_variables():
     }
 
 def store_oauth_tokens(access_token, refresh_token=None, expires_in=None):
-    """Store OAuth tokens in the .env file."""
+    """Store OAuth tokens in state.json."""
     if expires_in is None:
         expires_in = DEFAULTS['default_expires_in']
     
     expiry_time = time.time() + expires_in
-    set_key(dotenv_path, "ETSY_OAUTH_TOKEN", access_token)
+    state_data = read_state()
+    state_data['ETSY_OAUTH_TOKEN'] = access_token
     if refresh_token:
-        set_key(dotenv_path, "ETSY_REFRESH_TOKEN", refresh_token)
-    set_key(dotenv_path, "ETSY_OAUTH_TOKEN_EXPIRY", str(expiry_time))
+        state_data['ETSY_REFRESH_TOKEN'] = refresh_token
+    state_data['ETSY_OAUTH_TOKEN_EXPIRY'] = expiry_time
+    write_state(state_data)
 
     

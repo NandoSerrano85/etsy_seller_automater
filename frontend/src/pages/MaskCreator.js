@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import './MaskCreator.css';
 
 const MaskCreator = () => {
   const [mockupImage, setMockupImage] = useState(null);
@@ -40,8 +39,9 @@ const MaskCreator = () => {
   };
 
   const drawImage = () => {
-    const { canvas, ctx } = getCanvasContext();
-    if (!canvas || !ctx || !mockupImage) return;
+    const context = getCanvasContext();
+    if (!context || !context.canvas || !context.ctx || !mockupImage) return;
+    const { canvas, ctx } = context;
 
     // Set canvas size
     const displayWidth = mockupImage.width * scaleFactor;
@@ -67,8 +67,9 @@ const MaskCreator = () => {
   };
 
   const drawPoints = () => {
-    const { ctx } = getCanvasContext();
-    if (!ctx) return;
+    const context = getCanvasContext();
+    if (!context || !context.ctx) return;
+    const { ctx } = context;
 
     // Draw points
     points.forEach((point, index) => {
@@ -100,20 +101,15 @@ const MaskCreator = () => {
 
     // Draw rectangle preview
     if (drawingMode === 'rectangle' && rectStart) {
-      const mousePos = getMousePos();
-      if (mousePos) {
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([5, 5]);
-        ctx.strokeRect(rectStart.x, rectStart.y, mousePos.x - rectStart.x, mousePos.y - rectStart.y);
-        ctx.setLineDash([]);
-      }
+      // Note: We can't get mouse position here without the event
+      // The rectangle preview will be updated on mouse move
     }
   };
 
   const drawMask = (maskPoints, color) => {
-    const { ctx } = getCanvasContext();
-    if (!ctx || !maskPoints.length) return;
+    const context = getCanvasContext();
+    if (!context || !context.ctx || !maskPoints.length) return;
+    const { ctx } = context;
 
     ctx.beginPath();
     ctx.moveTo(maskPoints[0].x, maskPoints[0].y);
@@ -128,7 +124,7 @@ const MaskCreator = () => {
     ctx.fill();
   };
 
-  const getMousePos = () => {
+  const getMousePos = (event) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
 
@@ -142,7 +138,7 @@ const MaskCreator = () => {
   const handleCanvasClick = (event) => {
     if (!mockupImage) return;
 
-    const mousePos = getMousePos();
+    const mousePos = getMousePos(event);
     if (!mousePos) return;
 
     if (drawingMode === 'point') {
@@ -166,7 +162,19 @@ const MaskCreator = () => {
 
   const handleCanvasMouseMove = (event) => {
     if (drawingMode === 'rectangle' && rectStart) {
-      drawImage();
+      const mousePos = getMousePos(event);
+      if (mousePos) {
+        // Redraw with rectangle preview
+        drawImage();
+        const { ctx } = getCanvasContext();
+        if (ctx) {
+          ctx.strokeStyle = '#00ffff';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.strokeRect(rectStart.x, rectStart.y, mousePos.x - rectStart.x, mousePos.y - rectStart.y);
+          ctx.setLineDash([]);
+        }
+      }
     }
   };
 
@@ -242,104 +250,163 @@ const MaskCreator = () => {
   }, [mockupImage, points, masks, currentMaskIndex, rectStart]);
 
   return (
-    <div className="mask-creator">
-      <div className="mask-creator-header">
-        <h1>Mask Creator</h1>
-        <p>Create masks for mockup images by drawing polygons or rectangles</p>
-      </div>
-
-      <div className="mask-creator-controls">
-        <div className="control-group">
-          <label htmlFor="image-upload">Upload Mockup Image:</label>
-          <input
-            id="image-upload"
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-          />
+    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="text-center text-white mb-8">
+          <h1 className="text-4xl font-bold mb-4">Mask Creator</h1>
+          <p className="text-xl opacity-90">Create masks for mockup images by drawing polygons or rectangles</p>
         </div>
 
-        <div className="control-group">
-          <label htmlFor="num-masks">Number of Masks:</label>
-          <select
-            id="num-masks"
-            value={numMasks}
-            onChange={(e) => setNumMasks(parseInt(e.target.value))}
-          >
-            <option value={1}>1</option>
-            <option value={2}>2</option>
-          </select>
-        </div>
+        {/* Controls */}
+        <div className="card p-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="space-y-2">
+              <label htmlFor="image-upload" className="block text-sm font-medium text-gray-700">
+                Upload Mockup Image:
+              </label>
+              <input
+                id="image-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="input-field"
+              />
+            </div>
 
-        <div className="control-group">
-          <label>Drawing Mode:</label>
-          <div className="mode-buttons">
-            <button
-              className={drawingMode === 'point' ? 'active' : ''}
-              onClick={() => setMode('point')}
-            >
-              Point Mode
-            </button>
-            <button
-              className={drawingMode === 'rectangle' ? 'active' : ''}
-              onClick={() => setMode('rectangle')}
-            >
-              Rectangle Mode
-            </button>
+            <div className="space-y-2">
+              <label htmlFor="num-masks" className="block text-sm font-medium text-gray-700">
+                Number of Masks:
+              </label>
+              <select
+                id="num-masks"
+                value={numMasks}
+                onChange={(e) => setNumMasks(parseInt(e.target.value))}
+                className="input-field"
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Drawing Mode:</label>
+              <div className="flex space-x-2">
+                <button
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    drawingMode === 'point' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                  onClick={() => setMode('point')}
+                >
+                  Point Mode
+                </button>
+                <button
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    drawingMode === 'rectangle' 
+                      ? 'bg-blue-500 text-white' 
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                  onClick={() => setMode('rectangle')}
+                >
+                  Rectangle Mode
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Actions:</label>
+              <div className="flex space-x-2">
+                <button 
+                  onClick={createMask} 
+                  disabled={points.length < 3}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    points.length < 3
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-green-500 text-white hover:bg-green-600'
+                  }`}
+                >
+                  Create Mask ({currentMaskIndex + 1}/{numMasks})
+                </button>
+                <button 
+                  onClick={resetCurrentMask}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-lg font-medium hover:bg-gray-600 transition-colors"
+                >
+                  Reset Current
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="control-group">
-          <label>Actions:</label>
-          <div className="action-buttons">
-            <button onClick={createMask} disabled={points.length < 3}>
-              Create Mask ({currentMaskIndex + 1}/{numMasks})
-            </button>
-            <button onClick={resetCurrentMask}>
-              Reset Current
-            </button>
-          </div>
+        {/* Canvas */}
+        <div className="card p-6 mb-8">
+          {mockupImage ? (
+            <div className="flex justify-center">
+              <canvas
+                ref={canvasRef}
+                onClick={handleCanvasClick}
+                onMouseMove={handleCanvasMouseMove}
+                className="border-2 border-gray-300 cursor-crosshair rounded-lg"
+              />
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="text-gray-400 mb-4">
+                <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="text-gray-600">Please upload a mockup image to start creating masks</p>
+            </div>
+          )}
         </div>
-      </div>
 
-      <div className="mask-creator-canvas">
-        {mockupImage ? (
-          <canvas
-            ref={canvasRef}
-            onClick={handleCanvasClick}
-            onMouseMove={handleCanvasMouseMove}
-            style={{ border: '2px solid #ccc', cursor: 'crosshair' }}
-          />
-        ) : (
-          <div className="upload-prompt">
-            <p>Please upload a mockup image to start creating masks</p>
+        {/* Instructions */}
+        <div className="card p-6 mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Instructions:</h3>
+          <ul className="space-y-2 text-gray-600">
+            <li className="flex items-start">
+              <span className="text-blue-500 mr-2">•</span>
+              <span><strong>Point Mode:</strong> Click to add points, then click "Create Mask" to close the shape</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-500 mr-2">•</span>
+              <span><strong>Rectangle Mode:</strong> Click and drag to create a rectangle</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-500 mr-2">•</span>
+              <span>You need at least 3 points to create a mask</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-500 mr-2">•</span>
+              <span>Use "Reset Current" to start over with the current mask</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-blue-500 mr-2">•</span>
+              <span>Masks will be automatically saved when all are created</span>
+            </li>
+          </ul>
+        </div>
+
+        {/* Mask Summary */}
+        {masks.length > 0 && (
+          <div className="card p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Created Masks:</h3>
+            <ul className="space-y-2">
+              {masks.map((mask, index) => (
+                <li key={index} className="flex items-center text-gray-600">
+                  <span className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium mr-3">
+                    {index + 1}
+                  </span>
+                  Mask {index + 1}: {mask.points.length} points
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </div>
-
-      <div className="mask-creator-instructions">
-        <h3>Instructions:</h3>
-        <ul>
-          <li><strong>Point Mode:</strong> Click to add points, then click "Create Mask" to close the shape</li>
-          <li><strong>Rectangle Mode:</strong> Click and drag to create a rectangle</li>
-          <li>You need at least 3 points to create a mask</li>
-          <li>Use "Reset Current" to start over with the current mask</li>
-          <li>Masks will be automatically saved when all are created</li>
-        </ul>
-      </div>
-
-      {masks.length > 0 && (
-        <div className="mask-summary">
-          <h3>Created Masks:</h3>
-          <ul>
-            {masks.map((mask, index) => (
-              <li key={index}>
-                Mask {index + 1}: {mask.points.length} points
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 };

@@ -1,3 +1,4 @@
+from collections import defaultdict
 import cv2, json, os, csv, re
 import numpy as np
 from server.engine.cropping import crop_transparent 
@@ -263,6 +264,7 @@ class MockupImage:
             opacity: Opacity of the watermark (0-1)
         """
         watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
+        print(watermark)
         result = image.copy()
         for i, (mask, points) in enumerate(zip(masks, points_list)):
             if isinstance(mask, list):
@@ -330,228 +332,77 @@ def find_png_files(folder_path):
     
     return png_filepath, png_filenames
 
-def main():
-    company_name = "FunnyBunnyTransfers"
-    default_paths = {
-        "FunnyBunnyTransfers": "/Users/fserrano/Documents/FunnyBunnyTransfers/",
-        "NookTransfers": "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/",
-    }
-    source_data = {
-        # 'DTF': {
-        #     'mockup_path': "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/DTF Mockups/Neutral NookTransfers Shirt - DTF Mockup.png",
-        #     'water_mark_path': "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/Watermarks/NookTransfers - Square Watermark.png",
-        # },
-        'UVDTF 16oz': {
-            'mockup_path': [f"{default_paths[company_name]}Mockups/16oz Cup Wrap - Mockup.png"],
-            'water_mark_path': f"{default_paths[company_name]}Watermarks/Rectangle - Watermark.png",
-        },
-        # 'UVDTF 16oz': {
-        #     'mockup_path': [f"{default_paths[company_name]}UVDTF Mockups/Coffee NookTransfers - UVDTF Mockup.png"],
-        #     'water_mark_path': f"{default_paths[company_name]}Watermarks/NookTransfers - Rectangle Watermark.png",
-        # },
-        # 'UVDTF Decal': {
-        #     'mockup_path': "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/UVDTF Mockups/Coffee NookTransfers - UVDTF Mockup.png",
-        #     'water_mark_path': "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/Watermarks/NookTransfers - Square Watermark.png",
-        # },
-        # 'UVDTF 40oz': {
-        #     'mockup_path': "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/UVDTF Mockups/Neutral Tumbler NookTransfers - UVDTF Mockup.png",
-        #     'water_mark_path': "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/Watermarks/NookTransfers - Rectangle Watermark.png",
-        # },
-    }
-    design_image_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/UV 100 Cup_Wrap_100.png"
-    
-    for k, v in source_data.items():
-        mockup_image_path = v['mockup_path']
-        watermark_path = v['water_mark_path']
-        mockup = MockupImage(mockup_image_path, design_image_path)
-        mask_creator = MaskCreator(mockup_image_path)
+def process_uploaded_mockups(file_paths, root_path):
+        print(file_paths)
+        print(root_path)
         
-        # Create mask by drawing polygon
-        mask, points = mask_creator.create_custom_mask()
-        if mask is None:
-            print("Operation cancelled")
-            return
-        with open(f"{default_paths[company_name]}MockupData/mockup_mask_data.json", "w+") as f:
-            data = {
-                k: {
-                    "mask": mask,  # Convert mask to list
-                    "points": points,  # Points are already serializable
-                    "starting_name": 100,
-                }
-            }
+        mockup_path = f"{root_path}Mockups/BaseMockups/UVDTF/"
+        watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
+        designs_path = f"{root_path}UVDTF 16oz/"
+        designs_path_list = []
+        designs_filename_list = []
+        with open(f'{root_path}mockup_mask_data.json', 'r') as f:
+            data = json.load(f)
+            masks = []  # Store multiple masks
+            points_list = []  # Store multiple points lists
+            for key in data['UVDTF 16oz'].keys():
+                if key.startswith('mask'):
+                    masks.append(np.array(data['UVDTF 16oz'][key][0]))
+                elif key.startswith('points'):
+                    points_list.append(data['UVDTF 16oz'][key][0])
+            id_number = 100 if "starting_name" not in data['UVDTF 16oz'] else data['UVDTF 16oz']['starting_name']
+        def process_image(n):
+            image = crop_transparent(file_paths[n])
+            resized_image = resize_image_by_inches(image_path=file_paths[n], image_type="UVDTF 16oz", image=image)
+            cup_wrap_id_number = str(n + id_number).zfill(3)
+            filename = f"UV {cup_wrap_id_number} Cup_Wrap_{cup_wrap_id_number}.png"
+            image_path = f"{designs_path}{filename}"
+            save_single_image(resized_image, designs_path, filename, target_dpi=(400, 400))
+            return image_path, filename
+
+        for i in range(len(file_paths)):
+            image_path, filename = process_image(i)
+            designs_path_list.append(image_path)
+            designs_filename_list.append(filename)
+
+        mockupFilePath, _ = find_png_files(mockup_path)
+
+        mockup = MockupImage(mockupFilePath, designs_path)
+
+        def process_mockup(i):
+            mockups_list = []
+            for n in range(len(mockupFilePath)):
+                assembled_mockup = mockup.create_mockup(masks, points_list, image_type="UVDTF 16oz", image=designs_filename_list[i], index=n)
+                print("starting watermark")
+                print(watermark_path)
+                assembled_mockup_with_watermark = mockup.add_watermark(
+                    assembled_mockup, 
+                    watermark_path, 
+                    points_list,  # Use first mask for watermark
+                    masks,  # Use first mask for watermark
+                    image_type="UVDTF 16oz",
+                    opacity=0.45
+                )
+                height, width = assembled_mockup_with_watermark.shape[:2]
+                scale_factor = min(2000 / width, 2000 / height)
+                new_size = (int(width * scale_factor), int(height * scale_factor))
+                resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
+                cup_wrap_id_number = str(id_number + i).zfill(3)
+                color = "_Coffee"
+                if re.search('Checkered', mockupFilePath[n]):
+                    color = "_Checkered"
+                elif re.search('Matcha', mockupFilePath[n]):
+                    color = "_Matcha"
+                generated_mockup_path = f'{root_path}Mockups/Cup Wraps/UV {cup_wrap_id_number} Cup_Wrap{cup_wrap_id_number}{color}.jpg'
+                mockups_list.append(generated_mockup_path)
+                cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            return mockups_list
+        
+        all_mockups_list = dict()
+        for i in range(len(designs_filename_list)):
+            all_mockups_list[designs_filename_list[i]] = process_mockup(i)
+
+        with open(f"{root_path}mockup_mask_data.json", "w") as f:
+            data['UVDTF 16oz']["starting_name"] = id_number + len(file_paths)
             json.dump(data, f)
-        
-        # Replace the masked area with new image
-        assembled_mockup = mockup.create_mockup(mask, points, image_type=k)
-        
-        # Add watermark with 30% opacity using the same points
-        assembled_mockup_with_watermark = mockup.add_watermark(
-            assembled_mockup, 
-            watermark_path, 
-            points,
-            mask,
-            image_type=k,
-            opacity=0.3
-        )
-        
-        # Show result
-        cv2.imshow('Result', assembled_mockup_with_watermark)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        
-        # Save result scaled down to 2K resolution with 400 DPI
-        height, width = assembled_mockup_with_watermark.shape[:2]
-        scale_factor = min(2000 / width, 2000 / height)
-        new_size = (int(width * scale_factor), int(height * scale_factor))
-        resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
-        cv2.imwrite('test_NEW.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-
-def cup_wraps_generator(shop_name: str):
-    path_data_by_shop = {
-        "NookTransfers": {
-            "root_path": "/Users/fserrano/Desktop/Desktop/NookTransfers/",
-            "mockup_image_path": "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/UVDTF Mockups/",
-            "watermark_path": "/Users/fserrano/Documents/DTFSupplyCenter:UltraDTF/NookTransfers/Watermarks/NookTransfers - Rectangle Watermark.png",
-            "design_image_path": "/Users/fserrano/Desktop/Desktop/NookTransfers/Designs/16oz/",
-            "new_design_image_path": "/Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/",
-        },
-        "FunnyBunnyTransfers": {
-            "root_path": "/Users/fserrano/Documents/FunnyBunnyTransfers/",
-            "mockup_image_path": "/Users/fserrano/Documents/FunnyBunnyTransfers/Mockups/",
-            "watermark_path": "/Users/fserrano/Documents/FunnyBunnyTransfers/Watermarks/Rectangle Watermark.png",
-            "design_image_path": "/Users/fserrano/Documents/FunnyBunnyTransfers/Designs/16oz/",
-            "new_design_image_path": "/Users/fserrano/Documents/FunnyBunnyTransfers/UVDTF 16oz/",
-        }
-    }
-    mockup_image_path = path_data_by_shop[shop_name]["mockup_image_path"]
-    watermark_path = path_data_by_shop[shop_name]["watermark_path"]
-    design_image_path = path_data_by_shop[shop_name]["design_image_path"]
-    new_design_image_path = path_data_by_shop[shop_name]["new_design_image_path"]
-    root_path = path_data_by_shop[shop_name]["root_path"]
-
-    pngFilePath, pngFileName = find_png_files(design_image_path)
-    mockupFilePath, mockupFileName = find_png_files(mockup_image_path)
-
-    pngFilePath.sort()
-
-    with open(f'{root_path}mockup_mask_data.json', 'r') as f:
-        data = json.load(f)
-        masks = []  # Store multiple masks
-        points_list = []  # Store multiple points lists
-        for key in data['UVDTF 16oz'].keys():
-            if key.startswith('mask'):
-                masks.append(np.array(data['UVDTF 16oz'][key][0]))
-            elif key.startswith('points'):
-                points_list.append(data['UVDTF 16oz'][key][0])
-        id_number = 100 if "starting_name" not in data['UVDTF 16oz'] else data['UVDTF 16oz']['starting_name']
-
-    images_path_list = []
-    SIZE = { "NookTransfers": { 'UVDTF 16oz': { 'width': 9.5, 'height': 4.33 }}, "FunnyBunnyTransfers": { 'UVDTF 16oz': { 'width': 9.4, 'height': 4.33 }}}
-    resize = ImageResizing(SIZE[shop_name], {})
-    
-    # Process images in parallel using ThreadPoolExecutor
-
-    def process_image(n):
-        image = crop_transparent(pngFilePath[n])
-        resized_image = resize.resize_image_by_inches(image_path=pngFilePath[n], image_type="UVDTF 16oz", image=image)
-        cup_wrap_id_number = str(n + id_number).zfill(3)
-        image_path = f"{root_path}UVDTF 16oz/UV {cup_wrap_id_number} Cup_Wrap_{cup_wrap_id_number}.png"
-        save_single_image(resized_image, image_path, target_dpi=(400, 400))
-        return image_path
-
-    for i in range(len(pngFilePath)):
-        images_path_list.append(process_image(i))
-    image_filename_list = [f"UV {str(n + id_number).zfill(3)} Cup_Wrap_{str(n + id_number).zfill(3)}.png" for n in range(len(pngFilePath))]
-    fieldnames = [
-        'Product_id',
-        'Image_type',
-        'Title',
-        'Description',
-        'Mockups',
-        'Images',
-        'Price',
-        'Tags',
-        'Materials',
-        'Quantity',
-        'Who_made',
-        'When_made',
-        'Item_weight',
-        'Item_weight_unit',
-        'Item_length',
-        'Item_width',
-        'Item_height',
-        'Item_dimensions_unit',
-        'Is_taxable',
-        'Type',
-        'Processing_min',
-        'Processing_max',
-    ]
-    with open(f'{root_path}upload_to_etsy_listings.csv', 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(fieldnames)
-
-    mockup = MockupImage(mockupFilePath, new_design_image_path)
-
-    def process_mockup(i):
-        mockups_list = []
-        for n in range(len(mockupFilePath)):
-            assembled_mockup = mockup.create_mockup(masks, points_list, image_type="UVDTF 16oz", image=image_filename_list[i], index=n)
-            assembled_mockup_with_watermark = mockup.add_watermark(
-                assembled_mockup, 
-                watermark_path, 
-                points_list,  # Use first mask for watermark
-                masks,  # Use first mask for watermark
-                image_type="UVDTF 16oz",
-                opacity=0.45
-            )
-            height, width = assembled_mockup_with_watermark.shape[:2]
-            scale_factor = min(2000 / width, 2000 / height)
-            new_size = (int(width * scale_factor), int(height * scale_factor))
-            resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
-            cup_wrap_id_number = str(id_number + i).zfill(3)
-            color = "_Coffee"
-            if re.search('Checkered', mockupFilePath[n]):
-                color = "_Checkered"
-            elif re.search('Matcha', mockupFilePath[n]):
-                color = "_Matcha"
-            generated_mockup_path = f'{root_path}Mockups/Cup Wraps/UV {cup_wrap_id_number} Cup_Wrap{cup_wrap_id_number}{color}.jpg'
-            mockups_list.append(generated_mockup_path)
-            cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-        return mockups_list
-    
-    all_mockups_list = []
-    for i in range(len(image_filename_list)):
-        all_mockups_list.append(process_mockup(i))
-
-    for i in range(len(pngFilePath)):
-        with open(f'{root_path}upload_to_etsy_listings.csv', 'a', newline='') as file:
-            writer = csv.writer(file)
-            row_data = [
-                f"UV {str(id_number + i).zfill(6)} Cup_Wrap_{str(id_number + i).zfill(6)}",
-                "UVDTF 16oz",
-                f"UV {id_number + i} {ETSY_TEMPLATES['UVDTF 16oz']['title']}",
-                ETSY_TEMPLATES['UVDTF 16oz']['description'],
-                ';'.join(all_mockups_list[i]),
-                images_path_list[i],
-                ETSY_TEMPLATES['UVDTF 16oz']['price'],
-                ';'.join(ETSY_TEMPLATES['UVDTF 16oz']['tags']),
-                ';'.join(ETSY_TEMPLATES['UVDTF 16oz']['materials']),
-                ETSY_TEMPLATES['UVDTF 16oz']['quantity'],
-                ETSY_TEMPLATES['UVDTF 16oz']['who_made'],
-                ETSY_TEMPLATES['UVDTF 16oz']['when_made'],
-                ETSY_TEMPLATES['UVDTF 16oz']['item_weight'],
-                ETSY_TEMPLATES['UVDTF 16oz']['item_weight_unit'],
-                ETSY_TEMPLATES['UVDTF 16oz']['item_length'],
-                ETSY_TEMPLATES['UVDTF 16oz']['item_width'],
-                ETSY_TEMPLATES['UVDTF 16oz']['item_height'],
-                ETSY_TEMPLATES['UVDTF 16oz']['item_dimensions_unit'],
-                ETSY_TEMPLATES['UVDTF 16oz']['is_taxable'],
-                ETSY_TEMPLATES['UVDTF 16oz']['type'],
-                ETSY_TEMPLATES['UVDTF 16oz']['processing_min'],
-                ETSY_TEMPLATES['UVDTF 16oz']['processing_max'],
-            ]
-            writer.writerow(row_data)
-    
-    with open(f"{root_path}mockup_mask_data.json", "w") as f:
-        data['UVDTF 16oz']["starting_name"] = id_number + len(pngFilePath)
-        json.dump(data, f)
+        return all_mockups_list

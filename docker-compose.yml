@@ -1,9 +1,12 @@
 version: '3.8'
 
 services:
-  etsy-oauth-server:
-    build: .
-    container_name: etsy-oauth-server
+  # Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: etsy-seller-automaker-backend
     ports:
       - "3003:3003"
     environment:
@@ -11,15 +14,53 @@ services:
       - PORT=3003
       - DEBUG=false
       - DOCKER_ENV=true
+      - FRONTEND_URL=http://localhost:3000
     env_file:
       - .env
     volumes:
       # Mount the .env file for persistent configuration
       - ./.env:/app/.env:ro
+      # Mount local images directory if needed
+      - ./server/images:/app/server/images
+      - /Users/fserrano/Desktop/Desktop/NookTransfers/Mockups/Cup Wraps/:/Users/fserrano/Desktop/Desktop/NookTransfers/Mockups/Cup Wraps/
+      - /Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/:/Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/
+      - /Users/fserrano/Desktop/Desktop/NookTransfers/:/Users/fserrano/Desktop/Desktop/NookTransfers/
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/ping"]
+      test: ["CMD", "curl", "-f", "http://localhost:3003/api/ping"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s 
+      start_period: 40s
+    networks:
+      - etsy-network
+
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: etsy-seller-automaker-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://backend:3003 # TODO: Must match backend service name
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      # Mount source code for development (hot reload)
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - /app/node_modules
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - etsy-network
+
+networks:
+  etsy-network:
+    driver: bridge
+
+volumes:
+  node_modules: 

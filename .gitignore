@@ -15,7 +15,7 @@ token.pickle
 .venv
 .venv3_11
 
-/node_modules
+/frontend/node_modules
 /.pnp
 .pnp.js
 
@@ -23,7 +23,7 @@ token.pickle
 /coverage
 
 # production
-/build
+/frontend/build
 
 # misc
 .DS_Store

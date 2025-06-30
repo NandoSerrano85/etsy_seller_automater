@@ -111,7 +111,11 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
             new_width, new_height = int((xmax - xmin + 1) * scale_factor), int((ymax - ymin + 1) * scale_factor)
             resized_gang_sheet = cv2.resize(cropped_gang_sheet, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
             today = date.today()
-            save_single_image(resized_gang_sheet, output_path, f"{today.strftime("%m%d%Y")} UVDTF {image_type} {text} part {part}.png")
+            save_single_image(
+                resized_gang_sheet,
+                output_path,
+                f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}.png"
+            )
             part += 1
         else:
             print(f"Warning: Sheet {part} is empty (all transparent). Skipping.")

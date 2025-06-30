@@ -1,96 +1,132 @@
+// eslint-disable-next-line no-unused-vars
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import './OAuthRedirect.css';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const OAuthRedirect = () => {
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
-    const code = searchParams.get('code');
-    const state = searchParams.get('state');
-    
-    if (!code) {
-      setError('No authorization code received from Etsy');
-      setStatus('error');
-      return;
-    }
+    const handleOAuthRedirect = async () => {
+      const urlParams = new URLSearchParams(location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      const accessToken = urlParams.get('access_token');
+      const error = urlParams.get('error');
 
-    const processOAuth = async () => {
-      try {
-        setStatus('processing');
-        
-        // Process OAuth redirect through backend
-        const response = await axios.get(`/oauth/redirect?code=${code}`);
-        
-        if (response.status === 200) {
-          setStatus('success');
-          // Redirect to welcome page after a short delay
-          setTimeout(() => {
-            navigate('/welcome?access_token=' + response.data.access_token);
-          }, 2000);
-        } else {
-          throw new Error('OAuth processing failed');
+      if (error) {
+        setError(`OAuth error: ${error}`);
+        setStatus('error');
+        return;
+      }
+
+      // If we have an access token directly from backend redirect (legacy flow)
+      if (accessToken) {
+        localStorage.setItem('etsy_access_token', accessToken);
+        setStatus('success');
+        setSuccessMessage('Your Etsy shop has been connected successfully!');
+        setTimeout(() => {
+          navigate('/');
+        }, 3000);
+        return;
+      }
+
+      // If we have a code, exchange it for token via backend
+      if (code) {
+        try {
+          // Call the backend oauth_redirect endpoint directly
+          const response = await fetch(`/oauth/redirect?code=${code}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.success) {
+              // Store the access token in localStorage
+              localStorage.setItem('etsy_access_token', data.access_token);
+              
+              setStatus('success');
+              setSuccessMessage(data.message || 'Your Etsy shop has been connected successfully!');
+              
+              // Redirect to home page after showing success message
+              setTimeout(() => {
+                navigate('/');
+              }, 3000);
+            } else {
+              setError(data.error || 'Authentication failed');
+              setStatus('error');
+            }
+          } else {
+            const errorData = await response.json();
+            setError(errorData.error || 'Failed to exchange code for token');
+            setStatus('error');
+          }
+        } catch (err) {
+          console.error('Error during OAuth callback:', err);
+          setError('Network error during authentication');
+          setStatus('error');
         }
-      } catch (err) {
-        console.error('OAuth redirect error:', err);
-        setError('Failed to complete OAuth authentication');
+      } else {
+        setError('No authorization code or access token received');
         setStatus('error');
       }
     };
 
-    processOAuth();
-  }, [searchParams, navigate]);
+    handleOAuthRedirect();
+  }, [location, navigate]);
 
   if (status === 'processing') {
     return (
-      <div className="oauth-redirect-container">
-        <div className="oauth-card">
-          <div className="loading">
-            <div className="spinner"></div>
-          </div>
-          <h2>Processing Authentication...</h2>
-          <p>Please wait while we complete your Etsy authentication.</p>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex flex-col items-center justify-center text-white">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
+        <h1 className="text-2xl font-bold mb-2">Processing Authentication</h1>
+        <p className="text-lg opacity-90">Please wait while we complete your login...</p>
       </div>
     );
   }
 
   if (status === 'error') {
     return (
-      <div className="oauth-redirect-container">
-        <div className="oauth-card">
-          <div className="alert alert-error">
-            <h2>Authentication Failed</h2>
-            <p>{error}</p>
-          </div>
-          <div className="oauth-actions">
-            <a href="/" className="btn btn-primary">
-              Try Again
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === 'success') {
-    return (
-      <div className="oauth-redirect-container">
-        <div className="oauth-card">
-          <div className="alert alert-success">
-            <h2>Authentication Successful!</h2>
-            <p>Redirecting you to the welcome page...</p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+        <div className="bg-white rounded-xl p-8 shadow-xl max-w-md w-full mx-4">
+          <div className="text-center">
+            <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded mb-6">
+              <p className="text-red-700 font-medium">Authentication Failed</p>
+              <p className="text-red-600 text-sm mt-1">{error}</p>
+            </div>
+            <button 
+              onClick={() => navigate('/')}
+              className="btn-primary"
+            >
+              Return to Home
+            </button>
           </div>
         </div>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+      <div className="bg-white rounded-xl p-8 shadow-xl max-w-md w-full mx-4">
+        <div className="text-center">
+          <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded mb-6">
+            <div className="text-green-600 mb-2">
+              <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-green-700 font-medium">Authentication Successful!</p>
+            <p className="text-green-600 text-sm mt-1">{successMessage}</p>
+          </div>
+          <p className="text-gray-600 mb-4">Redirecting to dashboard in 3 seconds...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default OAuthRedirect; 

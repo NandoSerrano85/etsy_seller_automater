@@ -1,0 +1,37 @@
+# Use Node.js 18 Alpine image for the frontend
+FROM node:18-alpine
+
+# Set work directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apk add --no-cache \
+    curl \
+    && rm -rf /var/cache/apk/*
+
+# Copy package files
+COPY frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy frontend source code
+COPY frontend/ .
+
+# Create a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S reactjs -u 1001
+
+# Change ownership of the app directory
+RUN chown -R reactjs:nodejs /app
+USER reactjs
+
+# Expose the port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000 || exit 1
+
+# Start the development server
+CMD ["npm", "start"] 
