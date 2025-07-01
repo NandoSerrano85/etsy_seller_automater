@@ -8,6 +8,8 @@ import Welcome from './pages/Welcome';
 import OAuthRedirect from './pages/OAuthRedirect';
 import MaskCreator from './pages/MaskCreator';
 import LoginRegister from './pages/LoginRegister';
+import ApiTest from './components/ApiTest';
+import ConnectEtsy from './pages/ConnectEtsy';
 
 function App() {
   return (
@@ -21,6 +23,7 @@ function App() {
               <Route path="/login" element={<LoginRegister />} />
               <Route path="/welcome" element={<Welcome />} />
               <Route path="/oauth/redirect" element={<OAuthRedirect />} />
+              <Route path="/test-api" element={<ApiTest />} />
               
               {/* Protected routes */}
               <Route path="/" element={
@@ -31,6 +34,11 @@ function App() {
               <Route path="/mask-creator" element={
                 <ProtectedRoute>
                   <MaskCreator />
+                </ProtectedRoute>
+              } />
+              <Route path="/connect-etsy" element={
+                <ProtectedRoute>
+                  <ConnectEtsy />
                 </ProtectedRoute>
               } />
               

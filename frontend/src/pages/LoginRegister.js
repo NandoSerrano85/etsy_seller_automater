@@ -54,16 +54,14 @@ const LoginRegister = () => {
       if (tab === 'login') {
         const result = await login(email, password);
         if (result.success) {
-          const from = location.state?.from?.pathname || '/';
-          navigate(from, { replace: true });
+          navigate('/connect-etsy', { replace: true });
         } else {
           setError(result.error);
         }
       } else {
         const result = await register(email, password, confirmPassword);
         if (result.success) {
-          const from = location.state?.from?.pathname || '/';
-          navigate(from, { replace: true });
+          navigate('/', { replace: true });
         } else {
           setError(result.error);
         }

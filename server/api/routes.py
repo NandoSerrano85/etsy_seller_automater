@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File, Depends, Security
+from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File, Depends, Security, status
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -11,7 +11,7 @@ import uuid
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 # Import OAuth logic from etsy_oath_token
@@ -1039,6 +1039,53 @@ async def get_orders(access_token: str, current_user: User = Depends(get_current
         raise HTTPException(status_code=500, detail=f"Failed to fetch orders: {str(e)}")
 
 # Frontend Routes
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+@app.post('/api/register')
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    normalized_email = user.email.strip().lower()
+    existing = db.query(User).filter(User.email == normalized_email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    hashed_password = get_password_hash(user.password)
+    new_user = User(email=normalized_email, hashed_password=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"success": True, "user_id": new_user.id}
+
+@app.post('/api/login')
+def login_user(user: UserLogin, db: Session = Depends(get_db)):
+    normalized_email = user.email.strip().lower()
+    db_user = db.query(User).filter(User.email == normalized_email).first()
+    if not db_user or not verify_password(user.password, db_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    access_token = create_access_token({"sub": db_user.email, "user_id": db_user.id})
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "id": db_user.id,
+            "email": db_user.email,
+            "created_at": db_user.created_at
+        }
+    }
+
+@app.get("/api/verify-token")
+def verify_token(token: str = Depends(OAuth2PasswordBearer(tokenUrl="/api/login"))):
+    try:
+        # Replace 'your-secret-key' and 'HS256' with your actual values
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload  # or return user info as needed
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
 @app.get("/")
 async def serve_frontend():
     """Serve the React frontend."""
@@ -1073,51 +1120,6 @@ async def serve_frontend_routes(full_path: str):
         return FileResponse(index_path)
     else:
         return {"message": ERROR_MESSAGES['frontend_not_built']}
-
-class UserCreate(BaseModel):
-    email: str
-    password: str
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
-
-@app.post('/api/register')
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == user.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    hashed_password = get_password_hash(user.password)
-    new_user = User(email=user.email, hashed_password=hashed_password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return {"success": True, "user_id": new_user.id}
-
-@app.post('/api/login')
-def login_user(user: UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    access_token = create_access_token({"sub": db_user.email, "user_id": db_user.id})
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "user": {
-            "id": db_user.id,
-            "email": db_user.email,
-            "created_at": db_user.created_at
-        }
-    }
-
-@app.get('/api/verify-token')
-def verify_token(current_user: User = Depends(get_current_user)):
-    """Verify if the current token is valid and return user data."""
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "created_at": current_user.created_at
-    }
 
 # Example usage for a protected endpoint:
 # @app.get('/api/protected')

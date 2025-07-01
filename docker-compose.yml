@@ -62,7 +62,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:3003 # TODO: Must match backend service name
+      - REACT_APP_API_URL=http://backend:3003 # TODO: Must match backend service name
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:

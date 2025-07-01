@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiCall } from '../hooks/useApi';
 
 const AuthContext = createContext();
 
@@ -26,23 +27,17 @@ export const AuthProvider = ({ children }) => {
 
   const verifyToken = async () => {
     try {
-      const response = await fetch('/api/verify-token', {
+      console.log('[verifyToken] Using token:', token);
+      const userData = await apiCall('/api/verify-token', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
         },
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-      } else {
-        // Token is invalid, clear it
-        logout();
-      }
+      }, token);
+      console.log('[verifyToken] Success:', userData);
+      setUser(userData);
     } catch (error) {
-      console.error('Error verifying token:', error);
+      console.error('[verifyToken] Error:', error);
       logout();
     } finally {
       setLoading(false);
@@ -51,27 +46,18 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const response = await fetch('/api/login', {
+      const normalizedEmail = email.trim().toLowerCase();
+      const data = await apiCall('/api/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password })
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setToken(data.access_token);
-        setUser(data.user);
-        localStorage.setItem('token', data.access_token);
-        return { success: true };
-      } else {
-        return { success: false, error: data.detail || 'Login failed' };
-      }
+      setToken(data.access_token);
+      setUser(data.user);
+      localStorage.setItem('token', data.access_token);
+      return { success: true };
     } catch (error) {
       console.error('Login error:', error);
-      return { success: false, error: 'Network error' };
+      return { success: false, error: error.message || 'Login failed' };
     }
   };
 
@@ -79,29 +65,19 @@ export const AuthProvider = ({ children }) => {
     if (password !== confirmPassword) {
       return { success: false, error: 'Passwords do not match' };
     }
-
     try {
-      const response = await fetch('/api/register', {
+      const normalizedEmail = email.trim().toLowerCase();
+      const data = await apiCall('/api/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password })
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setToken(data.access_token);
-        setUser(data.user);
-        localStorage.setItem('token', data.access_token);
-        return { success: true };
-      } else {
-        return { success: false, error: data.detail || 'Registration failed' };
-      }
+      setToken(data.access_token);
+      setUser(data.user);
+      localStorage.setItem('token', data.access_token);
+      return { success: true };
     } catch (error) {
       console.error('Registration error:', error);
-      return { success: false, error: 'Network error' };
+      return { success: false, error: error.message || 'Registration failed' };
     }
   };
 
