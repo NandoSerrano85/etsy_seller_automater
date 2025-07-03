@@ -11,9 +11,13 @@ export const apiCall = async (url, options = {}, token = null) => {
   });
 
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  // Only set Content-Type for JSON requests, not for FormData
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -55,6 +59,10 @@ export const useApi = () => {
     method: 'POST', 
     body: JSON.stringify(data) 
   });
+  const postFormData = (url, formData) => authenticatedApiCall(url, {
+    method: 'POST',
+    body: formData
+  });
   const put = (url, data) => authenticatedApiCall(url, { 
     method: 'PUT', 
     body: JSON.stringify(data) 
@@ -64,6 +72,7 @@ export const useApi = () => {
   return {
     get,
     post,
+    postFormData,
     put,
     delete: del,
   };

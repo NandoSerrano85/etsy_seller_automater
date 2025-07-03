@@ -53,6 +53,7 @@ Thank you so much! Your purchase truly means the world to me & my family and it 
         'type': 'physical',
         'processing_min': 1,
         'processing_max': 3,
+        "return_policy_id": 0,
     },
 }
 

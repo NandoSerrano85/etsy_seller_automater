@@ -59,7 +59,7 @@ const Home = () => {
     };
 
     fetchOAuthData();
-  }, [api]);
+  }, []);
 
   const fetchTopSellers = useCallback(async () => {
     if (!accessToken) return;
@@ -155,21 +155,15 @@ const Home = () => {
       fetchTopSellers();
       fetchMonthlyAnalytics();
     }
-  }, [accessToken, activeTab, currentYear, fetchTopSellers, fetchMonthlyAnalytics]);
-
-  useEffect(() => {
     if (accessToken && activeTab === 'designs') {
       fetchDesigns();
       fetchLocalImages();
       fetchMockupImages();
     }
-  }, [accessToken, activeTab, fetchDesigns, fetchLocalImages, fetchMockupImages]);
-
-  useEffect(() => {
     if (accessToken && activeTab === 'orders') {
       fetchOrders();
     }
-  }, [accessToken, activeTab, fetchOrders]);
+  }, [accessToken, activeTab, currentYear]);
 
   const formatCurrency = (amount, divisor = 100) => {
     return new Intl.NumberFormat('en-US', {
@@ -257,25 +251,15 @@ const Home = () => {
           console.log(`Sending file ${index + 1}: ${file.name}`);
         });
         
-        const res = await fetch('/api/upload-mockup', {
-          method: 'POST',
-          body: formData, // Send FormData instead of JSON
-        });
+        const result = await api.postFormData('/api/upload-mockup', formData);
+        alert(`Files uploaded successfully! ${result.result?.message || ''}`);
         
-        if (res.ok) {
-          const result = await res.json();
-          alert(`Files uploaded successfully! ${result.result?.message || ''}`);
-          
-          // Refresh both local images and mockup images after upload
-          await fetchLocalImages();
-          await fetchMockupImages();
-        } else {
-          const errorData = await res.json();
-          alert(`Upload failed: ${errorData.error || 'Unknown error'}`);
-        }
+        // Refresh both local images and mockup images after upload
+        await fetchLocalImages();
+        await fetchMockupImages();
       } catch (err) {
         console.error('Upload error:', err);
-        alert('Error uploading files');
+        alert(`Upload failed: ${err.message || 'Unknown error'}`);
       }
       setUploading(false);
     };

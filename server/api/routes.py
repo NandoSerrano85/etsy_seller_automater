@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import os, requests, time, json, glob, tempfile, shutil
+import os, requests, time, json, glob, tempfile, shutil, random
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
@@ -588,7 +588,7 @@ async def get_local_images(current_user: User = Depends(get_current_user)):
         return {"images": [], "error": str(e)}
 
 @app.get('/api/local-images/{filename}')
-async def serve_local_image(filename: str, current_user: User = Depends(get_current_user)):
+async def serve_local_image(filename: str):
     """API endpoint to serve local PNG images."""
     try:
         # Path to the UVDTF 16oz images directory
@@ -874,7 +874,7 @@ async def get_mockup_images(current_user: User = Depends(get_current_user)):
         return {"images": [], "error": str(e)}
 
 @app.get('/api/mockup-images/{filename}')
-async def serve_mockup_image(filename: str, current_user: User = Depends(get_current_user)):
+async def serve_mockup_image(filename: str):
     """API endpoint to serve local mockup images."""
     try:
         mockup_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/Mockups/Cup Wraps/"
@@ -900,6 +900,7 @@ async def upload_mockup(files: List[UploadFile] = File(...), current_user: User 
         # Save uploaded files to the target directory
         for file in files:
             if file.filename:
+                print(file.filename)
                 # Create a safe filename
                 safe_filename = file.filename.replace('/', '_').replace('\\', '_')
                 file_path = os.path.join(target_dir, safe_filename)
@@ -932,7 +933,7 @@ async def upload_mockup(files: List[UploadFile] = File(...), current_user: User 
                 materials=ETSY_TEMPLATES['UVDTF 16oz']['materials'])
 
             listing_id = listing_response["listing_id"]
-            for mockup in mockups:
+            for mockup in random.sample(mockups, len(mockups)):
                 etsy_api.upload_listing_image(listing_id, mockup)
 
         return JSONResponse(
@@ -992,7 +993,8 @@ async def get_orders(access_token: str, current_user: User = Depends(get_current
             'limit': 100,
             'offset': 0,
             'was_paid': 'true',
-            'was_shipped': 'false'  # Only get open/active orders
+            'was_shipped': 'false',
+            'was_canceled': 'false'  # Only get open/active orders
         }
         
         response = requests.get(receipts_url, headers=headers, params=params)

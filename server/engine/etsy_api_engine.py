@@ -1,11 +1,9 @@
-import requests, os, json, hashlib, base64, secrets, random, csv
+import requests, os, json, hashlib, base64, secrets, random, csv, sys, time, re
 from datetime import datetime
 from typing import List, Dict
 from dotenv import load_dotenv, set_key
-import sys
 from urllib.parse import urlencode
-import time
-import re
+from collections import deque
 
 # Get the project root directory (2 levels up from this file)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -54,6 +52,22 @@ class EtsyAPI:
             return lst.index(element)
         except ValueError:
             return -1 
+
+    def _find_nodes_bfs(self, root, condition):
+        """Find all nodes matching a condition using BFS"""
+        found = []
+        queue = deque([root])
+        
+        while queue:
+            current = queue.popleft()
+            
+            if condition(current):
+                found.append(current)
+            
+            if 'children' in current and current['children']:
+                queue.extend(current['children'])
+        
+        return found
     
     def authenticate_with_scopes(self):
         """Authenticate with OAuth to get proper scopes"""
@@ -232,7 +246,7 @@ class EtsyAPI:
             "materials": materials[:13],  # Etsy allows max 13 materials
             "shop_section_id": self.shop_section_id,
             "shipping_profile_id": self.shipping_profile_id if self.shipping_profile_id else 1,
-            "return_policy_id": self.return_policy_id if self.return_policy_id else 1,
+            "return_policy_id": self.return_policy_id if self.return_policy_id else 0,
             "state": "draft",
             "shop_section_id": self.shop_section_id if self.shop_section_id else 52993337,
         }
@@ -291,7 +305,7 @@ class EtsyAPI:
         response.raise_for_status()
         return response.json()
 
-    def fetch_taxonomies(self, limit=10):
+    def fetch_taxonomies(self, limit=100):
         self.ensure_valid_token()
         url = 'https://openapi.etsy.com/v3/application/seller-taxonomy/nodes'
         headers = {
@@ -304,10 +318,10 @@ class EtsyAPI:
             taxonomy_id = None
             print("\n--- Taxonomies (categories) ---")
             for node in data.get('results', [])[:limit]:
-                if node['name'] == "Craft Supplies & Tools":
-                    taxonomy_id = node['id']
-                print(f"ID: {node['id']}, Name: {node['name']}")
-            print("... (truncated)")
+                child_nodes = self._find_nodes_bfs(node, lambda n: not n.get('children'))
+                for child in child_nodes:
+                    if child['name'] == "Tumblers & Water Glasses":
+                        taxonomy_id = child['id']
             return taxonomy_id if taxonomy_id else None
         elif resp.status_code in [401, 403]:
             print(f"Authentication error: {resp.text}")
@@ -390,7 +404,7 @@ class EtsyAPI:
         Fetch all open (paid, unshipped) orders and return a summary of product items and their total quantities.
         """
         print("\n--- Fetching Open Orders Items ---")
-        receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false"
+        receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false&was_cancelled=false"
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}'
