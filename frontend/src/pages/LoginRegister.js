@@ -73,17 +73,17 @@ const LoginRegister = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
-      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 p-4">
+      <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 w-full max-w-md">
         <div className="flex mb-6">
           <button
-            className={`flex-1 py-2 font-semibold rounded-l-lg transition-colors ${tab === 'login' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+            className={`flex-1 py-2 sm:py-3 font-semibold rounded-l-lg transition-colors text-sm sm:text-base ${tab === 'login' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
             onClick={() => { setTab('login'); setError(''); }}
           >
             Login
           </button>
           <button
-            className={`flex-1 py-2 font-semibold rounded-r-lg transition-colors ${tab === 'register' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+            className={`flex-1 py-2 sm:py-3 font-semibold rounded-r-lg transition-colors text-sm sm:text-base ${tab === 'register' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
             onClick={() => { setTab('register'); setError(''); }}
           >
             Register
@@ -91,10 +91,10 @@ const LoginRegister = () => {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-gray-700 font-medium mb-1">Email</label>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Email</label>
             <input
               type="email"
-              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               value={email}
               onChange={e => setEmail(e.target.value)}
               autoComplete="email"
@@ -102,11 +102,11 @@ const LoginRegister = () => {
             />
           </div>
           <div>
-            <label className="block text-gray-700 font-medium mb-1">Password</label>
+            <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Password</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
@@ -128,10 +128,10 @@ const LoginRegister = () => {
           </div>
           {tab === 'register' && (
             <div>
-              <label className="block text-gray-700 font-medium mb-1">Confirm Password</label>
+              <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Confirm Password</label>
               <input
                 type={showPassword ? 'text' : 'password'}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
@@ -144,7 +144,7 @@ const LoginRegister = () => {
           )}
           <button
             type="submit"
-            className="w-full py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center"
+            className="w-full py-2 sm:py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center text-sm sm:text-base"
             disabled={loading}
           >
             {loading ? (

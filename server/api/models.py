@@ -1,5 +1,6 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, UniqueConstraint
+import json
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, UniqueConstraint, Float, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -26,6 +27,8 @@ class User(Base):
     mask_data_path = Column(String, nullable=True)
     mockup_blank_path = Column(String, nullable=True)
     watermark_path = Column(String, nullable=True)
+    etsy_templates = relationship('EtsyTemplate', order_by='EtsyTemplate.id', back_populates='user')
+    mockup_masks = relationship('MockupMaskData', order_by='MockupMaskData.id', back_populates='user')
 
 class OAuthToken(Base):
     __tablename__ = 'oauth_tokens'
@@ -37,6 +40,49 @@ class OAuthToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user = relationship('User', back_populates='tokens')
     __table_args__ = (UniqueConstraint('user_id', 'access_token', name='_user_token_uc'),)
+
+class EtsyTemplate(Base):
+    __tablename__ = 'etsy_templates'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    name = Column(String, nullable=False)  # e.g., 'UVDTF 16oz'
+    template_title = Column(String, nullable=True)  # User-friendly template name/key
+    title = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    who_made = Column(String, nullable=True)
+    when_made = Column(String, nullable=True)
+    taxonomy_id = Column(Integer, nullable=True)
+    price = Column(Float, nullable=True)
+    materials = Column(Text, nullable=True)  # Store as comma-separated or JSON string
+    shop_section_id = Column(Integer, nullable=True)
+    quantity = Column(Integer, nullable=True)
+    tags = Column(Text, nullable=True)  # Store as comma-separated or JSON string
+    item_weight = Column(Float, nullable=True)
+    item_weight_unit = Column(String, nullable=True)
+    item_length = Column(Float, nullable=True)
+    item_width = Column(Float, nullable=True)
+    item_height = Column(Float, nullable=True)
+    item_dimensions_unit = Column(String, nullable=True)
+    is_taxable = Column(Boolean, nullable=True)
+    type = Column(String, nullable=True)
+    processing_min = Column(Integer, nullable=True)
+    processing_max = Column(Integer, nullable=True)
+    return_policy_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = relationship('User', back_populates='etsy_templates')
+
+class MockupMaskData(Base):
+    __tablename__ = 'mockup_mask_data'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    template_name = Column(String, nullable=False)  # e.g., 'UVDTF 16oz' - same as EtsyTemplate.name
+    masks = Column(JSON, nullable=False)  # Store mask data as JSON array
+    points = Column(JSON, nullable=False)  # Store points data as JSON array
+    starting_name = Column(Integer, default=100)  # Starting ID for generated files
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = relationship('User', back_populates='mockup_masks')
 
 # Create tables
 Base.metadata.create_all(bind=engine)

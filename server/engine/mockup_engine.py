@@ -332,28 +332,69 @@ def find_png_files(folder_path):
     
     return png_filepath, png_filenames
 
-def process_uploaded_mockups(file_paths, root_path):
+def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", user_id=None, db=None):
         print(file_paths)
         print(root_path)
+        print(f"Using template: {template_name}")
         
         mockup_path = f"{root_path}Mockups/BaseMockups/UVDTF/"
         watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
-        designs_path = f"{root_path}UVDTF 16oz/"
+        designs_path = f"{root_path}{template_name}/"
         designs_path_list = []
         designs_filename_list = []
-        with open(f'{root_path}mockup_mask_data.json', 'r') as f:
-            data = json.load(f)
-            masks = []  # Store multiple masks
-            points_list = []  # Store multiple points lists
-            for key in data['UVDTF 16oz'].keys():
-                if key.startswith('mask'):
-                    masks.append(np.array(data['UVDTF 16oz'][key][0]))
-                elif key.startswith('points'):
-                    points_list.append(data['UVDTF 16oz'][key][0])
-            id_number = 100 if "starting_name" not in data['UVDTF 16oz'] else data['UVDTF 16oz']['starting_name']
+        
+        # Create designs directory if it doesn't exist
+        os.makedirs(designs_path, exist_ok=True)
+        
+        # Load mask data from database if available, otherwise fallback to JSON file
+        masks = []
+        points_list = []
+        id_number = 100
+        
+        if user_id and db:
+            try:
+                from server.engine.mask_db_utils import load_mask_data_from_db
+                masks, points_list, id_number = load_mask_data_from_db(db, user_id, template_name)
+                print(f"Loaded mask data from database for user {user_id}, template {template_name}")
+            except Exception as e:
+                print(f"Failed to load mask data from database: {e}")
+                # Fallback to JSON file
+                try:
+                    with open(f'{root_path}mockup_mask_data.json', 'r') as f:
+                        data = json.load(f)
+                        # Use template_name as key, fallback to 'UVDTF 16oz' for backward compatibility
+                        template_key = template_name if template_name in data else 'UVDTF 16oz'
+                        
+                        for key in data[template_key].keys():
+                            if key.startswith('mask'):
+                                masks.append(np.array(data[template_key][key][0]))
+                            elif key.startswith('points'):
+                                points_list.append(data[template_key][key][0])
+                        id_number = 100 if "starting_name" not in data[template_key] else data[template_key]['starting_name']
+                except Exception as json_error:
+                    print(f"Failed to load mask data from JSON file: {json_error}")
+                    raise ValueError(f"No mask data found for template {template_name}")
+        else:
+            # Fallback to JSON file for backward compatibility
+            try:
+                with open(f'{root_path}mockup_mask_data.json', 'r') as f:
+                    data = json.load(f)
+                    # Use template_name as key, fallback to 'UVDTF 16oz' for backward compatibility
+                    template_key = template_name if template_name in data else 'UVDTF 16oz'
+                    
+                    for key in data[template_key].keys():
+                        if key.startswith('mask'):
+                            masks.append(np.array(data[template_key][key][0]))
+                        elif key.startswith('points'):
+                            points_list.append(data[template_key][key][0])
+                    id_number = 100 if "starting_name" not in data[template_key] else data[template_key]['starting_name']
+            except Exception as e:
+                print(f"Failed to load mask data from JSON file: {e}")
+                raise ValueError(f"No mask data found for template {template_name}")
+            
         def process_image(n):
             image = crop_transparent(file_paths[n])
-            resized_image = resize_image_by_inches(image_path=file_paths[n], image_type="UVDTF 16oz", image=image)
+            resized_image = resize_image_by_inches(image_path=file_paths[n], image_type=template_name, image=image)
             cup_wrap_id_number = str(n + id_number).zfill(3)
             filename = f"UV {cup_wrap_id_number} Cup_Wrap_{cup_wrap_id_number}.png"
             image_path = f"{designs_path}{filename}"
@@ -372,7 +413,7 @@ def process_uploaded_mockups(file_paths, root_path):
         def process_mockup(i):
             mockups_list = []
             for n in range(len(mockupFilePath)):
-                assembled_mockup = mockup.create_mockup(masks, points_list, image_type="UVDTF 16oz", image=designs_filename_list[i], index=n)
+                assembled_mockup = mockup.create_mockup(masks, points_list, image_type=template_name, image=designs_filename_list[i], index=n)
                 print("starting watermark")
                 print(watermark_path)
                 assembled_mockup_with_watermark = mockup.add_watermark(
@@ -380,7 +421,7 @@ def process_uploaded_mockups(file_paths, root_path):
                     watermark_path, 
                     points_list,  # Use first mask for watermark
                     masks,  # Use first mask for watermark
-                    image_type="UVDTF 16oz",
+                    image_type=template_name,
                     opacity=0.45
                 )
                 height, width = assembled_mockup_with_watermark.shape[:2]
@@ -402,7 +443,30 @@ def process_uploaded_mockups(file_paths, root_path):
         for i in range(len(designs_filename_list)):
             all_mockups_list[designs_filename_list[i]] = process_mockup(i)
 
-        with open(f"{root_path}mockup_mask_data.json", "w") as f:
-            data['UVDTF 16oz']["starting_name"] = id_number + len(file_paths)
-            json.dump(data, f)
+        # Update starting_name in database if available, otherwise fallback to JSON file
+        new_starting_name = id_number + len(file_paths)
+        
+        if user_id and db:
+            try:
+                from server.engine.mask_db_utils import update_starting_name
+                update_starting_name(db, user_id, template_name, new_starting_name)
+                print(f"Updated starting_name in database to {new_starting_name}")
+            except Exception as e:
+                print(f"Failed to update starting_name in database: {e}")
+                # Fallback to JSON file
+                try:
+                    with open(f"{root_path}mockup_mask_data.json", "w") as f:
+                        data[template_key]["starting_name"] = new_starting_name
+                        json.dump(data, f)
+                except Exception as json_error:
+                    print(f"Failed to update starting_name in JSON file: {json_error}")
+        else:
+            # Fallback to JSON file for backward compatibility
+            try:
+                with open(f"{root_path}mockup_mask_data.json", "w") as f:
+                    data[template_key]["starting_name"] = new_starting_name
+                    json.dump(data, f)
+            except Exception as e:
+                print(f"Failed to update starting_name in JSON file: {e}")
+        
         return all_mockups_list

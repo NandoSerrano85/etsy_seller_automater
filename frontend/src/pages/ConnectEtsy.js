@@ -24,9 +24,9 @@ const ConnectEtsy = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
-        <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
-          <p>Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 px-4">
+        <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 w-full max-w-md text-center">
+          <p className="text-sm sm:text-base">Loading...</p>
         </div>
       </div>
     );
@@ -34,9 +34,9 @@ const ConnectEtsy = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
-        <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
-          <p className="text-red-600">{error}</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 px-4">
+        <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 w-full max-w-md text-center">
+          <p className="text-red-600 text-sm sm:text-base">{error}</p>
         </div>
       </div>
     );
@@ -47,13 +47,13 @@ const ConnectEtsy = () => {
     '#';
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500">
-      <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md text-center">
-        <h1 className="text-2xl font-bold mb-4">Connect Your Etsy Store</h1>
-        <p className="mb-6 text-gray-700">To get started, connect your Etsy store to enable automated product management and order processing.</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 px-4">
+      <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 w-full max-w-md text-center">
+        <h1 className="text-xl sm:text-2xl font-bold mb-4">Connect Your Etsy Store</h1>
+        <p className="mb-6 text-gray-700 text-sm sm:text-base">To get started, connect your Etsy store to enable automated product management and order processing.</p>
         <a
           href={authUrl}
-          className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-6 rounded-lg transition-colors"
+          className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors text-sm sm:text-base"
         >
           Connect Etsy Store
         </a>

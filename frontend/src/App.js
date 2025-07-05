@@ -4,12 +4,12 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Header from './components/Header';
 import Home from './pages/Home';
-import Welcome from './pages/Welcome';
 import OAuthRedirect from './pages/OAuthRedirect';
-import MaskCreator from './pages/MaskCreator';
+import MockupCreator from './pages/MockupCreator';
 import LoginRegister from './pages/LoginRegister';
 import ApiTest from './components/ApiTest';
 import ConnectEtsy from './pages/ConnectEtsy';
+import Account from './pages/Account';
 
 function App() {
   return (
@@ -21,7 +21,7 @@ function App() {
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<LoginRegister />} />
-              <Route path="/welcome" element={<Welcome />} />
+              <Route path="/welcome" element={<Navigate to="/" replace />} />
               <Route path="/oauth/redirect" element={<OAuthRedirect />} />
               <Route path="/test-api" element={<ApiTest />} />
               
@@ -31,9 +31,14 @@ function App() {
                   <Home />
                 </ProtectedRoute>
               } />
-              <Route path="/mask-creator" element={
+              <Route path="/account" element={
                 <ProtectedRoute>
-                  <MaskCreator />
+                  <Account />
+                </ProtectedRoute>
+              } />
+              <Route path="/mockup-creator" element={
+                <ProtectedRoute>
+                  <MockupCreator />
                 </ProtectedRoute>
               } />
               <Route path="/connect-etsy" element={

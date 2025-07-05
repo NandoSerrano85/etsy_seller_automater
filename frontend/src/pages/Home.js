@@ -1,18 +1,24 @@
 // eslint-disable-next-line no-unused-vars
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 import { Pie, Bar } from 'react-chartjs-2';
 import { useAuth } from '../contexts/AuthContext';
 import { useApi } from '../hooks/useApi';
 import MockupsGallery from '../components/MockupsGallery';
 import DesignFilesGallery from '../components/DesignFilesGallery';
+import OverviewTab from './HomeTabs/OverviewTab';
+import AnalyticsTab from './HomeTabs/AnalyticsTab';
+import DesignsTab from './HomeTabs/DesignsTab';
+import ToolsTab from './HomeTabs/ToolsTab';
+import OrdersTab from './HomeTabs/OrdersTab';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
 const Home = () => {
   const { user, isAuthenticated } = useAuth();
   const api = useApi();
+  const [searchParams] = useSearchParams();
   
   const [oauthData, setOauthData] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
@@ -37,12 +43,39 @@ const Home = () => {
   });
   const [creatingPrintfile, setCreatingPrintfile] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState([]);
+  
+  // Welcome state variables
+  const [userData, setUserData] = useState(null);
+  const [shopInfo, setShopInfo] = useState(null);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
-    // Check for Etsy access token in localStorage (for backward compatibility)
-    const token = localStorage.getItem('etsy_access_token');
-    if (token) {
-      setAccessToken(token);
+    // Check for access token in URL parameters (Welcome functionality)
+    const urlAccessToken = searchParams.get('access_token');
+    if (urlAccessToken) {
+      setAccessToken(urlAccessToken);
+      localStorage.setItem('etsy_access_token', urlAccessToken);
+      
+      // Fetch user data for welcome screen
+      const fetchUserData = async () => {
+        try {
+          const response = await api.get(`/api/user-data?access_token=${urlAccessToken}`);
+          setUserData(response.userData);
+          setShopInfo(response.shopInfo);
+          setShowWelcome(true);
+        } catch (err) {
+          console.error('Error fetching user data:', err);
+          setError('Failed to fetch user data');
+        }
+      };
+      
+      fetchUserData();
+    } else {
+      // Check for Etsy access token in localStorage (for backward compatibility)
+      const token = localStorage.getItem('etsy_access_token');
+      if (token) {
+        setAccessToken(token);
+      }
     }
 
     // Fetch OAuth data from the backend
@@ -59,7 +92,7 @@ const Home = () => {
     };
 
     fetchOAuthData();
-  }, []);
+  }, [searchParams]);
 
   const fetchTopSellers = useCallback(async () => {
     if (!accessToken) return;
@@ -300,15 +333,64 @@ const Home = () => {
     `${oauthData.oauthConnectUrl || 'https://www.etsy.com/oauth/connect'}?response_type=${oauthData.responseType || 'code'}&redirect_uri=${oauthData.redirectUri}&scope=${oauthData.scopes || 'listings_w%20listings_r%20shops_r%20shops_w%20transactions_r'}&client_id=${oauthData.clientId}&state=${oauthData.state}&code_challenge=${oauthData.codeChallenge}&code_challenge_method=${oauthData.codeChallengeMethod || 'S256'}` : 
     '#';
 
+  // Render Welcome screen if access token is provided via URL
+  if (showWelcome && userData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center py-4 sm:py-8 px-4">
+        <div className="bg-white rounded-xl p-6 sm:p-8 shadow-xl max-w-2xl w-full mx-4">
+          <div className="text-center">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
+              Welcome, {userData?.first_name || 'User'}!
+            </h1>
+            <p className="text-base sm:text-lg text-gray-600 mb-6 sm:mb-8">
+              Authentication was successful. Your Etsy shop is now connected!
+            </p>
+            
+            {shopInfo && (
+              <div className="bg-blue-50 border-l-4 border-blue-400 p-4 sm:p-6 rounded-lg mb-6 sm:mb-8 text-left">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Shop Information</h3>
+                <div className="space-y-2 text-gray-700 text-sm sm:text-base">
+                  <p><strong>Shop Name:</strong> {shopInfo.shop_name || 'Not available'}</p>
+                  {shopInfo.shop_url && (
+                    <p>
+                      <strong>Shop URL:</strong>{' '}
+                      <a 
+                        href={shopInfo.shop_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 underline break-all"
+                      >
+                        {shopInfo.shop_url}
+                      </a>
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            <div className="flex justify-center">
+              <button 
+                onClick={() => setShowWelcome(false)}
+                className="btn-primary"
+              >
+                Continue to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600">
       {/* Hero Section */}
-      <div className="bg-white/10 backdrop-blur-sm py-16 px-4 text-center text-white">
+      <div className="bg-white/10 backdrop-blur-sm py-8 sm:py-16 px-4 text-center text-white">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold mb-6 text-shadow-lg">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 text-shadow-lg">
             Etsy Seller Dashboard
           </h1>
-          <p className="text-xl mb-8 opacity-90">
+          <p className="text-base sm:text-lg md:text-xl mb-6 sm:mb-8 opacity-90 px-2">
             Manage your shop, analyze sales, and create amazing designs
           </p>
           {!accessToken && (
@@ -340,11 +422,11 @@ const Home = () => {
       {/* Navigation Tabs */}
       <div className="bg-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-center space-x-1">
+          <div className="flex sm:justify-start md:justify-center space-x-1 overflow-x-auto">
             {['overview', 'analytics', 'designs', 'tools', 'orders'].map((tab) => (
               <button 
                 key={tab}
-                className={`tab-button capitalize ${activeTab === tab ? 'active' : ''}`}
+                className={`tab-button capitalize whitespace-nowrap text-sm sm:text-base ${activeTab === tab ? 'active' : ''}`}
                 onClick={() => setActiveTab(tab)}
               >
                 {tab}
@@ -355,545 +437,74 @@ const Home = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="bg-gray-50 min-h-screen py-8">
+      <div className="bg-gray-50 min-h-screen py-4 sm:py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
-            <div className="space-y-8">
-              <div className="card p-8 text-center">
-                <h2 className="text-3xl font-bold text-gray-900 mb-4">
-                  Welcome to Your Dashboard
-                </h2>
-                {user && (
-                  <p className="text-lg text-gray-600 mb-4">
-                    Hello, <span className="font-semibold text-blue-600">{user.email}</span>!
-                  </p>
-                )}
-                <p className="text-lg text-gray-600 mb-8">
-                  Get insights into your shop performance, manage your designs, and use powerful tools to grow your business.
-                </p>
-                
-                {!accessToken ? (
-                  <div className="bg-blue-50 border-l-4 border-blue-400 p-6 rounded-lg">
-                    <p className="text-blue-700 mb-4">Connect your Etsy shop to get started</p>
-                    <a href={authUrl} className="btn-primary">
-                      Connect Shop
-                    </a>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
-                    <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 rounded-xl text-center">
-                      <h3 className="text-lg font-semibold mb-2">Total Designs</h3>
-                      <p className="text-3xl font-bold">{designs.length}</p>
-                    </div>
-                    <div className="bg-gradient-to-r from-green-500 to-teal-600 text-white p-6 rounded-xl text-center">
-                      <h3 className="text-lg font-semibold mb-2">Top Seller</h3>
-                      <p className="text-lg font-medium">
-                        {topSellers.length > 0 ? topSellers[0]?.title?.substring(0, 20) + '...' : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            <OverviewTab
+              user={user}
+              accessToken={accessToken}
+              designs={designs}
+              topSellers={topSellers}
+              oauthData={oauthData}
+              authUrl={authUrl}
+            />
           )}
 
           {/* Analytics Tab */}
           {activeTab === 'analytics' && (
-            <div className="space-y-8">
-              {!accessToken ? (
-                <div className="card p-8 text-center">
-                  <p className="text-lg text-gray-600 mb-6">Please connect your Etsy shop to view analytics</p>
-                  <a href={authUrl} className="btn-primary">Connect Shop</a>
-                </div>
-              ) : (
-                <div className="space-y-8">
-                  {/* Controls */}
-                  <div className="card p-6">
-                    <div className="flex flex-wrap items-center gap-4 mb-6">
-                      <div className="flex items-center gap-2">
-                        <label htmlFor="year-select" className="font-semibold text-gray-700">Year:</label>
-                        <select 
-                          id="year-select"
-                          value={currentYear}
-                          onChange={(e) => setCurrentYear(parseInt(e.target.value))}
-                          className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                        >
-                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
-                            <option key={year} value={year}>{year}</option>
-                          ))}
-                        </select>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <label htmlFor="view-select" className="font-semibold text-gray-700">View:</label>
-                        <select 
-                          id="view-select"
-                          value={analyticsView}
-                          onChange={(e) => setAnalyticsView(e.target.value)}
-                          className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                        >
-                          <option value="yearly">Yearly Overview</option>
-                          <option value="monthly">Monthly Breakdown</option>
-                        </select>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        <label htmlFor="limit-select" className="font-semibold text-gray-700">Show Top:</label>
-                        <select 
-                          id="limit-select"
-                          value={topSellersLimit}
-                          onChange={(e) => setTopSellersLimit(parseInt(e.target.value))}
-                          className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
-                        >
-                          <option value={10}>10</option>
-                          <option value={25}>25</option>
-                          <option value={50}>50</option>
-                          <option value={topSellers.length}>All</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Yearly Summary */}
-                  {monthlyAnalytics && (
-                    <div className="card p-8">
-                      <h2 className="text-3xl font-bold text-center text-gray-900 mb-8">
-                        {currentYear} Sales Summary
-                      </h2>
-                      
-                      {/* Big Total Display */}
-                      <div className="text-center mb-8">
-                        <div className="bg-gradient-to-r from-green-500 to-teal-600 text-white p-8 rounded-xl inline-block">
-                          <h3 className="text-2xl font-semibold mb-2">Total Net Sales</h3>
-                          <p className="text-6xl font-bold">{formatCurrency(monthlyAnalytics.summary.net_sales)}</p>
-                        </div>
-                      </div>
-                      
-                      {/* Summary Stats */}
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                        <div className="bg-blue-50 p-6 rounded-xl text-center">
-                          <h4 className="text-lg font-semibold text-blue-900 mb-2">Total Sales</h4>
-                          <p className="text-2xl font-bold text-blue-600">{formatCurrency(monthlyAnalytics.summary.total_sales)}</p>
-                        </div>
-                        <div className="bg-red-50 p-6 rounded-xl text-center">
-                          <h4 className="text-lg font-semibold text-red-900 mb-2">Total Discounts</h4>
-                          <p className="text-2xl font-bold text-red-600">{formatCurrency(monthlyAnalytics.summary.total_discounts)}</p>
-                        </div>
-                        <div className="bg-purple-50 p-6 rounded-xl text-center">
-                          <h4 className="text-lg font-semibold text-purple-900 mb-2">Items Sold</h4>
-                          <p className="text-2xl font-bold text-purple-600">{monthlyAnalytics.summary.total_quantity}</p>
-                        </div>
-                        <div className="bg-orange-50 p-6 rounded-xl text-center">
-                          <h4 className="text-lg font-semibold text-orange-900 mb-2">Orders</h4>
-                          <p className="text-2xl font-bold text-orange-600">{monthlyAnalytics.summary.total_receipts}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Charts Section */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Pie Chart */}
-                    <div className="card p-6 lg:col-span-2">
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Top Sellers Distribution</h3>
-                      {getPieChartData() && (
-                        <div className="relative">
-                          <Pie 
-                            data={getPieChartData()} 
-                            options={{
-                              responsive: true,
-                              plugins: {
-                                legend: {
-                                  position: 'bottom',
-                                  labels: {
-                                    padding: 20,
-                                    usePointStyle: true,
-                                    font: {
-                                      size: 12
-                                    }
-                                  }
-                                },
-                                tooltip: {
-                                  callbacks: {
-                                    label: function(context) {
-                                      const label = context.label || '';
-                                      const value = context.parsed;
-                                      const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                      const percentage = ((value / total) * 100).toFixed(1);
-                                      return `${label}: ${formatCurrency(value)} (${percentage}%)`;
-                                    }
-                                  }
-                                }
-                              }
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Totals Card */}
-                    <div className="card p-6">
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Item Totals</h3>
-                      <div className="space-y-4">
-                        <div className="bg-blue-50 p-4 rounded-lg text-center">
-                          <h4 className="text-sm font-semibold text-blue-900 mb-1">Total Quantity</h4>
-                          <p className="text-2xl font-bold text-blue-600">
-                            {topSellers.slice(0, topSellersLimit).reduce((sum, item) => sum + item.quantity_sold, 0)}
-                          </p>
-                        </div>
-                        <div className="bg-green-50 p-4 rounded-lg text-center">
-                          <h4 className="text-sm font-semibold text-green-900 mb-1">Total Amount</h4>
-                          <p className="text-2xl font-bold text-green-600">
-                            {formatCurrency(topSellers.slice(0, topSellersLimit).reduce((sum, item) => sum + item.total_amount, 0))}
-                          </p>
-                        </div>
-                        <div className="bg-red-50 p-4 rounded-lg text-center">
-                          <h4 className="text-sm font-semibold text-red-900 mb-1">Total Discounts</h4>
-                          <p className="text-2xl font-bold text-red-600">
-                            {formatCurrency(topSellers.slice(0, topSellersLimit).reduce((sum, item) => sum + item.total_discounts, 0))}
-                          </p>
-                        </div>
-                        <div className="bg-purple-50 p-4 rounded-lg text-center">
-                          <h4 className="text-sm font-semibold text-purple-900 mb-1">Total Net</h4>
-                          <p className="text-2xl font-bold text-purple-600">
-                            {formatCurrency(topSellers.slice(0, topSellersLimit).reduce((sum, item) => sum + item.net_amount, 0))}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Monthly Bar Chart */}
-                  {analyticsView === 'monthly' && (
-                    <div className="card p-6">
-                      <h3 className="text-xl font-bold text-gray-900 mb-4">Monthly Sales Trend</h3>
-                      {getMonthlyBarChartData() && (
-                        <Bar 
-                          data={getMonthlyBarChartData()} 
-                          options={{
-                            responsive: true,
-                            plugins: {
-                              legend: {
-                                display: false
-                              },
-                              tooltip: {
-                                callbacks: {
-                                  label: function(context) {
-                                    return `Net Sales: ${formatCurrency(context.parsed.y)}`;
-                                  }
-                                }
-                              }
-                            },
-                            scales: {
-                              y: {
-                                beginAtZero: true,
-                                ticks: {
-                                  callback: function(value) {
-                                    return formatCurrency(value);
-                                  }
-                                }
-                              }
-                            }
-                          }}
-                        />
-                      )}
-                    </div>
-                  )}
-
-                  {/* Top Sellers Table */}
-                  <div className="card p-8">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">
-                      Top Sellers - {currentYear} (Showing Top {topSellersLimit})
-                    </h2>
-                    <div className="overflow-x-auto rounded-lg shadow">
-                      <table className="w-full bg-white">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Rank</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Item Name</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Quantity Sold</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Total Amount</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Discounts</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Net Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {topSellers.slice(0, topSellersLimit).map((item, index) => (
-                            <tr key={item.listing_id} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 text-gray-900">{index + 1}</td>
-                              <td className="px-6 py-4 font-medium text-gray-900">{item.title}</td>
-                              <td className="px-6 py-4 text-gray-700">{item.quantity_sold}</td>
-                              <td className="px-6 py-4 text-gray-700">{formatCurrency(item.total_amount)}</td>
-                              <td className="px-6 py-4 text-gray-700">{formatCurrency(item.total_discounts)}</td>
-                              <td className="px-6 py-4 font-semibold text-green-600">{formatCurrency(item.net_amount)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Monthly Breakdown */}
-                  {analyticsView === 'monthly' && monthlyAnalytics && (
-                    <div className="card p-8">
-                      <h2 className="text-2xl font-bold text-gray-900 mb-6">Monthly Breakdown - {currentYear}</h2>
-                      <div className="space-y-6">
-                        {monthlyAnalytics.monthly_breakdown.map((month) => (
-                          <div key={month.month} className="border rounded-lg p-6">
-                            <div className="flex justify-between items-center mb-4">
-                              <h3 className="text-xl font-semibold text-gray-900">{month.month_name}</h3>
-                              <div className="text-right">
-                                <p className="text-2xl font-bold text-green-600">{formatCurrency(month.net_sales)}</p>
-                                <p className="text-sm text-gray-500">{month.receipt_count} orders</p>
-                              </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-                              <div className="text-center">
-                                <p className="text-sm text-gray-500">Total Sales</p>
-                                <p className="font-semibold">{formatCurrency(month.total_sales)}</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-sm text-gray-500">Items Sold</p>
-                                <p className="font-semibold">{month.total_quantity}</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-sm text-gray-500">Discounts</p>
-                                <p className="font-semibold text-red-600">{formatCurrency(month.total_discounts)}</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-sm text-gray-500">Net Sales</p>
-                                <p className="font-semibold text-green-600">{formatCurrency(month.net_sales)}</p>
-                              </div>
-                            </div>
-                            
-                            {month.top_items.length > 0 && (
-                              <div>
-                                <h4 className="font-semibold text-gray-700 mb-2">Top Items:</h4>
-                                <div className="space-y-2">
-                                  {month.top_items.map((item, index) => (
-                                    <div key={item.listing_id} className="flex justify-between items-center text-sm">
-                                      <span className="flex-1">{index + 1}. {item.title.substring(0, 50)}...</span>
-                                      <span className="font-semibold text-green-600">{formatCurrency(item.net_amount)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <AnalyticsTab
+              accessToken={accessToken}
+              authUrl={authUrl}
+              currentYear={currentYear}
+              setCurrentYear={setCurrentYear}
+              analyticsView={analyticsView}
+              setAnalyticsView={setAnalyticsView}
+              topSellersLimit={topSellersLimit}
+              setTopSellersLimit={setTopSellersLimit}
+              topSellers={topSellers}
+              monthlyAnalytics={monthlyAnalytics}
+              getPieChartData={getPieChartData}
+              getMonthlyBarChartData={getMonthlyBarChartData}
+              formatCurrency={formatCurrency}
+            />
           )}
 
           {/* Designs Tab */}
           {activeTab === 'designs' && (
-            <div className="space-y-8">
-              {!accessToken ? (
-                <div className="card p-8 text-center">
-                  <p className="text-lg text-gray-600 mb-6">Please connect your Etsy shop to view designs</p>
-                  <a href={authUrl} className="btn-primary">Connect Shop</a>
-                </div>
-              ) : (
-                <div>
-                  <div className="flex justify-end mb-4">
-                    <button
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                        uploading 
-                          ? 'bg-gray-400 text-white cursor-not-allowed' 
-                          : 'bg-green-500 text-white hover:bg-green-600'
-                      }`}
-                      onClick={handleUploadClick}
-                      disabled={uploading}
-                    >
-                      {uploading ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          <span>Uploading...</span>
-                        </div>
-                      ) : (
-                        'Upload Image'
-                      )}
-                    </button>
-                  </div>
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">Designs Gallery</h2>
-                    <p className="text-gray-600">Your Etsy listings, local design files, and mockups</p>
-                  </div>
-                  {/* Sub-tabs for Mockups and Design Files */}
-                  <div className="flex space-x-2 mb-6">
-                    <button
-                      className={`tab-button ${designsTab === 'mockups' ? 'active' : ''}`}
-                      onClick={() => setDesignsTab('mockups')}
-                    >
-                      Mockups
-                    </button>
-                    <button
-                      className={`tab-button ${designsTab === 'designFiles' ? 'active' : ''}`}
-                      onClick={() => setDesignsTab('designFiles')}
-                    >
-                      Design Files
-                    </button>
-                  </div>
-                  {/* Mockups Tab */}
-                  {designsTab === 'mockups' && (
-                    <MockupsGallery mockupImages={mockupImages} openImageModal={openImageModal} />
-                  )}
-                  {/* Design Files Tab */}
-                  {designsTab === 'designFiles' && (
-                    <DesignFilesGallery designFiles={localImages} openImageModal={openImageModal} />
-                  )}
-                </div>
-              )}
-            </div>
+            <DesignsTab
+              accessToken={accessToken}
+              authUrl={authUrl}
+              uploading={uploading}
+              handleUploadClick={handleUploadClick}
+              designsTab={designsTab}
+              setDesignsTab={setDesignsTab}
+              mockupImages={mockupImages}
+              localImages={localImages}
+              openImageModal={openImageModal}
+              onUploadComplete={() => {
+                fetchLocalImages();
+                fetchMockupImages();
+              }}
+            />
           )}
 
           {/* Tools Tab */}
-          {activeTab === 'tools' && (
-            <div className="space-y-8">
-              <h2 className="text-2xl font-bold text-gray-900">Tools</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="card p-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-3">Mask Creator</h3>
-                  <p className="text-gray-600 mb-4">
-                    Create masks for mockup images by drawing polygons or rectangles. This tool helps you define areas where designs will be placed on mockup templates.
-                  </p>
-                  <Link to="/mask-creator" className="btn-primary">
-                    Open Mask Creator
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === 'tools' && <ToolsTab />}
 
           {/* Orders Tab */}
           {activeTab === 'orders' && (
-            <div className="space-y-8">
-              {!accessToken ? (
-                <div className="card p-8 text-center">
-                  <p className="text-lg text-gray-600 mb-6">Please connect your Etsy shop to view orders</p>
-                  <a href={authUrl} className="btn-primary">Connect Shop</a>
-                </div>
-              ) : (
-                <div className="space-y-8">
-                  {/* Orders Summary Card */}
-                  <div className="card p-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                      <div className="text-center">
-                        <h3 className="text-2xl font-bold text-gray-900">{ordersSummary.totalOrders}</h3>
-                        <p className="text-gray-600">Total Orders</p>
-                      </div>
-                      <div className="text-center">
-                        <h3 className="text-2xl font-bold text-gray-900">{ordersSummary.totalItems}</h3>
-                        <p className="text-gray-600">Total Items Sold</p>
-                      </div>
-                      <div className="text-center">
-                        <button
-                          onClick={createPrintfile}
-                          disabled={creatingPrintfile}
-                          className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                            creatingPrintfile 
-                              ? 'bg-gray-400 text-white cursor-not-allowed' 
-                              : 'bg-blue-500 text-white hover:bg-blue-600'
-                          }`}
-                        >
-                          {creatingPrintfile ? (
-                            <div className="flex items-center justify-center space-x-2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                              <span>Creating...</span>
-                            </div>
-                          ) : (
-                            'Create Printfile'
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Orders Table */}
-                  <div className="card p-6">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Active Orders</h2>
-                    <div className="overflow-x-auto rounded-lg shadow">
-                      <table className="w-full bg-white">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700"></th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Order ID</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Customer Name</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Method</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Cost</th>
-                            <th className="px-6 py-4 text-left font-semibold text-gray-700">Order Date</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200">
-                          {orders.map((order) => (
-                            <React.Fragment key={order.order_id}>
-                              <tr className="hover:bg-gray-50">
-                                <td className="px-2 py-4 text-center">
-                                  <button
-                                    onClick={() => toggleOrderExpand(order.order_id)}
-                                    className="focus:outline-none"
-                                    aria-label={expandedOrders.includes(order.order_id) ? 'Collapse' : 'Expand'}
-                                  >
-                                    {expandedOrders.includes(order.order_id) ? (
-                                      <span>&#9660;</span> // Down chevron
-                                    ) : (
-                                      <span>&#9654;</span> // Right chevron
-                                    )}
-                                  </button>
-                                </td>
-                                <td className="px-6 py-4 font-medium text-gray-900">{order.order_id}</td>
-                                <td className="px-6 py-4 text-gray-700">{order.customer_name || 'N/A'}</td>
-                                <td className="px-6 py-4 text-gray-700">{order.shipping_method || 'N/A'}</td>
-                                <td className="px-6 py-4 text-gray-700">{formatCurrency(order.shipping_cost || 0)}</td>
-                                <td className="px-6 py-4 text-gray-700">{new Date(order.order_date * 1000).toLocaleDateString()}</td>
-                              </tr>
-                              {/* Transactions Dropdown */}
-                              {expandedOrders.includes(order.order_id) && (
-                                <tr>
-                                  <td colSpan={6} className="bg-gray-50 px-6 py-4">
-                                    <div className="overflow-x-auto">
-                                      <table className="w-full">
-                                        <thead>
-                                          <tr>
-                                            <th className="px-4 py-2 text-left font-semibold text-gray-700">Item Name</th>
-                                            <th className="px-4 py-2 text-left font-semibold text-gray-700">Quantity</th>
-                                            <th className="px-4 py-2 text-left font-semibold text-gray-700">Price</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {order.items.map((item, idx) => (
-                                            <tr key={idx}>
-                                              <td className="px-4 py-2 text-gray-700">{item.title || 'N/A'}</td>
-                                              <td className="px-4 py-2 text-gray-700">{item.quantity || 0}</td>
-                                              <td className="px-4 py-2 text-gray-700">{formatCurrency(item.price || 0)}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  </td>
-                                </tr>
-                              )}
-                            </React.Fragment>
-                          ))}
-                        </tbody>
-                      </table>
-                      {orders.length === 0 && (
-                        <div className="text-center py-8 text-gray-500">
-                          No active orders found
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <OrdersTab
+              accessToken={accessToken}
+              authUrl={authUrl}
+              ordersSummary={ordersSummary}
+              createPrintfile={createPrintfile}
+              creatingPrintfile={creatingPrintfile}
+              orders={orders}
+              expandedOrders={expandedOrders}
+              toggleOrderExpand={toggleOrderExpand}
+              formatCurrency={formatCurrency}
+            />
           )}
         </div>
       </div>
@@ -901,12 +512,12 @@ const Home = () => {
       {/* Image Modal */}
       {selectedImage && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-2 sm:p-4"
           onClick={closeImageModal}
         >
-          <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
+          <div className="relative max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
             <button 
-              className="absolute -top-12 right-0 text-white text-3xl hover:text-gray-300 transition-colors"
+              className="absolute -top-8 sm:-top-12 right-0 text-white text-2xl sm:text-3xl hover:text-gray-300 transition-colors z-10"
               onClick={closeImageModal}
             >
               ×

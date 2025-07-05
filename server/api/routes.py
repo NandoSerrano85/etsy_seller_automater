@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File, Depends, Security, status
+from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File, Form, Depends, Security, status, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,7 +20,8 @@ from server.engine.etsy_oath_token import get_oauth_variables, store_oauth_token
 from server.engine.gangsheet_engine import create_gang_sheets
 
 # Import mask utilities
-from server.engine.mask_utils import save_mask_data, validate_mask_points
+from server.engine.mask_utils import validate_mask_points
+from server.engine.mask_db_utils import save_mask_data_to_db
 
 # Import constants
 from server.constants import (
@@ -31,14 +32,14 @@ from server.constants import (
     ERROR_MESSAGES, 
     SUCCESS_MESSAGES,
     DEFAULTS,
-    ETSY_TEMPLATES
+    # ETSY_TEMPLATES
 )
 
 # Import mockup engine
 from server.engine.mockup_engine import process_uploaded_mockups
 
 # Import models
-from server.api.models import Base, User, OAuthToken, get_db
+from server.api.models import Base, User, OAuthToken, EtsyTemplate, get_db
 
 # JWT settings and security
 SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'supersecretkey')
@@ -67,6 +68,43 @@ class MaskPoint(BaseModel):
 class MaskData(BaseModel):
     masks: List[List[MaskPoint]]
     imageType: str
+
+# --- EtsyTemplate CRUD API Models ---
+class EtsyTemplateCreate(BaseModel):
+    name: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    who_made: Optional[str] = None
+    when_made: Optional[str] = None
+    taxonomy_id: Optional[int] = None
+    price: Optional[float] = None
+    materials: Optional[str] = None
+    shop_section_id: Optional[int] = None
+    quantity: Optional[int] = None
+    tags: Optional[str] = None
+    item_weight: Optional[float] = None
+    item_weight_unit: Optional[str] = None
+    item_length: Optional[float] = None
+    item_width: Optional[float] = None
+    item_height: Optional[float] = None
+    item_dimensions_unit: Optional[str] = None
+    is_taxable: Optional[bool] = None
+    type: Optional[str] = None
+    processing_min: Optional[int] = None
+    processing_max: Optional[int] = None
+    return_policy_id: Optional[int] = None
+
+class EtsyTemplateUpdate(EtsyTemplateCreate):
+    pass
+
+class EtsyTemplateOut(EtsyTemplateCreate):
+    id: int
+    user_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
 
 def decode_access_token(token: str):
     try:
@@ -509,7 +547,7 @@ async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0,
         raise HTTPException(status_code=500, detail=f"Failed to fetch shop listings: {str(e)}")
 
 @app.post('/api/masks')
-async def create_masks(mask_data: MaskData, current_user: User = Depends(get_current_user)):
+async def create_masks(mask_data: MaskData, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """API endpoint to save mask data from the React frontend."""
     try:
         # Convert MaskPoint objects to dictionaries
@@ -526,14 +564,20 @@ async def create_masks(mask_data: MaskData, current_user: User = Depends(get_cur
                     detail=f"Invalid mask data for mask {i + 1}. Need at least 3 valid points."
                 )
         
-        # Save mask data using utility function
-        file_path = save_mask_data(masks_dict, mask_data.imageType)
+        # Save mask data to database
+        mask_data_obj = save_mask_data_to_db(
+            db=db,
+            user_id=current_user.id,
+            template_name=mask_data.imageType,
+            masks_data=masks_dict
+        )
         
         return {
             "success": True,
             "message": f"Successfully saved {len(masks_dict)} masks for {mask_data.imageType}",
             "masks_count": len(masks_dict),
-            "file_path": file_path
+            "template_name": mask_data.imageType,
+            "mask_data_id": mask_data_obj.id
         }
         
     except HTTPException:
@@ -542,15 +586,104 @@ async def create_masks(mask_data: MaskData, current_user: User = Depends(get_cur
         print(f"Error saving masks: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to save masks: {str(e)}")
 
+@app.get('/api/user-mask-data')
+async def get_user_mask_data(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """API endpoint to get all mask data for the current user."""
+    try:
+        from server.engine.mask_db_utils import get_user_mask_data
+        
+        mask_data_list = get_user_mask_data(db, current_user.id)
+        
+        # Convert to response format
+        response_data = []
+        for mask_data in mask_data_list:
+            response_data.append({
+                "id": mask_data.id,
+                "template_name": mask_data.template_name,
+                "masks_count": len(mask_data.masks) if mask_data.masks else 0,
+                "points_count": len(mask_data.points) if mask_data.points else 0,
+                "starting_name": mask_data.starting_name,
+                "created_at": mask_data.created_at,
+                "updated_at": mask_data.updated_at
+            })
+        
+        return {
+            "success": True,
+            "mask_data": response_data
+        }
+        
+    except Exception as e:
+        print(f"Error getting user mask data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get mask data: {str(e)}")
+
+@app.get('/api/user-mask-data/{template_name}')
+async def get_user_mask_data_by_template(template_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """API endpoint to get mask data for a specific template."""
+    try:
+        from server.engine.mask_db_utils import load_mask_data_from_db
+        
+        masks, points_list, starting_name = load_mask_data_from_db(db, current_user.id, template_name)
+        
+        return {
+            "success": True,
+            "template_name": template_name,
+            "masks_count": len(masks),
+            "points_count": len(points_list),
+            "starting_name": starting_name,
+            "masks": masks,
+            "points": points_list
+        }
+        
+    except ValueError as e:
+        # No mask data found for this template
+        return {
+            "success": False,
+            "template_name": template_name,
+            "message": str(e)
+        }
+    except Exception as e:
+        print(f"Error getting mask data for template {template_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get mask data: {str(e)}")
+
+@app.delete('/api/user-mask-data/{template_name}')
+async def delete_user_mask_data(template_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """API endpoint to delete mask data for a specific template."""
+    try:
+        from server.engine.mask_db_utils import delete_mask_data
+        
+        success = delete_mask_data(db, current_user.id, template_name)
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"Successfully deleted mask data for template '{template_name}'"
+            }
+        else:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No mask data found for template '{template_name}'"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting mask data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete mask data: {str(e)}")
+
 @app.get('/api/create-gang-sheets')
-async def get_etsy_item_summary(current_user: User = Depends(get_current_user)):
+async def get_etsy_item_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """API endpoint to get item summary from Etsy."""
     etsy_api = EtsyAPI()
-    item_summary = etsy_api.fetch_open_orders_items(os.getenv('LOCAL_ROOT_PATH'), "UVDTF 16oz")
+    
+    # Get the first available template for the user, or use default
+    template = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id).first()
+    template_name = template.name if template else "UVDTF 16oz"
+    
+    item_summary = etsy_api.fetch_open_orders_items(os.getenv('LOCAL_ROOT_PATH'), template_name)
     try:
         create_gang_sheets(
-            item_summary["UVDTF 16oz"],
-            "UVDTF 16oz",
+            item_summary[template_name] if template_name in item_summary else item_summary.get("UVDTF 16oz", {}),
+            template_name,
             f"{os.getenv('LOCAL_ROOT_PATH')}/Printfiles/",
             item_summary["Total QTY"] if item_summary else 0
         )
@@ -563,26 +696,32 @@ async def get_etsy_item_summary(current_user: User = Depends(get_current_user)):
 async def get_local_images(current_user: User = Depends(get_current_user)):
     """API endpoint to get list of local PNG images."""
     try:
-        # Path to the UVDTF 16oz images directory
-        images_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/"
+        # Get user's templates to find available image directories
+        db = next(get_db())
+        templates = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id).all()
         
-        if not os.path.exists(images_path):
-            return {"images": [], "error": "Images directory not found"}
+        all_images = []
         
-        # Get all PNG files
-        png_files = glob.glob(os.path.join(images_path, "*.png"))
+        for template in templates:
+            # Path to the template's images directory
+            images_path = f"/Users/fserrano/Desktop/Desktop/NookTransfers/{template.name}/"
+            
+            if os.path.exists(images_path):
+                # Get all PNG files for this template
+                png_files = glob.glob(os.path.join(images_path, "*.png"))
+                
+                # Convert to relative paths for the frontend
+                for file_path in png_files:
+                    filename = os.path.basename(file_path)
+                    all_images.append({
+                        "filename": filename,
+                        "path": f"/api/local-images/{filename}",
+                        "full_path": file_path,
+                        "template_name": template.name,
+                        "template_title": template.template_title
+                    })
         
-        # Convert to relative paths for the frontend
-        images = []
-        for file_path in png_files:
-            filename = os.path.basename(file_path)
-            images.append({
-                "filename": filename,
-                "path": f"/api/local-images/{filename}",
-                "full_path": file_path
-            })
-        
-        return {"images": images}
+        return {"images": all_images}
     except Exception as e:
         print(f"Error getting local images: {str(e)}")
         return {"images": [], "error": str(e)}
@@ -591,14 +730,16 @@ async def get_local_images(current_user: User = Depends(get_current_user)):
 async def serve_local_image(filename: str):
     """API endpoint to serve local PNG images."""
     try:
-        # Path to the UVDTF 16oz images directory
-        images_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/"
-        file_path = os.path.join(images_path, filename)
+        # Search for the image in all template directories
+        base_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/"
         
-        if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="Image not found")
+        # Look for the file in any subdirectory
+        for root, dirs, files in os.walk(base_path):
+            if filename in files:
+                file_path = os.path.join(root, filename)
+                return FileResponse(file_path, media_type="image/png")
         
-        return FileResponse(file_path, media_type="image/png")
+        raise HTTPException(status_code=404, detail="Image not found")
     except Exception as e:
         print(f"Error serving image {filename}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error serving image")
@@ -887,59 +1028,62 @@ async def serve_mockup_image(filename: str):
         raise HTTPException(status_code=500, detail="Error serving mockup image")
 
 @app.post('/api/upload-mockup')
-async def upload_mockup(files: List[UploadFile] = File(...), current_user: User = Depends(get_current_user)):
+async def upload_mockup(
+    files: List[UploadFile] = File(...), 
+    template_name: str = Form('UVDTF 16oz'),
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
     try:
         # Define the target directory for uploaded files
         target_dir = "/Users/fserrano/Desktop/Desktop/NookTransfers/Origin/16oz/"
-        
-        # Ensure the target directory exists
         os.makedirs(target_dir, exist_ok=True)
-        
         uploaded_file_paths = []
-        
-        # Save uploaded files to the target directory
         for file in files:
             if file.filename:
-                print(file.filename)
-                # Create a safe filename
                 safe_filename = file.filename.replace('/', '_').replace('\\', '_')
                 file_path = os.path.join(target_dir, safe_filename)
-                
-                # Save the uploaded file
                 with open(file_path, "wb") as buffer:
                     shutil.copyfileobj(file.file, buffer)
-                
-                print(file_path)
                 uploaded_file_paths.append(file_path)
-                print(f"Saved uploaded file to: {file_path}")
-        
-        
-        # Call the mockup_engine logic with the file paths
-        result = process_uploaded_mockups(uploaded_file_paths, "/Users/fserrano/Desktop/Desktop/NookTransfers/")
-        
-        # Process the result and create Etsy listings
+        result = process_uploaded_mockups(
+            uploaded_file_paths, 
+            "/Users/fserrano/Desktop/Desktop/NookTransfers/", 
+            template_name,
+            user_id=current_user.id,
+            db=db
+        )
         etsy_api = EtsyAPI()
-        
+        # Fetch the user's template by name
+        template = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id, EtsyTemplate.name == template_name).first()
+        if not template:
+            return JSONResponse(status_code=400, content={"success": False, "error": f"No template named '{template_name}' found for this user."})
+        # Parse materials and tags from string to list if needed
+        materials = template.materials.split(',') if template.materials else []
+        tags = template.tags.split(',') if template.tags else []
         for design, mockups in result.items():
-            print(design)
-            print(mockups)
             title = design.split(' ')[:2]
             listing_response = etsy_api.create_draft_listing(
-                title=' '.join(title + [ETSY_TEMPLATES['UVDTF 16oz']['title']]), 
-                description=ETSY_TEMPLATES['UVDTF 16oz']['description'], 
-                price=ETSY_TEMPLATES['UVDTF 16oz']['price'], 
-                quantity=ETSY_TEMPLATES['UVDTF 16oz']['quantity'], 
-                tags=ETSY_TEMPLATES['UVDTF 16oz']['tags'], 
-                materials=ETSY_TEMPLATES['UVDTF 16oz']['materials'])
-
+                title=' '.join(title + [template.title]) if template.title else ' '.join(title),
+                description=template.description,
+                price=template.price,
+                quantity=template.quantity,
+                tags=tags,
+                materials=materials)
             listing_id = listing_response["listing_id"]
             for mockup in random.sample(mockups, len(mockups)):
                 etsy_api.upload_listing_image(listing_id, mockup)
-
+        for filename in os.listdir(target_dir):
+            file_path = os.path.join(target_dir, filename)
+            if os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except OSError as e:
+                    print(f"Error deleting file {filename}: {e}")
         return JSONResponse(
             status_code=200,
             content={
-                "success": True, 
+                "success": True,
                 "result": {
                     "message": f"Successfully processed {len(uploaded_file_paths)} files",
                     "files_processed": len(uploaded_file_paths),
@@ -947,11 +1091,10 @@ async def upload_mockup(files: List[UploadFile] = File(...), current_user: User 
                 }
             }
         )
-        
     except Exception as e:
         print(f"Error in upload-mockup: {str(e)}")
         return JSONResponse(
-            status_code=500, 
+            status_code=500,
             content={"success": False, "error": f"Server error: {str(e)}"}
         )
 
@@ -1088,6 +1231,263 @@ def verify_token(token: str = Depends(OAuth2PasswordBearer(tokenUrl="/api/login"
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
+# --- Password Change Models ---
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+# --- Password Change Endpoint ---
+@app.post('/api/change-password')
+def change_password(
+    password_data: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """API endpoint to change user password."""
+    try:
+        # Verify current password
+        if not verify_password(password_data.current_password, current_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        
+        # Validate new password
+        if len(password_data.new_password) < 6:
+            raise HTTPException(status_code=400, detail="New password must be at least 6 characters long")
+        
+        # Hash new password
+        new_hashed_password = get_password_hash(password_data.new_password)
+        
+        # Update user password
+        current_user.hashed_password = new_hashed_password
+        db.commit()
+        
+        return {"success": True, "message": "Password changed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error changing password: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to change password")
+
+# --- Enhanced User Templates Endpoints ---
+@app.get('/api/user-templates', response_model=List[EtsyTemplateOut])
+def list_user_templates(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all templates for the current user."""
+    try:
+        templates = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id).all()
+        return templates
+    except Exception as e:
+        print(f"Error fetching user templates: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch templates")
+
+@app.get('/api/user-templates/{template_id}', response_model=EtsyTemplateOut)
+def get_user_template(template_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get a specific template by ID for the current user."""
+    try:
+        template = db.query(EtsyTemplate).filter(
+            EtsyTemplate.id == template_id, 
+            EtsyTemplate.user_id == current_user.id
+        ).first()
+        
+        if not template:
+            raise HTTPException(status_code=404, detail='Template not found')
+        
+        return template
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error fetching template {template_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch template")
+
+@app.post('/api/user-templates', response_model=EtsyTemplateOut)
+def create_user_template(template: EtsyTemplateCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a new template for the current user."""
+    try:
+        # Check if template name already exists for this user
+        existing_template = db.query(EtsyTemplate).filter(
+            EtsyTemplate.user_id == current_user.id,
+            EtsyTemplate.name == template.name
+        ).first()
+        
+        if existing_template:
+            raise HTTPException(status_code=400, detail=f"Template with name '{template.name}' already exists")
+        
+        db_template = EtsyTemplate(
+            user_id=current_user.id,
+            name=template.name,
+            title=template.title,
+            description=template.description,
+            who_made=template.who_made,
+            when_made=template.when_made,
+            taxonomy_id=template.taxonomy_id,
+            price=template.price,
+            materials=','.join(template.materials) if template.materials else None,
+            shop_section_id=template.shop_section_id,
+            quantity=template.quantity,
+            tags=','.join(template.tags) if template.tags else None,
+            item_weight=template.item_weight,
+            item_weight_unit=template.item_weight_unit,
+            item_length=template.item_length,
+            item_width=template.item_width,
+            item_height=template.item_height,
+            item_dimensions_unit=template.item_dimensions_unit,
+            is_taxable=template.is_taxable,
+            type=template.type,
+            processing_min=template.processing_min,
+            processing_max=template.processing_max,
+            return_policy_id=template.return_policy_id
+        )
+        
+        db.add(db_template)
+        db.commit()
+        db.refresh(db_template)
+        
+        return db_template
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating template: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create template")
+
+@app.put('/api/user-templates/{template_id}', response_model=EtsyTemplateOut)
+def update_user_template(template_id: int, template: EtsyTemplateUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update an existing template for the current user."""
+    try:
+        db_template = db.query(EtsyTemplate).filter(
+            EtsyTemplate.id == template_id, 
+            EtsyTemplate.user_id == current_user.id
+        ).first()
+        
+        if not db_template:
+            raise HTTPException(status_code=404, detail='Template not found')
+        
+        # Check if new name conflicts with existing template (excluding current template)
+        if template.name != db_template.name:
+            existing_template = db.query(EtsyTemplate).filter(
+                EtsyTemplate.user_id == current_user.id,
+                EtsyTemplate.name == template.name,
+                EtsyTemplate.id != template_id
+            ).first()
+            
+            if existing_template:
+                raise HTTPException(status_code=400, detail=f"Template with name '{template.name}' already exists")
+        
+        # Update template fields
+        for field, value in template.dict(exclude_unset=True).items():
+            if field in ['materials', 'tags'] and value is not None:
+                setattr(db_template, field, ','.join(value))
+            else:
+                setattr(db_template, field, value)
+        
+        db.commit()
+        db.refresh(db_template)
+        
+        return db_template
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating template {template_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update template")
+
+@app.delete('/api/user-templates/{template_id}')
+def delete_user_template(template_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a template for the current user."""
+    try:
+        db_template = db.query(EtsyTemplate).filter(
+            EtsyTemplate.id == template_id, 
+            EtsyTemplate.user_id == current_user.id
+        ).first()
+        
+        if not db_template:
+            raise HTTPException(status_code=404, detail='Template not found')
+        
+        db.delete(db_template)
+        db.commit()
+        
+        return {'success': True, 'message': 'Template deleted successfully'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting template {template_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete template")
+
+# --- Default Template Creation Endpoint ---
+@app.post('/api/user-templates/default')
+def create_default_template(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a default UVDTF 16oz template for new users."""
+    try:
+        # Check if default template already exists
+        existing_template = db.query(EtsyTemplate).filter(
+            EtsyTemplate.user_id == current_user.id,
+            EtsyTemplate.name == 'UVDTF 16oz'
+        ).first()
+        
+        if existing_template:
+            raise HTTPException(status_code=400, detail="Default template already exists")
+        
+        # Create default template from old constants
+        default_template = EtsyTemplate(
+            user_id=current_user.id,
+            name='UVDTF 16oz',
+            title='| UVDTF Cup wrap | Ready to apply | High Quality | Double Sided | Easy application | Cup Transfer | Waterproof',
+            description="""*** Details ***
+ - This listing is for a physical single 16 oz UV DTF cup wrap transfer. Cup, straw, lid are NOT included.
+ - UV DTF cup wraps are an approximate measurement of 9.5" wide and 4.3" tall, perfect for 16 oz glass & acrylic cans.
+ - UV DTF products are permanent & waterproof.
+
+ *** Note ***
+ - Not all 16 oz glass & acrylic cans are the same dimensions, please make sure to check your measurements before purchase.
+ - All orders are printed in house on commercial UV DTF printers with high quality materials.
+ - Printed colors and design resolution may appear slightly different from your phone, tablet or computer screen/monitor.
+
+*** Care Instructions ***
+- All UV DTF transfers are not dishwasher or microwave safe. Hand wash only.
+
+*** Policy ***
+ - Seller is not responsible for any application errors or any errors that may occur during placement of UV DTF transfer.
+ - Seller is not responsible for any wear and tear of UV DTF transfer.
+ - Seller is not responsible for any improper storage of transfer.
+ - Seller is not responsible for care of UV DTF transfer after applied to the surface.
+ - All claims require photos and/or videos to be considered for reprint or refund at seller's discretion.
+ - All orders have a 48 hour window after receiving your order to make us aware of any issues such as missing or damaged transfers.
+ - All orders go through multiple stages of quality and accuracy checks before packing and shipping of orders to ensure the highest quality service.
+
+*** Shipping Policy ***
+ - Seller is not responsible for lost, late arriving, stolen or damaged packages caused by USPS, UPS, FedEx or other carrier your order is shipped with. Buyer will need to file a claim with the carrier in the event packages do not arrive, are misdelivered, lost, stolen, damaged, etc. Once a package has a scan acceptance by the carrier, the seller is no longer responsible for the order. Please purchase shipping insurance whenever possible to ensure your order can be reshipped in these cases.
+
+*** Thank You ***
+Thank you so much! Your purchase truly means the world to me & my family and it helps my small business grow! Please make sure to explore our other UV DTF and DTF transfer options from wraps to decals and shirt transfers for all sizes.""",
+            who_made='i_did',
+            when_made='made_to_order',
+            taxonomy_id=1,
+            price=4.00,
+            materials='UV DTF',
+            shop_section_id=2,
+            quantity=100,
+            tags='UV DTF,Cup Wrap,Waterproof,Permanent,Transfer,Prints,Wholesale,Mug,16oz,17oz',
+            item_weight=2.5,
+            item_weight_unit='oz',
+            item_length=11,
+            item_width=9.5,
+            item_height=1,
+            item_dimensions_unit='in',
+            is_taxable=True,
+            type='physical',
+            processing_min=1,
+            processing_max=3,
+            return_policy_id=0
+        )
+        
+        db.add(default_template)
+        db.commit()
+        db.refresh(default_template)
+        
+        return {'success': True, 'message': 'Default template created successfully', 'template_id': default_template.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating default template: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create default template")
+
 @app.get("/")
 async def serve_frontend():
     """Serve the React frontend."""
@@ -1126,4 +1526,5 @@ async def serve_frontend_routes(full_path: str):
 # Example usage for a protected endpoint:
 # @app.get('/api/protected')
 # def protected_route(current_user: User = Depends(get_current_user)):
-#     return {"message": f"Hello, {current_user.email}"} 
+#     return {"message": f"Hello, {current_user.email}"}
+

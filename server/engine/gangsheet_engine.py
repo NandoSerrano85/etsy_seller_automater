@@ -8,7 +8,10 @@ from server.engine.resizing import resize_image_by_inches
 
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 GANG_SHEET_MAX_WIDTH = 23
-GANG_SHEET_SPACING = {'UVDTF 16oz':{'width': 0.32, 'height': 0.5}}
+GANG_SHEET_SPACING = {
+    'UVDTF 16oz': {'width': 0.32, 'height': 0.5},
+    # Add more template spacing configurations here as needed
+}
 GANG_SHEET_MAX_HEIGHT = 215
 STD_DPI = 400
 

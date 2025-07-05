@@ -8,7 +8,10 @@ from server.engine.util import (
 )
 
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
-SIZING = {'UVDTF 16oz': { 'width': 9.5, 'height': 4.33 },}
+SIZING = {
+    'UVDTF 16oz': { 'width': 9.5, 'height': 4.33 },
+    # Add more template sizes here as needed
+}
 CANVAS = {'UVDTF Decal': { 'height': 4.0, 'width': 4.0 },}
 STD_DPI = 400
 """
