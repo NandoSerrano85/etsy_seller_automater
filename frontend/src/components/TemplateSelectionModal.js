@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 
-const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload }) => {
+const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload, onUploadComplete }) => {
   const api = useApi();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -44,24 +44,52 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload 
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
       
+      console.log('DEBUG: Starting upload process');
+      console.log('DEBUG: Selected template:', selectedTemplate);
+      console.log('DEBUG: Number of files:', files.length);
+      
       setUploading(true);
       try {
         // Create FormData to send files and template info
         const formData = new FormData();
         files.forEach((file, index) => {
           formData.append('files', file);
+          console.log(`DEBUG: Added file ${index + 1}:`, file.name, file.size, 'bytes');
         });
         formData.append('template_name', selectedTemplate.name);
+        console.log('DEBUG: Template name added to FormData:', selectedTemplate.name);
+        console.log('DEBUG: FormData contents:', formData);
         
+        console.log('DEBUG: Making API call to /api/upload-mockup');
         const result = await api.postFormData('/api/upload-mockup', formData);
-        alert(`Files uploaded successfully! ${result.result?.message || ''}`);
+        console.log('DEBUG: Upload result:', result);
         
-        onUpload(); // Callback to refresh images
+        // Handle digital files response
+        let successMessage = 'Files uploaded successfully!';
+        if (result.result?.digital_message) {
+          successMessage += `\n\n${result.result.digital_message}`;
+        }
+        if (result.result?.message) {
+          successMessage += `\n${result.result.message}`;
+        }
+        
+        console.log('DEBUG: Success message:', successMessage);
+        alert(successMessage);
+        
+        console.log('DEBUG: Calling upload complete callback');
+        if (onUploadComplete) {
+          onUploadComplete(); // Callback to refresh images
+        } else if (onUpload) {
+          onUpload(); // Fallback for backward compatibility
+        }
         onClose(); // Close the modal
       } catch (err) {
-        console.error('Upload error:', err);
+        console.error('DEBUG: Upload error:', err);
+        console.error('DEBUG: Error message:', err.message);
+        console.error('DEBUG: Error stack:', err.stack);
         alert(`Upload failed: ${err.message || 'Unknown error'}`);
       } finally {
+        console.log('DEBUG: Upload process finished');
         setUploading(false);
       }
     };

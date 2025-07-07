@@ -52,7 +52,7 @@ const TemplatesTab = () => {
         type: 'physical',
         processing_min: 1,
         processing_max: 3,
-        return_policy_id: 0
+        return_policy_id: null
       });
       setShowEditModal(true);
     };
@@ -378,10 +378,24 @@ const TemplatesTab = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="made_to_order">Made to order</option>
-                    <option value="2020_2023">2020-2023</option>
+                    <option value="2020_2025">2020-2025</option>
                     <option value="2010_2019">2010-2019</option>
-                    <option value="2000_2009">2000-2009</option>
-                    <option value="before_2000">Before 2000</option>
+                    <option value="2006_2009">2006-2009</option>
+                    <option value="before_2006">Before 2006</option>
+                    <option value="2000_2005">2000-2005</option>
+                    <option value="1990s">1990s</option>
+                    <option value="1980s">1980s</option>
+                    <option value="1970s">1970s</option>
+                    <option value="1960s">1960s</option>
+                    <option value="1950s">1950s</option>
+                    <option value="1940s">1940s</option>
+                    <option value="1930s">1930s</option>
+                    <option value="1920s">1920s</option>
+                    <option value="1910s">1910s</option>
+                    <option value="1900s">1900s</option>
+                    <option value="1800s">1800s</option>
+                    <option value="1700s">1700s</option>
+                    <option value="before_1700">Before 1700</option>
                   </select>
                 </div>
   
@@ -558,17 +572,17 @@ const TemplatesTab = () => {
                   />
                 </div>
   
-                              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Return Policy</label>
-                <select
-                  value={formData.return_policy_id === 1 ? 'yes' : 'no'}
-                  onChange={(e) => handleInputChange('return_policy_id', e.target.value === 'yes' ? 1 : 0)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="no">No</option>
-                  <option value="yes">Yes</option>
-                </select>
-              </div>
+                                              <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Return Policy</label>
+                  <select
+                    value={formData.return_policy_id === 1 ? 'yes' : 'no'}
+                    onChange={(e) => handleInputChange('return_policy_id', e.target.value === 'yes' ? 1 : null)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
   
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Processing Min (days)</label>
@@ -592,81 +606,83 @@ const TemplatesTab = () => {
               </div>
   
               {/* Physical Dimensions */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-900">Physical Dimensions</h3>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Item Weight</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.item_weight || ''}
-                    onChange={(e) => handleInputChange('item_weight', parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+              {formData.type === 'physical' && (
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Physical Dimensions</h3>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Item Weight</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.item_weight || ''}
+                      onChange={(e) => handleInputChange('item_weight', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Weight Unit</label>
+                    <select
+                      value={formData.item_weight_unit || 'oz'}
+                      onChange={(e) => handleInputChange('item_weight_unit', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="oz">Ounces</option>
+                      <option value="lb">Pounds</option>
+                      <option value="g">Grams</option>
+                      <option value="kg">Kilograms</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Length</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.item_length || ''}
+                      onChange={(e) => handleInputChange('item_length', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Width</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.item_width || ''}
+                      onChange={(e) => handleInputChange('item_width', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.item_height || ''}
+                      onChange={(e) => handleInputChange('item_height', parseFloat(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Dimensions Unit</label>
+                    <select
+                      value={formData.item_dimensions_unit || 'in'}
+                      onChange={(e) => handleInputChange('item_dimensions_unit', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="in">Inches</option>
+                      <option value="cm">Centimeters</option>
+                      <option value="mm">Millimeters</option>
+                      <option value="ft">Feet</option>
+                    </select>
+                  </div>
                 </div>
-  
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight Unit</label>
-                  <select
-                    value={formData.item_weight_unit || 'oz'}
-                    onChange={(e) => handleInputChange('item_weight_unit', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="oz">Ounces</option>
-                    <option value="lb">Pounds</option>
-                    <option value="g">Grams</option>
-                    <option value="kg">Kilograms</option>
-                  </select>
-                </div>
-  
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Length</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.item_length || ''}
-                    onChange={(e) => handleInputChange('item_length', parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-  
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Width</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.item_width || ''}
-                    onChange={(e) => handleInputChange('item_width', parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-  
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.item_height || ''}
-                    onChange={(e) => handleInputChange('item_height', parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-  
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Dimensions Unit</label>
-                  <select
-                    value={formData.item_dimensions_unit || 'in'}
-                    onChange={(e) => handleInputChange('item_dimensions_unit', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="in">Inches</option>
-                    <option value="cm">Centimeters</option>
-                    <option value="mm">Millimeters</option>
-                    <option value="ft">Feet</option>
-                  </select>
-                </div>
-              </div>
+              )}
             </div>
   
             {/* Action Buttons */}

@@ -1,40 +1,41 @@
-import cv2, os, numpy as np, struct, zlib
+import cv2, os, numpy as np, struct, zlib, math
+from PIL import Image
 
 STD_DPI = 400
 def inches_to_pixels(inches, dpi):
     return int(round(inches * dpi))
 
-def get_dpi_from_image(image_path):
-    # Default DPI for PNG images if not specified
-    default_dpi = 400
+# def get_dpi_from_image(image_path):
+#     # Default DPI for PNG images if not specified
+#     default_dpi = 400
 
-    # Open the image file in binary mode
-    with open(image_path, 'rb') as f:
-        # Read the first 24 bytes to check the PNG signature and IHDR chunk
-        header = f.read(24)
-        if header[:8] != b'\x89PNG\r\n\x1a\n':
-            return default_dpi, default_dpi
+#     # Open the image file in binary mode
+#     with open(image_path, 'rb') as f:
+#         # Read the first 24 bytes to check the PNG signature and IHDR chunk
+#         header = f.read(24)
+#         if header[:8] != b'\x89PNG\r\n\x1a\n':
+#             return default_dpi, default_dpi
 
-        # Read chunks until we find the pHYs chunk
-        while True:
-            chunk_length = int.from_bytes(f.read(4), 'big')
-            chunk_type = f.read(4)
-            if chunk_type == b'pHYs':
-                # Read the pHYs chunk data
-                ppu_x = int.from_bytes(f.read(4), 'big')
-                ppu_y = int.from_bytes(f.read(4), 'big')
-                unit_specifier = f.read(1)
-                if unit_specifier == b'\x01':  # Meters
-                    dpi_x = ppu_x * 0.0254
-                    dpi_y = ppu_y * 0.0254
-                    return dpi_x, dpi_y
-                else:
-                    return default_dpi, default_dpi
-            else:
-                # Skip the chunk data and CRC
-                f.seek(chunk_length + 4, os.SEEK_CUR)
-            if chunk_type == b'IEND':
-                break
+#         # Read chunks until we find the pHYs chunk
+#         while True:
+#             chunk_length = int.from_bytes(f.read(4), 'big')
+#             chunk_type = f.read(4)
+#             if chunk_type == b'pHYs':
+#                 # Read the pHYs chunk data
+#                 ppu_x = int.from_bytes(f.read(4), 'big')
+#                 ppu_y = int.from_bytes(f.read(4), 'big')
+#                 unit_specifier = f.read(1)
+#                 if unit_specifier == b'\x01':  # Meters
+#                     dpi_x = ppu_x * 0.0254
+#                     dpi_y = ppu_y * 0.0254
+#                     return dpi_x, dpi_y
+#                 else:
+#                     return default_dpi, default_dpi
+#             else:
+#                 # Skip the chunk data and CRC
+#                 f.seek(chunk_length + 4, os.SEEK_CUR)
+#             if chunk_type == b'IEND':
+#                 break
 
     return default_dpi, default_dpi
 
@@ -103,3 +104,9 @@ def save_single_image(image, folder_path, filename, target_dpi=(STD_DPI,STD_DPI)
         out.write(buffer[0:IDAToffset])
         out.write(pHYs)
         out.write(buffer[IDAToffset:])
+
+def get_dpi_from_image(image_path):
+    # Default DPI for PNG images if not specified
+    with Image.open(image_path) as img:
+        dpi_x, dpi_y = img.info.get('dpi', (400, 400))
+        return math.ceil(dpi_x), math.ceil(dpi_y)

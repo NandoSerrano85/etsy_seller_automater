@@ -128,9 +128,13 @@ const Home = () => {
   }, [accessToken, api]);
 
   const fetchLocalImages = useCallback(async () => {
+    console.log('DEBUG: fetchLocalImages called');
     try {
       const response = await api.get('/api/local-images');
       console.log('Local images response:', response);
+      if (response.images && response.images.length > 0) {
+        console.log('Sample image data:', response.images[0]);
+      }
       setLocalImages(response.images || []);
     } catch (err) {
       console.error('Error fetching local images:', err);
@@ -139,9 +143,13 @@ const Home = () => {
   }, [api]);
 
   const fetchMockupImages = useCallback(async () => {
+    console.log('DEBUG: fetchMockupImages called');
     try {
       const response = await api.get('/api/mockup-images');
       console.log('Mockup images response:', response);
+      if (response.images && response.images.length > 0) {
+        console.log('Sample mockup data:', response.images[0]);
+      }
       setMockupImages(response.images || []);
     } catch (err) {
       console.error('Error fetching mockup images:', err);
@@ -184,11 +192,13 @@ const Home = () => {
   };
 
   useEffect(() => {
+    console.log('DEBUG: useEffect triggered', { accessToken: !!accessToken, activeTab, currentYear });
     if (accessToken && activeTab === 'analytics') {
       fetchTopSellers();
       fetchMonthlyAnalytics();
     }
     if (accessToken && activeTab === 'designs') {
+      console.log('DEBUG: Fetching designs data');
       fetchDesigns();
       fetchLocalImages();
       fetchMockupImages();
@@ -285,7 +295,17 @@ const Home = () => {
         });
         
         const result = await api.postFormData('/api/upload-mockup', formData);
-        alert(`Files uploaded successfully! ${result.result?.message || ''}`);
+        
+        // Handle digital files response
+        let successMessage = 'Files uploaded successfully!';
+        if (result.result?.digital_message) {
+          successMessage += `\n\n${result.result.digital_message}`;
+        }
+        if (result.result?.message) {
+          successMessage += `\n${result.result.message}`;
+        }
+        
+        alert(successMessage);
         
         // Refresh both local images and mockup images after upload
         await fetchLocalImages();

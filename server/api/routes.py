@@ -2,9 +2,10 @@ from fastapi import FastAPI, APIRouter, Request, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 import os, requests, time, json, glob, tempfile, shutil, random
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from dotenv import load_dotenv
 from pprint import pprint
 import uuid
@@ -78,10 +79,10 @@ class EtsyTemplateCreate(BaseModel):
     when_made: Optional[str] = None
     taxonomy_id: Optional[int] = None
     price: Optional[float] = None
-    materials: Optional[str] = None
+    materials: Optional[Union[str, List[str]]] = None
     shop_section_id: Optional[int] = None
     quantity: Optional[int] = None
-    tags: Optional[str] = None
+    tags: Optional[Union[str, List[str]]] = None
     item_weight: Optional[float] = None
     item_weight_unit: Optional[str] = None
     item_length: Optional[float] = None
@@ -104,7 +105,7 @@ class EtsyTemplateOut(EtsyTemplateCreate):
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 def decode_access_token(token: str):
     try:
@@ -117,10 +118,13 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Security(securi
     token = credentials.credentials
     payload = decode_access_token(token)
     if not payload or 'user_id' not in payload:
+        print(f"DEBUG AUTH: Invalid token - payload: {payload}")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     user = db.query(User).filter(User.id == payload['user_id']).first()
     if not user:
+        print(f"DEBUG AUTH: User not found for user_id: {payload['user_id']}")
         raise HTTPException(status_code=401, detail="User not found")
+    print(f"DEBUG AUTH: User authenticated successfully: {user.id} ({user.shop_name})")
     return user
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -129,6 +133,15 @@ load_dotenv(dotenv_path)
 
 # Create the main FastAPI app
 app = FastAPI(title="Etsy Seller Automaker", version="1.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Get the project root directory (3 levels up from this file)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -181,6 +194,7 @@ async def get_oauth_data_legacy():
 @app.get('/api/ping')
 async def ping():
     """API endpoint to demonstrate an API call to a service."""
+    print("DEBUG API: ping endpoint called")
     oauth_vars = get_oauth_variables()
     headers = {'x-api-key': oauth_vars['clientID']}
     response = requests.get(API_CONFIG['ping_url'], headers=headers)
@@ -188,6 +202,12 @@ async def ping():
         return response.json()
     else:
         return {"error": "Failed to ping Etsy API"}
+
+@app.get('/api/test-debug')
+async def test_debug():
+    """Test endpoint to check if debug logging is working."""
+    print("DEBUG API: test-debug endpoint called")
+    return {"message": "Debug logging is working"}
 
 @app.get('/oauth/redirect')
 async def oauth_redirect(code: str):
@@ -460,7 +480,7 @@ async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0,
     
     try:
         shop_id = os.getenv('SHOP_ID')
-        shop_name = os.getenv('SHOP_NAME')
+        shop_name = current_user.shop_name
         
         if not shop_id and not shop_name:
             raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
@@ -495,7 +515,7 @@ async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0,
         listings_data = response.json()
         
         # Get local images
-        local_images_response = await get_local_images()
+        local_images_response = await get_local_images(current_user)
         local_images = local_images_response.get('images', [])
         
         # Process listings to get design information
@@ -547,44 +567,39 @@ async def get_shop_listings(access_token: str, limit: int = 50, offset: int = 0,
         raise HTTPException(status_code=500, detail=f"Failed to fetch shop listings: {str(e)}")
 
 @app.post('/api/masks')
-async def create_masks(mask_data: MaskData, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """API endpoint to save mask data from the React frontend."""
-    try:
-        # Convert MaskPoint objects to dictionaries
-        masks_dict = []
-        for mask_points in mask_data.masks:
-            mask_dict = [{"x": point.x, "y": point.y} for point in mask_points]
-            masks_dict.append(mask_dict)
-        
-        # Validate mask data
-        for i, mask_points in enumerate(masks_dict):
-            if not validate_mask_points(mask_points):
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Invalid mask data for mask {i + 1}. Need at least 3 valid points."
-                )
-        
-        # Save mask data to database
-        mask_data_obj = save_mask_data_to_db(
-            db=db,
-            user_id=current_user.id,
-            template_name=mask_data.imageType,
-            masks_data=masks_dict
-        )
-        
-        return {
-            "success": True,
-            "message": f"Successfully saved {len(masks_dict)} masks for {mask_data.imageType}",
-            "masks_count": len(masks_dict),
-            "template_name": mask_data.imageType,
-            "mask_data_id": mask_data_obj.id
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error saving masks: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to save masks: {str(e)}")
+async def create_masks(mask_data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # print(f"DEBUG API: Received mask data: {mask_data}")
+    # Extract image size
+    image_width = mask_data.get('imageWidth', 1000)
+    image_height = mask_data.get('imageHeight', 1000)
+    image_shape = (image_height, image_width)
+    # Extract masks and points
+    masks_data = mask_data.get('masks', [])
+    starting_name = mask_data.get('starting_name', 100)
+    template_name = mask_data.get('imageType', 'UVDTF 16oz')
+    # Validate mask data
+    for i, mask_points in enumerate(masks_data):
+        if not validate_mask_points(mask_points):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid mask data for mask {i + 1}. Need at least 3 valid points."
+            )
+    # Save mask data to database
+    mask_data_obj = save_mask_data_to_db(
+        db=db,
+        user_id=current_user.id,
+        template_name=template_name,
+        masks_data=masks_data,
+        starting_name=starting_name,
+        image_shape=image_shape
+    )
+    return {
+        "success": True,
+        "message": f"Successfully saved {len(masks_data)} masks for {template_name}",
+        "masks_count": len(masks_data),
+        "template_name": template_name,
+        "mask_data_id": mask_data_obj.id
+    }
 
 @app.get('/api/user-mask-data')
 async def get_user_mask_data(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -597,6 +612,7 @@ async def get_user_mask_data(current_user: User = Depends(get_current_user), db:
         # Convert to response format
         response_data = []
         for mask_data in mask_data_list:
+
             response_data.append({
                 "id": mask_data.id,
                 "template_name": mask_data.template_name,
@@ -620,7 +636,11 @@ async def get_user_mask_data(current_user: User = Depends(get_current_user), db:
 async def get_user_mask_data_by_template(template_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """API endpoint to get mask data for a specific template."""
     try:
-        from server.engine.mask_db_utils import load_mask_data_from_db
+        from server.engine.mask_db_utils import load_mask_data_from_db, inspect_mask_data
+        
+        # First, let's inspect the raw data
+        inspection = inspect_mask_data(db, current_user.id, template_name)
+        # print(f"DEBUG API: Inspection result: {inspection}")
         
         masks, points_list, starting_name = load_mask_data_from_db(db, current_user.id, template_name)
         
@@ -631,7 +651,8 @@ async def get_user_mask_data_by_template(template_name: str, current_user: User 
             "points_count": len(points_list),
             "starting_name": starting_name,
             "masks": masks,
-            "points": points_list
+            "points": points_list,
+            "inspection": inspection
         }
         
     except ValueError as e:
@@ -674,17 +695,16 @@ async def delete_user_mask_data(template_name: str, current_user: User = Depends
 async def get_etsy_item_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """API endpoint to get item summary from Etsy."""
     etsy_api = EtsyAPI()
-    
-    # Get the first available template for the user, or use default
     template = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id).first()
     template_name = template.name if template else "UVDTF 16oz"
-    
-    item_summary = etsy_api.fetch_open_orders_items(os.getenv('LOCAL_ROOT_PATH'), template_name)
+    shop_name = current_user.shop_name
+    local_root = os.getenv('LOCAL_ROOT_PATH')
+    item_summary = etsy_api.fetch_open_orders_items(f"{local_root}{shop_name}/", template_name)
     try:
         create_gang_sheets(
             item_summary[template_name] if template_name in item_summary else item_summary.get("UVDTF 16oz", {}),
             template_name,
-            f"{os.getenv('LOCAL_ROOT_PATH')}/Printfiles/",
+            f"{local_root}{shop_name}/Printfiles/",
             item_summary["Total QTY"] if item_summary else 0
         )
     except Exception as e:
@@ -692,57 +712,100 @@ async def get_etsy_item_summary(current_user: User = Depends(get_current_user), 
         raise HTTPException(status_code=500, detail=f"Failed to create gang sheets: {str(e)}")
     return item_summary
 
-@app.get('/api/local-images')
-async def get_local_images(current_user: User = Depends(get_current_user)):
-    """API endpoint to get list of local PNG images."""
+@app.get('/api/local-images/{filename}')
+async def serve_local_image(filename: str, token: str = Query(None)):
+    """API endpoint to serve local PNG images."""
+    print(f"DEBUG API: Endpoint called for filename: {filename}")
+    print(f"DEBUG API: Token provided: {token is not None}")
+    
     try:
-        # Get user's templates to find available image directories
+        # If no token provided, try to get user from headers
+        current_user = None
+        if token:
+            try:
+                payload = decode_access_token(token)
+                if payload and 'user_id' in payload:
+                    db = next(get_db())
+                    current_user = db.query(User).filter(User.id == payload['user_id']).first()
+                    print(f"DEBUG API: User authenticated: {current_user.id if current_user else 'None'}")
+            except Exception as e:
+                print(f"DEBUG API: Token validation failed: {e}")
+        
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        print(f"DEBUG API: Serving image {filename} for user {current_user.id} ({current_user.shop_name})")
+        base_path = f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/"
+        print(f"DEBUG API: Checking template directory: {base_path}")
+        if os.path.exists(base_path):
+            for root, dirs, files in os.walk(base_path):
+                if filename in files:
+                    file_path = os.path.join(root, filename)
+                    print(f"DEBUG API: Found image at: {file_path}")
+                    # Determine content type based on file extension
+                    content_type = "image/png"  # default
+                    if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+                        content_type = "image/jpeg"
+                    elif filename.lower().endswith('.gif'):
+                        content_type = "image/gif"
+                    elif filename.lower().endswith('.webp'):
+                        content_type = "image/webp"
+                    
+                    headers = {
+                        "Cache-Control": "public, max-age=3600",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET",
+                        "Access-Control-Allow-Headers": "*"
+                    }
+                    
+                    return FileResponse(
+                        file_path, 
+                        media_type=content_type,
+                        headers=headers
+                    )
+        
+        print(f"DEBUG API: Image {filename} not found for user {current_user.shop_name}")
+        raise HTTPException(status_code=404, detail="Image not found")
+    except Exception as e:
+        print(f"Error serving image {filename}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error serving image")
+
+@app.get('/api/local-images')
+async def get_local_images(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """API endpoint to get list of local PNG images."""
+    print(f"DEBUG API: get_local_images endpoint called for user {current_user.id}")
+    try:
         db = next(get_db())
         templates = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id).all()
-        
         all_images = []
+        shop_name = current_user.shop_name
+        local_root = os.getenv('LOCAL_ROOT_PATH')
         
+        # Create a token for image URLs
+        token = create_access_token({"user_id": current_user.id})
+        
+        # Then check template directories
         for template in templates:
-            # Path to the template's images directory
-            images_path = f"/Users/fserrano/Desktop/Desktop/NookTransfers/{template.name}/"
-            
+            images_path = f"{local_root}{shop_name}/{template.name}/"
+            print(f"DEBUG API: Checking template path: {images_path}")
             if os.path.exists(images_path):
-                # Get all PNG files for this template
                 png_files = glob.glob(os.path.join(images_path, "*.png"))
-                
-                # Convert to relative paths for the frontend
+                print(f"DEBUG API: Found {len(png_files)} PNG files in template {template.name}")
                 for file_path in png_files:
                     filename = os.path.basename(file_path)
                     all_images.append({
                         "filename": filename,
-                        "path": f"/api/local-images/{filename}",
+                        "path": f"/api/local-images/{filename}?token={token}",  # Include token in URL
                         "full_path": file_path,
                         "template_name": template.name,
                         "template_title": template.template_title
                     })
         
+        print(f"DEBUG API: Total images found: {len(all_images)}")
         return {"images": all_images}
     except Exception as e:
         print(f"Error getting local images: {str(e)}")
         return {"images": [], "error": str(e)}
-
-@app.get('/api/local-images/{filename}')
-async def serve_local_image(filename: str):
-    """API endpoint to serve local PNG images."""
-    try:
-        # Search for the image in all template directories
-        base_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/"
-        
-        # Look for the file in any subdirectory
-        for root, dirs, files in os.walk(base_path):
-            if filename in files:
-                file_path = os.path.join(root, filename)
-                return FileResponse(file_path, media_type="image/png")
-        
-        raise HTTPException(status_code=404, detail="Image not found")
-    except Exception as e:
-        print(f"Error serving image {filename}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error serving image")
 
 @app.get('/api/monthly-analytics')
 async def get_monthly_analytics(access_token: str, year: Optional[int] = None, current_user: User = Depends(get_current_user)):
@@ -994,92 +1057,192 @@ async def get_monthly_analytics(access_token: str, year: Optional[int] = None, c
 @app.get('/api/mockup-images')
 async def get_mockup_images(current_user: User = Depends(get_current_user)):
     """API endpoint to get list of local mockup images."""
+    print(f"DEBUG API: get_mockup_images endpoint called for user {current_user.id}")
     try:
-        # Path to the mockup images directory
-        mockup_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/Mockups/Cup Wraps/"
+        mockup_path = f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Mockups/Cup Wraps/"
+        print(f"DEBUG API: Checking mockup path: {mockup_path}")
         if not os.path.exists(mockup_path):
+            print(f"DEBUG API: Mockup path does not exist")
             return {"images": [], "error": "Mockup images directory not found"}
-        # Get all PNG and JPG files
-        image_files = glob.glob(os.path.join(mockup_path, "*.png")) + glob.glob(os.path.join(mockup_path, "*.jpg"))
+        files = [f for f in os.listdir(mockup_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        print(f"DEBUG API: Found {len(files)} mockup files")
+        
+        # Create a token for image URLs
+        token = create_access_token({"user_id": current_user.id})
+        
         images = []
-        for file_path in image_files:
-            filename = os.path.basename(file_path)
+        for f in files:
             images.append({
-                "filename": filename,
-                "path": f"/api/mockup-images/{filename}",
-                "full_path": file_path
+                "filename": f,
+                "url": f"/api/mockup-images/{f}?token={token}"  # Include token in URL
             })
+        
         return {"images": images}
     except Exception as e:
         print(f"Error getting mockup images: {str(e)}")
         return {"images": [], "error": str(e)}
 
 @app.get('/api/mockup-images/{filename}')
-async def serve_mockup_image(filename: str):
+async def serve_mockup_image(filename: str, token: str = Query(None)):
     """API endpoint to serve local mockup images."""
     try:
-        mockup_path = "/Users/fserrano/Desktop/Desktop/NookTransfers/Mockups/Cup Wraps/"
+        # If no token provided, try to get user from headers
+        current_user = None
+        if token:
+            try:
+                payload = decode_access_token(token)
+                if payload and 'user_id' in payload:
+                    db = next(get_db())
+                    current_user = db.query(User).filter(User.id == payload['user_id']).first()
+                    print(f"DEBUG API: User authenticated: {current_user.id if current_user else 'None'}")
+            except Exception as e:
+                print(f"DEBUG API: Token validation failed: {e}")
+        
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        mockup_path = f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Mockups/Cup Wraps/"
         file_path = os.path.join(mockup_path, filename)
         if not os.path.exists(file_path):
-            raise HTTPException(status_code=404, detail="Mockup image not found")
-        return FileResponse(file_path, media_type="image/png")
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        # Determine content type based on file extension
+        content_type = "image/png"  # default
+        if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+            content_type = "image/jpeg"
+        elif filename.lower().endswith('.gif'):
+            content_type = "image/gif"
+        elif filename.lower().endswith('.webp'):
+            content_type = "image/webp"
+        
+        headers = {
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Allow-Headers": "*"
+        }
+        
+        return FileResponse(
+            file_path, 
+            media_type=content_type,
+            headers=headers
+        )
     except Exception as e:
         print(f"Error serving mockup image {filename}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error serving mockup image")
 
 @app.post('/api/upload-mockup')
-async def upload_mockup(
-    files: List[UploadFile] = File(...), 
-    template_name: str = Form('UVDTF 16oz'),
-    current_user: User = Depends(get_current_user), 
-    db: Session = Depends(get_db)
-):
+async def upload_mockup(files: List[UploadFile] = File(...), template_name: str = Form('UVDTF 16oz'), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    print(f"DEBUG API: upload-mockup endpoint called")
+    print(f"DEBUG API: User: {current_user.id} ({current_user.shop_name})")
+    print(f"DEBUG API: Template name: {template_name}")
+    print(f"DEBUG API: Number of files: {len(files)}")
+    
     try:
-        # Define the target directory for uploaded files
-        target_dir = "/Users/fserrano/Desktop/Desktop/NookTransfers/Origin/16oz/"
-        os.makedirs(target_dir, exist_ok=True)
+        # Get template to check if it's digital
+        template = db.query(EtsyTemplate).filter(
+            EtsyTemplate.user_id == current_user.id,
+            EtsyTemplate.name == template_name
+        ).first()
+        
+        print(f"DEBUG API: Template found: {template is not None}")
+        if not template:
+            print(f"DEBUG API: Template not found for name: {template_name}")
+            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
+        
+        is_digital = template.type == 'digital'
+        print(f"DEBUG API: Template type: {template.type}, is_digital: {is_digital}")
+        
+        # Create appropriate directories based on template type
+        local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
+        if not local_root_path:
+            raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
+            
+        image_dir = f"{local_root_path}{current_user.shop_name}/Origin/16oz/"
+        os.makedirs(image_dir, exist_ok=True)
+        
         uploaded_file_paths = []
-        for file in files:
-            if file.filename:
-                safe_filename = file.filename.replace('/', '_').replace('\\', '_')
-                file_path = os.path.join(target_dir, safe_filename)
-                with open(file_path, "wb") as buffer:
-                    shutil.copyfileobj(file.file, buffer)
-                uploaded_file_paths.append(file_path)
+        digital_file_paths = []
+        
+        print(f"DEBUG API: Processing {len(files)} files")
+        for i, file in enumerate(files):
+            print(f"DEBUG API: Processing file {i+1}: {file.filename}")
+            if not file.filename:
+                print(f"DEBUG API: Skipping file {i+1} - no filename")
+                continue  # Skip files without names
+                
+            # Save to mockup directory (for both physical and digital)
+            image_file_path = os.path.join(image_dir, file.filename)
+            print(f"DEBUG API: Saving file to: {image_file_path}")
+            with open(image_file_path, "wb") as f:
+                file_content = await file.read()
+                f.write(file_content)
+                print(f"DEBUG API: File saved, size: {len(file_content)} bytes")
+            uploaded_file_paths.append(image_file_path)
+            
+        print(f"DEBUG API: Calling process_uploaded_mockups with {len(uploaded_file_paths)} files")
         result = process_uploaded_mockups(
-            uploaded_file_paths, 
-            "/Users/fserrano/Desktop/Desktop/NookTransfers/", 
+            uploaded_file_paths,
+            f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/",
             template_name,
+            is_digital=is_digital,
             user_id=current_user.id,
             db=db
         )
+        print(f"DEBUG API: process_uploaded_mockups returned: {result}")
+        
+        print(f"DEBUG API: finished processing uploaded files")
+        print(f"DEBUG API: Starting Etsy API calls")
         etsy_api = EtsyAPI()
         # Fetch the user's template by name
         template = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id, EtsyTemplate.name == template_name).first()
         if not template:
+            print(f"DEBUG API: Template not found for Etsy API calls")
             return JSONResponse(status_code=400, content={"success": False, "error": f"No template named '{template_name}' found for this user."})
         # Parse materials and tags from string to list if needed
         materials = template.materials.split(',') if template.materials else []
         tags = template.tags.split(',') if template.tags else []
-        for design, mockups in result.items():
-            title = design.split(' ')[:2]
+        print(f"DEBUG API: Creating Etsy listings for {len(result)} designs")
+        for i, (design, mockups) in enumerate(result.items()):
+            print(f"DEBUG API: Creating listing {i+1}/{len(result)} for design: {design}")
+            title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
             listing_response = etsy_api.create_draft_listing(
                 title=' '.join(title + [template.title]) if template.title else ' '.join(title),
                 description=template.description,
                 price=template.price,
                 quantity=template.quantity,
                 tags=tags,
-                materials=materials)
+                materials=materials,
+                is_digital=is_digital,
+                when_made=template.when_made,
+                )
             listing_id = listing_response["listing_id"]
-            for mockup in random.sample(mockups, len(mockups)):
+            print(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
+            for j, mockup in enumerate(random.sample(mockups, len(mockups))):
+                print(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
                 etsy_api.upload_listing_image(listing_id, mockup)
-        for filename in os.listdir(target_dir):
-            file_path = os.path.join(target_dir, filename)
+            print(f"DEBUG API: Completed listing {i+1}")
+
+            # Upload digital file(s) if digital template
+            if is_digital:
+                # The digital file path and name are the key (design) in result.items()
+                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Digital/{template_name}/", design)
+                digital_file_name = design
+                print(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
+                try:
+                    etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
+                    print(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
+                except Exception as e:
+                    print(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
+
+        for filename in os.listdir(image_dir):
+            file_path = os.path.join(image_dir, filename)
             if os.path.isfile(file_path):
                 try:
                     os.remove(file_path)
                 except OSError as e:
                     print(f"Error deleting file {filename}: {e}")
+        print(f"DEBUG API: Returning success response")
         return JSONResponse(
             status_code=200,
             content={
@@ -1092,7 +1255,9 @@ async def upload_mockup(
             }
         )
     except Exception as e:
-        print(f"Error in upload-mockup: {str(e)}")
+        print(f"DEBUG API: Error in upload-mockup: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": f"Server error: {str(e)}"}
@@ -1187,6 +1352,7 @@ async def get_orders(access_token: str, current_user: User = Depends(get_current
 class UserCreate(BaseModel):
     email: str
     password: str
+    shop_name: str
 
 class UserLogin(BaseModel):
     email: str
@@ -1194,16 +1360,19 @@ class UserLogin(BaseModel):
 
 @app.post('/api/register')
 def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    normalized_email = user.email.strip().lower()
-    existing = db.query(User).filter(User.email == normalized_email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    # Validate shop_name
+    if not user.shop_name or not isinstance(user.shop_name, str) or not user.shop_name.strip():
+        return {"success": False, "error": "shop_name is required and must be a non-empty string."}
+    # Check if user already exists
+    existing_user = db.query(User).filter(User.email == user.email).first()
+    if existing_user:
+        return {"success": False, "error": "User already exists."}
     hashed_password = get_password_hash(user.password)
-    new_user = User(email=normalized_email, hashed_password=hashed_password)
-    db.add(new_user)
+    db_user = User(email=user.email, hashed_password=hashed_password, shop_name=user.shop_name)
+    db.add(db_user)
     db.commit()
-    db.refresh(new_user)
-    return {"success": True, "user_id": new_user.id}
+    db.refresh(db_user)
+    return {"success": True, "user_id": db_user.id, "email": db_user.email, "shop_name": db_user.shop_name}
 
 @app.post('/api/login')
 def login_user(user: UserLogin, db: Session = Depends(get_db)):
@@ -1218,6 +1387,7 @@ def login_user(user: UserLogin, db: Session = Depends(get_db)):
         "user": {
             "id": db_user.id,
             "email": db_user.email,
+            "shop_name": db_user.shop_name,
             "created_at": db_user.created_at
         }
     }
@@ -1311,6 +1481,21 @@ def create_user_template(template: EtsyTemplateCreate, current_user: User = Depe
         if existing_template:
             raise HTTPException(status_code=400, detail=f"Template with name '{template.name}' already exists")
         
+        # Handle materials and tags conversion
+        materials_str = None
+        if template.materials:
+            if isinstance(template.materials, list):
+                materials_str = ','.join(str(item) for item in template.materials if item)
+            else:
+                materials_str = str(template.materials)
+        
+        tags_str = None
+        if template.tags:
+            if isinstance(template.tags, list):
+                tags_str = ','.join(str(item) for item in template.tags if item)
+            else:
+                tags_str = str(template.tags)
+        
         db_template = EtsyTemplate(
             user_id=current_user.id,
             name=template.name,
@@ -1320,10 +1505,10 @@ def create_user_template(template: EtsyTemplateCreate, current_user: User = Depe
             when_made=template.when_made,
             taxonomy_id=template.taxonomy_id,
             price=template.price,
-            materials=','.join(template.materials) if template.materials else None,
+            materials=materials_str,
             shop_section_id=template.shop_section_id,
             quantity=template.quantity,
-            tags=','.join(template.tags) if template.tags else None,
+            tags=tags_str,
             item_weight=template.item_weight,
             item_weight_unit=template.item_weight_unit,
             item_length=template.item_length,
@@ -1373,8 +1558,16 @@ def update_user_template(template_id: int, template: EtsyTemplateUpdate, current
         
         # Update template fields
         for field, value in template.dict(exclude_unset=True).items():
-            if field in ['materials', 'tags'] and value is not None:
-                setattr(db_template, field, ','.join(value))
+            if field == 'materials' and value is not None:
+                if isinstance(value, list):
+                    setattr(db_template, field, ','.join(str(item) for item in value if item))
+                else:
+                    setattr(db_template, field, str(value))
+            elif field == 'tags' and value is not None:
+                if isinstance(value, list):
+                    setattr(db_template, field, ','.join(str(item) for item in value if item))
+                else:
+                    setattr(db_template, field, str(value))
             else:
                 setattr(db_template, field, value)
         
@@ -1474,7 +1667,7 @@ Thank you so much! Your purchase truly means the world to me & my family and it 
             type='physical',
             processing_min=1,
             processing_max=3,
-            return_policy_id=0
+            return_policy_id=None
         )
         
         db.add(default_template)
@@ -1487,6 +1680,76 @@ Thank you so much! Your purchase truly means the world to me & my family and it 
     except Exception as e:
         print(f"Error creating default template: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create default template")
+
+@app.get('/api/base-mockups/{template_name}')
+async def list_base_mockups(template_name: str, current_user: User = Depends(get_current_user)):
+    """List available base mockup images for a given Etsy template name."""
+    base_dir = f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Mockups/BaseMockups/{template_name}/"
+    if not os.path.exists(base_dir):
+        return {"images": []}
+    
+    files = [f for f in os.listdir(base_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    
+    # Create a token for image URLs
+    token = create_access_token({"user_id": current_user.id})
+    
+    images = []
+    for f in files:
+        images.append({
+            "filename": f,
+            "url": f"/api/base-mockup-image/{template_name}/{f}?token={token}"  # Include token in URL
+        })
+    
+    return {"images": images}
+
+@app.get('/api/base-mockup-image/{template_name}/{filename}')
+async def serve_base_mockup_image(template_name: str, filename: str, token: str = Query(None)):
+    """Serve a base mockup image by template name and filename."""
+    try:
+        # If no token provided, try to get user from headers
+        current_user = None
+        if token:
+            try:
+                payload = decode_access_token(token)
+                if payload and 'user_id' in payload:
+                    db = next(get_db())
+                    current_user = db.query(User).filter(User.id == payload['user_id']).first()
+                    print(f"DEBUG API: User authenticated: {current_user.id if current_user else 'None'}")
+            except Exception as e:
+                print(f"DEBUG API: Token validation failed: {e}")
+        
+        if not current_user:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        base_dir = f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Mockups/BaseMockups/{template_name}/"
+        file_path = os.path.join(base_dir, filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        # Determine content type based on file extension
+        content_type = "image/png"  # default
+        if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+            content_type = "image/jpeg"
+        elif filename.lower().endswith('.gif'):
+            content_type = "image/gif"
+        elif filename.lower().endswith('.webp'):
+            content_type = "image/webp"
+        
+        headers = {
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Allow-Headers": "*"
+        }
+        
+        return FileResponse(
+            file_path, 
+            media_type=content_type,
+            headers=headers
+        )
+    except Exception as img_error:
+        print(f"Error reading base mockup image {file_path}: {img_error}")
+        raise HTTPException(status_code=500, detail="Error serving image")
 
 @app.get("/")
 async def serve_frontend():
@@ -1527,4 +1790,6 @@ async def serve_frontend_routes(full_path: str):
 # @app.get('/api/protected')
 # def protected_route(current_user: User = Depends(get_current_user)):
 #     return {"message": f"Hello, {current_user.email}"}
+
+
 

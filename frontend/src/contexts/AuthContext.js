@@ -61,15 +61,16 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (email, password, confirmPassword) => {
+  const register = async (email, password, confirmPassword, shopName) => {
     if (password !== confirmPassword) {
       return { success: false, error: 'Passwords do not match' };
     }
     try {
       const normalizedEmail = email.trim().toLowerCase();
+      const normalizedShopName = shopName.trim();
       const data = await apiCall('/api/register', {
         method: 'POST',
-        body: JSON.stringify({ email: normalizedEmail, password })
+        body: JSON.stringify({ email: normalizedEmail, password, shop_name: normalizedShopName })
       });
       setToken(data.access_token);
       setUser(data.user);

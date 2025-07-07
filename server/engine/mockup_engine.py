@@ -3,7 +3,7 @@ import cv2, json, os, csv, re
 import numpy as np
 from server.engine.cropping import crop_transparent 
 from server.engine.resizing import resize_image_by_inches 
-from server.engine.util import save_single_image
+from server.engine.util import save_single_image, get_dpi_from_image, get_width_and_height, inches_to_pixels
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from server.engine.mask_creator_engine import MaskCreator
 import platform
@@ -146,7 +146,7 @@ class MockupImage:
             'bounds': (x_min, y_min, x_max, y_max)
         }
 
-    def create_mockup(self, masks, points_list, image_type=None, image=None, index=0):
+    def create_mockup(self, mask_points_list, points_list, image_type=None, image=None, index=0):
         """
         Replaces the masked areas in the original image with the design image.
         First mask crops the image, second mask zooms and centers the image, cropping horizontally to the mask.
@@ -162,15 +162,38 @@ class MockupImage:
 
         result = background.copy()
 
-        # Convert masks to numpy arrays if they're lists
-        if isinstance(masks, list):
-            masks = [np.array(mask) for mask in masks]
-        elif isinstance(masks[0], list):
-            masks = [np.array(mask) for mask in masks]
+        # Create masks from points dynamically
+        masks = []
+        # print(f"DEBUG: Creating masks from {len(mask_points_list)} mask point sets")
+        # print(f"DEBUG: Background image shape: {background.shape}")
+        
+        for i, mask_points in enumerate(mask_points_list):
+            # print(f"DEBUG: Processing mask points {i}: {mask_points}")
+            
+            # Validate points
+            if not mask_points or len(mask_points) < 3:
+                print(f"WARNING: Mask {i} has invalid points: {mask_points}")
+                continue
+            
+            # Convert points to numpy array for OpenCV
+            points = np.array(mask_points, dtype=np.int32)
+            # print(f"DEBUG: Converted to numpy array: {points}")
+            
+            # Create mask with the same size as the background
+            mask = np.zeros(background.shape[:2], dtype=np.uint8)
+            cv2.fillPoly(mask, [points], (255,))
+            
+            # Check if mask was created properly
+            mask_sum = np.sum(mask)
+            # print(f"DEBUG: Mask {i} sum (should be > 0): {mask_sum}")
+            if mask_sum == 0:
+                print(f"WARNING: Mask {i} is empty (all zeros)!")
+            
+            masks.append(mask)
+        
+        # print(f"DEBUG: Created {len(masks)} masks")
         
         for i, (mask, points) in enumerate(zip(masks, points_list)):
-            if isinstance(mask, list):
-                mask = np.array(mask)
             # Get optimal placement information
             placement = self.get_optimal_placement_area(mask, points, image_type, mask_index=i)
             design_aspect = design_img.shape[1] / design_img.shape[0]
@@ -251,7 +274,7 @@ class MockupImage:
             )
         return result
 
-    def add_watermark(self, image, watermark_path, points_list, masks, image_type, opacity=0.5):
+    def add_watermark(self, image, watermark_path, points_list, mask_points_list, image_type, opacity=0.5):
         """
         Add a watermark to the image using the same points as the design placement.
         Watermark is applied to both masks/points, but only covers the visible design area (not the entire mask).
@@ -259,16 +282,45 @@ class MockupImage:
             image: The image to add the watermark to
             watermark_path: Path to the watermark image
             points_list: The points used for the design placement
-            masks: The masks used for the design placement
+            mask_points_list: The mask points used for the design placement
             image_type: The type of image (for placement)
             opacity: Opacity of the watermark (0-1)
         """
         watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
-        print(watermark)
         result = image.copy()
+        
+        # Create masks from points dynamically
+        masks = []
+        # print(f"DEBUG: Creating watermark masks from {len(mask_points_list)} mask point sets")
+        # print(f"DEBUG: Image shape: {image.shape}")
+        
+        for i, mask_points in enumerate(mask_points_list):
+            # print(f"DEBUG: Processing watermark mask points {i}: {mask_points}")
+            
+            # Validate points
+            if not mask_points or len(mask_points) < 3:
+                print(f"WARNING: Watermark mask {i} has invalid points: {mask_points}")
+                continue
+            
+            # Convert points to numpy array for OpenCV
+            points = np.array(mask_points, dtype=np.int32)
+            # print(f"DEBUG: Converted to numpy array: {points}")
+            
+            # Create mask with the same size as the image
+            mask = np.zeros(image.shape[:2], dtype=np.uint8)
+            cv2.fillPoly(mask, [points], (255,))
+            
+            # Check if mask was created properly
+            mask_sum = np.sum(mask)
+            # print(f"DEBUG: Watermark mask {i} sum (should be > 0): {mask_sum}")
+            if mask_sum == 0:
+                print(f"WARNING: Watermark mask {i} is empty (all zeros)!")
+            
+            masks.append(mask)
+        
+        # print(f"DEBUG: Created {len(masks)} watermark masks")
+        
         for i, (mask, points) in enumerate(zip(masks, points_list)):
-            if isinstance(mask, list):
-                mask = np.array(mask)
             placement = self.get_optimal_placement_area(mask, points, image_type)
             mask_indices = np.argwhere(mask)
             y_min, x_min = mask_indices.min(axis=0)
@@ -332,21 +384,28 @@ def find_png_files(folder_path):
     
     return png_filepath, png_filenames
 
-def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", user_id=None, db=None):
-        print(file_paths)
-        print(root_path)
-        print(f"Using template: {template_name}")
+def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", is_digital=False, user_id=None, db=None):
+        print(f"DEBUG MOCKUP: Starting process_uploaded_mockups")
+        print(f"DEBUG MOCKUP: file_paths: {file_paths}")
+        print(f"DEBUG MOCKUP: root_path: {root_path}")
+        print(f"DEBUG MOCKUP: template_name: {template_name}")
+        print(f"DEBUG MOCKUP: is_digital: {is_digital}")
+        print(f"DEBUG MOCKUP: user_id: {user_id}")
         
-        mockup_path = f"{root_path}Mockups/BaseMockups/UVDTF/"
+        mockup_path = f"{root_path}Mockups/BaseMockups/{template_name}/"
         watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
-        designs_path = f"{root_path}{template_name}/"
+        if is_digital:
+            designs_path = f"{root_path}Digital/{template_name}/"
+        else:
+            designs_path = f"{root_path}{template_name}/"
         designs_path_list = []
         designs_filename_list = []
-        
+        # print(designs_path)
         # Create designs directory if it doesn't exist
         os.makedirs(designs_path, exist_ok=True)
         
-        # Load mask data from database if available, otherwise fallback to JSON file
+        print(f"DEBUG MOCKUP: Loading mask data from database")
+        # Load mask data from database
         masks = []
         points_list = []
         id_number = 100
@@ -354,45 +413,19 @@ def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", 
         if user_id and db:
             try:
                 from server.engine.mask_db_utils import load_mask_data_from_db
-                masks, points_list, id_number = load_mask_data_from_db(db, user_id, template_name)
-                print(f"Loaded mask data from database for user {user_id}, template {template_name}")
+                mask_points_list, points_list, id_number = load_mask_data_from_db(db, user_id, template_name)
+                print(f"DEBUG MOCKUP: Loaded mask data from database for user {user_id}, template {template_name}")
+                print(f"DEBUG MOCKUP: mask_points_list length: {len(mask_points_list)}")
+                print(f"DEBUG MOCKUP: points_list length: {len(points_list)}")
+                print(f"DEBUG MOCKUP: id_number: {id_number}")
             except Exception as e:
-                print(f"Failed to load mask data from database: {e}")
-                # Fallback to JSON file
-                try:
-                    with open(f'{root_path}mockup_mask_data.json', 'r') as f:
-                        data = json.load(f)
-                        # Use template_name as key, fallback to 'UVDTF 16oz' for backward compatibility
-                        template_key = template_name if template_name in data else 'UVDTF 16oz'
-                        
-                        for key in data[template_key].keys():
-                            if key.startswith('mask'):
-                                masks.append(np.array(data[template_key][key][0]))
-                            elif key.startswith('points'):
-                                points_list.append(data[template_key][key][0])
-                        id_number = 100 if "starting_name" not in data[template_key] else data[template_key]['starting_name']
-                except Exception as json_error:
-                    print(f"Failed to load mask data from JSON file: {json_error}")
-                    raise ValueError(f"No mask data found for template {template_name}")
+                print(f"DEBUG MOCKUP: Failed to load mask data from database: {e}")
+                raise ValueError(f"No mask data found for template {template_name}. Please create mask data using the Mockup Creator.")
         else:
-            # Fallback to JSON file for backward compatibility
-            try:
-                with open(f'{root_path}mockup_mask_data.json', 'r') as f:
-                    data = json.load(f)
-                    # Use template_name as key, fallback to 'UVDTF 16oz' for backward compatibility
-                    template_key = template_name if template_name in data else 'UVDTF 16oz'
-                    
-                    for key in data[template_key].keys():
-                        if key.startswith('mask'):
-                            masks.append(np.array(data[template_key][key][0]))
-                        elif key.startswith('points'):
-                            points_list.append(data[template_key][key][0])
-                    id_number = 100 if "starting_name" not in data[template_key] else data[template_key]['starting_name']
-            except Exception as e:
-                print(f"Failed to load mask data from JSON file: {e}")
-                raise ValueError(f"No mask data found for template {template_name}")
+            print(f"DEBUG MOCKUP: Missing user_id or db session")
+            raise ValueError(f"Database session required. Cannot load mask data without user_id and db session.")
             
-        def process_image(n):
+        def process_image_physical(n):
             image = crop_transparent(file_paths[n])
             resized_image = resize_image_by_inches(image_path=file_paths[n], image_type=template_name, image=image)
             cup_wrap_id_number = str(n + id_number).zfill(3)
@@ -401,26 +434,57 @@ def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", 
             save_single_image(resized_image, designs_path, filename, target_dpi=(400, 400))
             return image_path, filename
 
+        def process_image_digital(n):
+            print(file_paths[n])
+            image = crop_transparent(file_paths[n])
+            print(f"DEBUG MOCKUP: Image {n} processed: {image}")
+            if image is None:
+                return None, None
+            target_dpi = get_dpi_from_image(file_paths[n])
+            print(f"DEBUG MOCKUP: Target DPI: {target_dpi}")
+            if image.dtype == np.uint16:
+                image = (image / 256).astype(np.uint8)
+
+            current_width_inches, current_height_inches = get_width_and_height(image, file_paths[n], target_dpi[0])
+            img = cv2.resize(image, (inches_to_pixels(current_width_inches, target_dpi[0]), inches_to_pixels(current_height_inches, target_dpi[1])), interpolation=cv2.INTER_CUBIC)
+            print(f"DEBUG MOCKUP: Resized image: {img.shape}")
+            digital_id_number = str(n + id_number).zfill(3)
+            filename = f"Digital {digital_id_number}.png"
+            image_path = f"{designs_path}{filename}"
+            print(f"DEBUG MOCKUP: Saving image to {image_path}")
+            save_single_image(img, designs_path, filename, target_dpi=target_dpi)
+            return image_path, filename
+
+        print(f"DEBUG MOCKUP: Processing {len(file_paths)} images")
         for i in range(len(file_paths)):
-            image_path, filename = process_image(i)
+            print(f"DEBUG MOCKUP: Processing image {i+1}/{len(file_paths)}")
+            if is_digital:
+                image_path, filename = process_image_digital(i)
+            else:
+                image_path, filename = process_image_physical(i)
             designs_path_list.append(image_path)
             designs_filename_list.append(filename)
+            print(f"DEBUG MOCKUP: Image {i+1} processed: {filename}")
 
+        print(f"DEBUG MOCKUP: Finding mockup files in {mockup_path}")
         mockupFilePath, _ = find_png_files(mockup_path)
+        print(f"DEBUG MOCKUP: Found {len(mockupFilePath)} mockup files")
 
         mockup = MockupImage(mockupFilePath, designs_path)
 
         def process_mockup(i):
+            print(f"DEBUG MOCKUP: Processing mockup {i+1}/{len(designs_filename_list)}")
             mockups_list = []
             for n in range(len(mockupFilePath)):
-                assembled_mockup = mockup.create_mockup(masks, points_list, image_type=template_name, image=designs_filename_list[i], index=n)
-                print("starting watermark")
-                print(watermark_path)
+                assembled_mockup = mockup.create_mockup(mask_points_list, points_list, image_type=template_name, image=designs_filename_list[i], index=n)
+                # print(f"Starting watermark for {designs_filename_list[i]}")
+                # print("starting watermark")
+                # print(watermark_path)
                 assembled_mockup_with_watermark = mockup.add_watermark(
                     assembled_mockup, 
                     watermark_path, 
                     points_list,  # Use first mask for watermark
-                    masks,  # Use first mask for watermark
+                    mask_points_list,  # Use first mask for watermark
                     image_type=template_name,
                     opacity=0.45
                 )
@@ -439,34 +503,29 @@ def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", 
                 cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
             return mockups_list
         
+        print(f"DEBUG MOCKUP: Creating mockups for {len(designs_filename_list)} designs")
         all_mockups_list = dict()
         for i in range(len(designs_filename_list)):
+            print(f"DEBUG MOCKUP: Creating mockups for design {i+1}/{len(designs_filename_list)}")
             all_mockups_list[designs_filename_list[i]] = process_mockup(i)
+            print(f"DEBUG MOCKUP: Mockups created for design {i+1}")
 
-        # Update starting_name in database if available, otherwise fallback to JSON file
+        # Update starting_name in database
         new_starting_name = id_number + len(file_paths)
+        print(f"DEBUG MOCKUP: New starting_name: {new_starting_name}")
         
         if user_id and db:
             try:
                 from server.engine.mask_db_utils import update_starting_name
                 update_starting_name(db, user_id, template_name, new_starting_name)
-                print(f"Updated starting_name in database to {new_starting_name}")
+                # print(f"Updated starting_name in database to {new_starting_name}")
             except Exception as e:
                 print(f"Failed to update starting_name in database: {e}")
-                # Fallback to JSON file
-                try:
-                    with open(f"{root_path}mockup_mask_data.json", "w") as f:
-                        data[template_key]["starting_name"] = new_starting_name
-                        json.dump(data, f)
-                except Exception as json_error:
-                    print(f"Failed to update starting_name in JSON file: {json_error}")
+                # Log the error but don't fail the process
+                print(f"Warning: Could not update starting_name in database for user {user_id}, template {template_name}")
         else:
-            # Fallback to JSON file for backward compatibility
-            try:
-                with open(f"{root_path}mockup_mask_data.json", "w") as f:
-                    data[template_key]["starting_name"] = new_starting_name
-                    json.dump(data, f)
-            except Exception as e:
-                print(f"Failed to update starting_name in JSON file: {e}")
+            print(f"Warning: Cannot update starting_name - missing user_id or db session")
         
+        print(f"DEBUG MOCKUP: process_uploaded_mockups completed successfully")
         return all_mockups_list
+        

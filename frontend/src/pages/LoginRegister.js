@@ -10,6 +10,8 @@ const LoginRegister = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [shopName, setShopName] = useState('');
+  const [registerError, setRegisterError] = useState('');
   
   const { login, register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -59,7 +61,7 @@ const LoginRegister = () => {
           setError(result.error);
         }
       } else {
-        const result = await register(email, password, confirmPassword);
+        const result = await register(email, password, confirmPassword, shopName);
         if (result.success) {
           navigate('/', { replace: true });
         } else {
@@ -128,15 +130,28 @@ const LoginRegister = () => {
           </div>
           {tab === 'register' && (
             <div>
-              <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Confirm Password</label>
-              <input
-                type={showPassword ? 'text' : 'password'}
-                className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
-                required
-              />
+              <div>
+                <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Confirm Password</label>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  required
+                />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700">Shop Name</label>
+                <input
+                  id="shop-name"
+                  type="text"
+                  value={shopName}
+                  onChange={e => setShopName(e.target.value)}
+                  required
+                  className="input-field"
+                />
+              </div>
             </div>
           )}
           {error && (

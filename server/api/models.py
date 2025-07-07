@@ -5,6 +5,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # Load environment variables
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,8 +22,11 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    shop_name = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
     root_folder = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     tokens = relationship('OAuthToken', back_populates='user')
     mask_data_path = Column(String, nullable=True)
     mockup_blank_path = Column(String, nullable=True)
@@ -92,4 +96,13 @@ def get_db():
     try:
         yield db
     finally:
-        db.close() 
+        db.close()
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+    shop_name: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str 

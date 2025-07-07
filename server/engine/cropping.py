@@ -9,7 +9,7 @@ def crop_transparent(image_path):
     # Ensure the image has an alpha channel
     if img.shape[2] != 4:
         print("Image doesn't have an alpha channel")
-        return
+        return None
     
     # Split the image into color channels and alpha channel
     bgr = img[:,:,:3]

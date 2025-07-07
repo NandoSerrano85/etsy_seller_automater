@@ -20,6 +20,13 @@ const MockupCreator = () => {
   const [loadingMaskData, setLoadingMaskData] = useState(false);
   const canvasRef = useRef(null);
   const [scaleFactor, setScaleFactor] = useState(1.0);
+  const [startingName, setStartingName] = useState(100);
+  const [storedMasks, setStoredMasks] = useState([]);
+  const [storedImageSize, setStoredImageSize] = useState({ width: 0, height: 0 });
+  const [showMockupModal, setShowMockupModal] = useState(false);
+  const [baseMockups, setBaseMockups] = useState([]);
+  const [loadingBaseMockups, setLoadingBaseMockups] = useState(false);
+  const [mockupError, setMockupError] = useState('');
 
   // Load user templates on component mount
   useEffect(() => {
@@ -77,23 +84,68 @@ const MockupCreator = () => {
     }
   };
 
-  const handleImageUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          setMockupImage(img);
-          // Calculate scale factor for display
-          const maxSize = 1200;
-          const scale = Math.min(maxSize / img.width, maxSize / img.height);
-          setScaleFactor(scale);
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+  const openMockupModal = async () => {
+    setShowMockupModal(true);
+    setMockupError('');
+    setLoadingBaseMockups(true);
+    try {
+      if (selectedTemplate) {
+        const response = await api.get(`/api/base-mockups/${selectedTemplate}`);
+        setBaseMockups(response.images || []);
+      } else {
+        setBaseMockups([]);
+      }
+    } catch (e) {
+      setBaseMockups([]);
+      setMockupError('Failed to load base mockups');
+    } finally {
+      setLoadingBaseMockups(false);
     }
+  };
+
+  const handleSelectBaseMockup = async (url) => {
+    try {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        setMockupImage(img);
+        setShowMockupModal(false);
+        setMockupError('');
+        // Calculate scale factor for display
+        const maxSize = 1200;
+        const scale = Math.min(maxSize / img.width, maxSize / img.height);
+        setScaleFactor(scale);
+      };
+      img.onerror = () => setMockupError('Failed to load image');
+      img.src = url;
+    } catch (e) {
+      setMockupError('Failed to load image');
+    }
+  };
+
+  const handleUploadMockup = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    const img = new window.Image();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.onload = () => {
+        if (img.width > 2048 || img.height > 2048) {
+          setMockupError('Image must be 2048x2048 pixels or smaller');
+          return;
+        }
+        setMockupImage(img);
+        setShowMockupModal(false);
+        setMockupError('');
+        // Calculate scale factor for display
+        const maxSize = 1200;
+        const scale = Math.min(maxSize / img.width, maxSize / img.height);
+        setScaleFactor(scale);
+      };
+      img.onerror = () => setMockupError('Failed to load image');
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   };
 
   const getCanvasContext = () => {
@@ -255,10 +307,12 @@ const MockupCreator = () => {
       y: point.y / scaleFactor
     }));
 
+    console.log('DEBUG: Scaled points:', scaledPoints);
     const newMask = {
       points: scaledPoints,
       displayPoints: [...points]
     };
+    console.log('DEBUG: masks:', [...masks, newMask]);
 
     setMasks([...masks, newMask]);
     setPoints([]);
@@ -267,7 +321,7 @@ const MockupCreator = () => {
 
     if (currentMaskIndex + 1 >= numMasks) {
       // All masks created
-      saveMasks();
+      saveMasks([...masks, newMask]);
     }
   };
 
@@ -277,7 +331,7 @@ const MockupCreator = () => {
     setMessage('');
   };
 
-  const saveMasks = async () => {
+  const saveMasks = async (masks_data) => {
     if (!selectedTemplate) {
       setMessage('Please select a template first');
       return;
@@ -291,24 +345,53 @@ const MockupCreator = () => {
     try {
       setIsSaving(true);
       setMessage('');
-      
-      await api.post('/api/masks', {
-        masks: masks.map(mask => mask.points),
-        imageType: selectedTemplate
-      });
+      const maskPoints = masks_data.map(mask => mask.points);
+      const imageWidth = mockupImage ? mockupImage.width : 1000;
+      const imageHeight = mockupImage ? mockupImage.height : 1000;
+      const dataToSend = {
+        masks: maskPoints,
+        points: maskPoints, // for compatibility
+        starting_name: startingName,
+        imageType: selectedTemplate,
+        imageWidth,
+        imageHeight
+      };
+      console.log('DEBUG: Data being sent to API:', dataToSend);
+      await api.post('/api/masks', dataToSend);
 
       setMessage('Masks saved successfully!');
-      // Reset for next use
       setMasks([]);
       setCurrentMaskIndex(0);
       setPoints([]);
-      // Reload existing mask data to show the new data
       loadExistingMaskData(selectedTemplate);
+      // Fetch and display stored masks
+      fetchStoredMasks(selectedTemplate);
     } catch (error) {
       console.error('Error saving masks:', error);
       setMessage('Error saving masks: ' + (error.message || 'Unknown error'));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const fetchStoredMasks = async (templateName) => {
+    try {
+      const response = await api.get(`/api/user-mask-data/${templateName}`);
+      if (response.success && response.masks && response.inspection) {
+        // Use the inspection data to get the mask arrays and image size
+        const maskAnalysis = response.inspection.mask_analysis || [];
+        setStoredMasks(maskAnalysis.map(m => m.mask_array).filter(Boolean));
+        setStoredImageSize({
+          width: response.inspection.image_width || 1000,
+          height: response.inspection.image_height || 1000
+        });
+      } else {
+        setStoredMasks([]);
+        setStoredImageSize({ width: 0, height: 0 });
+      }
+    } catch (error) {
+      setStoredMasks([]);
+      setStoredImageSize({ width: 0, height: 0 });
     }
   };
 
@@ -355,16 +438,19 @@ const MockupCreator = () => {
         <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             <div className="space-y-2">
-              <label htmlFor="image-upload" className="block text-sm font-medium text-gray-700">
-                Upload Mockup Image:
+              <label className="block text-sm font-medium text-gray-700">
+                Select or Upload Mockup Image:
               </label>
-              <input
-                id="image-upload"
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="input-field"
-              />
+              <button
+                type="button"
+                onClick={openMockupModal}
+                className="input-field bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >
+                Choose Mockup Image
+              </button>
+              {mockupImage && (
+                <div className="mt-2 text-xs text-gray-600">Current image: {mockupImage.src.slice(0, 40)}...</div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -467,6 +553,20 @@ const MockupCreator = () => {
               >
                 Reset All
               </button>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="starting-name" className="block text-sm font-medium text-gray-700">
+                Starting Name:
+              </label>
+              <input
+                id="starting-name"
+                type="number"
+                min={1}
+                value={startingName}
+                onChange={e => setStartingName(Number(e.target.value))}
+                className="input-field"
+              />
             </div>
           </div>
         </div>
@@ -575,6 +675,90 @@ const MockupCreator = () => {
                 Template: <strong>{selectedTemplate}</strong>
               </p>
             )}
+          </div>
+        )}
+
+        {/* Mask Visualizations */}
+        {storedMasks.length > 0 && (
+          <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Stored Mask Visualizations:</h3>
+            <div className="flex flex-wrap gap-4">
+              {storedMasks.map((maskArray, idx) => (
+                <canvas
+                  key={idx}
+                  width={storedImageSize.width}
+                  height={storedImageSize.height}
+                  ref={el => {
+                    if (el && maskArray) {
+                      const ctx = el.getContext('2d');
+                      const imgData = ctx.createImageData(storedImageSize.width, storedImageSize.height);
+                      for (let y = 0; y < storedImageSize.height; y++) {
+                        for (let x = 0; x < storedImageSize.width; x++) {
+                          const i = y * storedImageSize.width + x;
+                          const val = maskArray[y] && maskArray[y][x] ? maskArray[y][x] : 0;
+                          imgData.data[i * 4 + 0] = val; // R
+                          imgData.data[i * 4 + 1] = val; // G
+                          imgData.data[i * 4 + 2] = val; // B
+                          imgData.data[i * 4 + 3] = 255; // A
+                        }
+                      }
+                      ctx.putImageData(imgData, 0, 0);
+                    }
+                  }}
+                  style={{ border: '1px solid #ccc', background: '#fff', maxWidth: 200, maxHeight: 200 }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Mockup Selection Modal */}
+        {showMockupModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full relative">
+              <button
+                className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
+                onClick={() => setShowMockupModal(false)}
+              >
+                &times;
+              </button>
+              <h2 className="text-lg font-semibold mb-4">Select a Base Mockup or Upload</h2>
+              {mockupError && <div className="mb-2 text-red-600">{mockupError}</div>}
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1">Upload Custom Image (max 2048x2048):</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUploadMockup}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Or select a base mockup:</label>
+                {loadingBaseMockups ? (
+                  <div>Loading...</div>
+                ) : (
+                  <div className="flex flex-wrap gap-3 max-h-64 overflow-y-auto">
+                    {baseMockups.length === 0 && <div className="text-gray-500">No base mockups found.</div>}
+                    {baseMockups.map((img) => (
+                      <div
+                        key={img.filename}
+                        className="cursor-pointer border rounded hover:shadow-lg"
+                        onClick={() => handleSelectBaseMockup(img.url)}
+                        style={{ width: 100, height: 100, overflow: 'hidden' }}
+                      >
+                        <img
+                          src={img.url}
+                          alt={img.filename}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                        <div className="text-xs text-center truncate">{img.filename}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

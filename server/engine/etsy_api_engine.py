@@ -1,6 +1,6 @@
 import requests, os, json, hashlib, base64, secrets, random, csv, sys, time, re
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv, set_key
 from urllib.parse import urlencode
 from collections import deque
@@ -44,7 +44,6 @@ class EtsyAPI:
                 raise Exception("Could not fetch shop ID. Please set SHOP_ID in your .env file.")
         self.taxonomy_id = self.fetch_taxonomies()
         self.shipping_profile_id = self.fetch_shipping_profiles()
-        self.return_policy_id = self.fetch_return_policies()
         self.shop_section_id = self.fetch_shop_sections()
 
     def _find_index(self, lst, element):
@@ -216,6 +215,9 @@ class EtsyAPI:
     def create_draft_listing(self, title: str, description: str, price: float, 
                            quantity: int, tags: List[str], 
                            materials: List[str],
+                           return_policy_id: Optional[int] = None,
+                           is_digital: bool = False,
+                           when_made: str = "made_to_order",
                            ) -> Dict:
         """
         Create a draft listing on Etsy
@@ -240,16 +242,20 @@ class EtsyAPI:
             "description": description,
             "price": price,
             "who_made": "i_did",
-            "when_made": "made_to_order",
+            "when_made": when_made,
             "taxonomy_id": self.taxonomy_id if self.taxonomy_id else 1071,
             "tags": tags[:13],  # Etsy allows max 13 tags
             "materials": materials[:13],  # Etsy allows max 13 materials
-            "shop_section_id": self.shop_section_id,
-            "shipping_profile_id": self.shipping_profile_id if self.shipping_profile_id else 1,
-            "return_policy_id": self.return_policy_id if self.return_policy_id else 0,
-            "state": "draft",
             "shop_section_id": self.shop_section_id if self.shop_section_id else 52993337,
+            "shipping_profile_id": self.shipping_profile_id if self.shipping_profile_id else 1,
+            "state": "draft",
+            "return_policy_id": return_policy_id if return_policy_id else 1,
+            "type": "physical" if not is_digital else "download",
         }
+        
+        # Only include return_policy_id if it's valid (>= 1)
+        if return_policy_id and return_policy_id >= 1:
+            payload["return_policy_id"] = return_policy_id
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}',
@@ -353,28 +359,6 @@ class EtsyAPI:
             print(f"Failed to fetch shipping profiles: {resp.text}")
             return None
 
-    def fetch_return_policies(self):
-        self.ensure_valid_token()
-        url = f'https://openapi.etsy.com/v3/application/shops/{self.shop_id}/return-policies'
-        headers = {
-            'x-api-key': self.client_id,
-            'Authorization': f'Bearer {self.oauth_token}'
-        }
-        resp = self.session.get(url, headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            print("\n--- Return Policies ---")
-            for policy in data.get('results', []):
-                print(f"ID: {policy['return_policy_id']}, Name: {policy['title']}")
-            return data.get('results', [])[0]['return_policy_id'] if data.get('results') else None
-        elif resp.status_code in [401, 403]:
-            print(f"Authentication error: {resp.text}")
-            print("Make sure your OAuth token has the 'shops_r' scope")
-            return None
-        else:
-            print(f"Failed to fetch return policies: {resp.text}")
-            return None
-
     def fetch_shop_sections(self):
         self.ensure_valid_token()
         """Fetch shop sections from the Etsy API"""
@@ -453,3 +437,27 @@ class EtsyAPI:
                 if file.lower().endswith(extensions) and pattern.search(file):
                     full_path = os.path.join(root, file)
                     return full_path
+
+    def upload_listing_file(self, listing_id: int, file_path: str, file_name: str) -> dict:
+        """
+        Upload a digital file to a digital listing.
+        Args:
+            listing_id (int): The ID of the listing to add the file to
+            file_path (str): Path to the digital file
+            file_name (str): The name of the file to show on Etsy
+        Returns:
+            dict: Response from Etsy API
+        """
+        endpoint = f"{self.base_url}/application/shops/{self.shop_id}/listings/{listing_id}/files"
+        headers = {
+            "x-api-key": self.client_id,
+            "Authorization": f"Bearer {self.oauth_token}"
+        }
+        with open(file_path, 'rb') as file_obj:
+            files = {
+                'file': (file_name, file_obj, 'application/octet-stream'),
+                'name': (None, file_name)
+            }
+            response = requests.post(endpoint, headers=headers, files=files)
+            response.raise_for_status()
+            return response.json()

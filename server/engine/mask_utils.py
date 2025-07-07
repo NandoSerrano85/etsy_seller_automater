@@ -23,13 +23,14 @@ def convert_react_mask_to_opencv(mask_points: List[Dict[str, float]], image_shap
     
     # Create mask
     mask = np.zeros(image_shape[:2], dtype=np.uint8)
-    cv2.fillPoly(mask, [points], 255)
+    cv2.fillPoly(mask, [points], (255,))
     
     return mask
 
 def save_mask_data(masks_data: List[List[Dict[str, float]]], image_type: str, file_path: Optional[str] = None) -> str:
     """
-    Save mask data to JSON file in the format expected by the mockup engine.
+    DEPRECATED: Save mask data to JSON file. This function is no longer used.
+    Mask data is now stored in the database using save_mask_data_to_db().
     
     Args:
         masks_data: List of masks, each containing list of points
@@ -39,6 +40,13 @@ def save_mask_data(masks_data: List[List[Dict[str, float]]], image_type: str, fi
     Returns:
         Path to the saved file
     """
+    import warnings
+    warnings.warn(
+        "save_mask_data() is deprecated. Use save_mask_data_to_db() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
     if file_path is None:
         # Default to project root
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -61,7 +69,8 @@ def save_mask_data(masks_data: List[List[Dict[str, float]]], image_type: str, fi
 
 def load_mask_data(file_path: str, image_type: str) -> Tuple[List[np.ndarray], List[List[Tuple[int, int]]]]:
     """
-    Load mask data from JSON file and convert to format expected by mockup engine.
+    DEPRECATED: Load mask data from JSON file. This function is no longer used.
+    Mask data is now loaded from the database using load_mask_data_from_db().
     
     Args:
         file_path: Path to the JSON file
@@ -70,6 +79,13 @@ def load_mask_data(file_path: str, image_type: str) -> Tuple[List[np.ndarray], L
     Returns:
         Tuple of (masks, points) where masks are numpy arrays and points are lists of tuples
     """
+    import warnings
+    warnings.warn(
+        "load_mask_data() is deprecated. Use load_mask_data_from_db() instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    
     with open(file_path, 'r') as f:
         data = json.load(f)
     

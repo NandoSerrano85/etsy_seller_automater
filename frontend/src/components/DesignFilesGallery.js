@@ -181,11 +181,25 @@ const DesignFilesGallery = ({ designFiles, openImageModal }) => {
           <div key={index} className="card overflow-hidden group">
             <div className="aspect-square overflow-hidden">
               <img
-                src={image.path}
+                src={image.path || image.url}
                 alt={image.filename}
                 onClick={() => openZoomModal(image, index)}
                 className="w-full h-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                onError={(e) => {
+                  console.error('Image failed to load:', image.path || image.url);
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'flex';
+                }}
+                onLoad={() => {
+                  console.log('Image loaded successfully:', image.path || image.url);
+                }}
               />
+              <div 
+                className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-500 text-sm hidden"
+                style={{ display: 'none' }}
+              >
+                Failed to load image
+              </div>
             </div>
             <div className="p-3 sm:p-4">
               <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 text-sm sm:text-base">{image.filename}</h3>
@@ -313,7 +327,7 @@ const DesignFilesGallery = ({ designFiles, openImageModal }) => {
             {/* Image */}
             <div className="overflow-auto max-h-full">
               <img
-                src={selectedImage.path}
+                src={selectedImage.path || selectedImage.url}
                 alt={selectedImage.filename}
                 style={{
                   transform: `scale(${zoomLevel})`,
