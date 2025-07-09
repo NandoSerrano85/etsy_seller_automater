@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApi } from '../hooks/useApi';
 import SettingsTab from './AccountTabs/SettingsTab';
 import TemplatesTab from './AccountTabs/TemplatesTab';
+import ResizingTab from './AccountTabs/ResizingTab';
 
 const Account = () => {
   const { user, isAuthenticated } = useAuth();
@@ -30,7 +31,7 @@ const Account = () => {
             Account Settings
           </h1>
           <p className="text-base sm:text-lg md:text-xl mb-6 sm:mb-8 opacity-90 px-2">
-            Manage your account settings and product templates
+            Manage your account settings, product templates, and resizing configurations
           </p>
           {user && (
             <p className="text-sm sm:text-base lg:text-lg opacity-90">
@@ -44,7 +45,7 @@ const Account = () => {
       <div className="bg-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-center space-x-1 overflow-x-auto">
-            {['settings', 'templates'].map((tab) => (
+            {['settings', 'templates', 'resizing'].map((tab) => (
               <button 
                 key={tab}
                 className={`tab-button capitalize whitespace-nowrap text-sm sm:text-base ${activeTab === tab ? 'active' : ''}`}
@@ -65,6 +66,9 @@ const Account = () => {
           
           {/* Templates Tab */}
           {activeTab === 'templates' && <TemplatesTab />}
+          
+          {/* Resizing Tab */}
+          {activeTab === 'resizing' && <ResizingTab />}
         </div>
       </div>
     </div>

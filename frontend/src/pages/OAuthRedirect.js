@@ -1,5 +1,5 @@
 // eslint-disable-next-line no-unused-vars
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const OAuthRedirect = () => {
@@ -8,69 +8,105 @@ const OAuthRedirect = () => {
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const isProcessing = useRef(false);
+  const hasSucceeded = useRef(false);
 
   useEffect(() => {
     const handleOAuthRedirect = async () => {
-      const urlParams = new URLSearchParams(location.search);
-      const code = urlParams.get('code');
-      const state = urlParams.get('state');
-      const accessToken = urlParams.get('access_token');
-      const error = urlParams.get('error');
-
-      if (error) {
-        setError(`OAuth error: ${error}`);
-        setStatus('error');
+      // Prevent multiple simultaneous processing
+      if (isProcessing.current) {
+        console.log('OAuth redirect already processing, skipping...');
         return;
       }
-
-      // If we have an access token directly from backend redirect (legacy flow)
-      if (accessToken) {
-        localStorage.setItem('etsy_access_token', accessToken);
-        setStatus('success');
-        setSuccessMessage('Your Etsy shop has been connected successfully!');
-        setTimeout(() => {
-          navigate('/');
-        }, 3000);
+      
+      // Prevent processing if we've already succeeded
+      if (hasSucceeded.current) {
+        console.log('OAuth already succeeded, skipping...');
         return;
       }
+      
+      console.log('Starting OAuth redirect processing...');
+      isProcessing.current = true;
+      
+      try {
+        const urlParams = new URLSearchParams(location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        const accessToken = urlParams.get('access_token');
+        const error = urlParams.get('error');
 
-      // If we have a code, exchange it for token via backend
-      if (code) {
-        try {
-          // Call the backend oauth_redirect endpoint directly
-          const response = await fetch(`/oauth/redirect?code=${code}`);
-          
-          if (response.ok) {
-            const data = await response.json();
+        console.log('URL parameters:', { code: !!code, state: !!state, accessToken: !!accessToken, error });
+
+        // Check for OAuth error first
+        if (error) {
+          console.log('OAuth error detected:', error);
+          setError(`OAuth error: ${error}`);
+          setStatus('error');
+          return;
+        }
+
+        // If we have an access token directly from backend redirect (legacy flow)
+        if (accessToken) {
+          console.log('Direct access token flow');
+          localStorage.setItem('etsy_access_token', accessToken);
+          hasSucceeded.current = true;
+          setStatus('success');
+          setSuccessMessage('Your Etsy shop has been connected successfully!');
+          setTimeout(() => {
+            navigate('/');
+          }, 3000);
+          return;
+        }
+
+        // If we have a code, exchange it for token via backend
+        if (code) {
+          console.log('Authorization code flow');
+          try {
+            // Call the backend oauth_redirect endpoint directly
+            const response = await fetch(`/oauth/redirect?code=${code}`);
+            console.log('Backend response status:', response.status);
             
-            if (data.success) {
-              // Store the access token in localStorage
-              localStorage.setItem('etsy_access_token', data.access_token);
+            if (response.ok) {
+              const data = await response.json();
+              console.log('Backend response data:', { success: data.success, hasAccessToken: !!data.access_token });
               
-              setStatus('success');
-              setSuccessMessage(data.message || 'Your Etsy shop has been connected successfully!');
-              
-              // Redirect to home page after showing success message
-              setTimeout(() => {
-                navigate('/');
-              }, 3000);
+              if (data.success) {
+                // Store the access token in localStorage
+                localStorage.setItem('etsy_access_token', data.access_token);
+                
+                console.log('Setting success status');
+                hasSucceeded.current = true;
+                setStatus('success');
+                setSuccessMessage(data.message || 'Your Etsy shop has been connected successfully!');
+                
+                // Redirect to home page after showing success message
+                setTimeout(() => {
+                  navigate('/');
+                }, 3000);
+              } else {
+                console.log('Backend returned success: false');
+                setError(data.error || 'Authentication failed');
+                setStatus('error');
+              }
             } else {
-              setError(data.error || 'Authentication failed');
+              const errorData = await response.json();
+              console.log('Backend error response:', errorData);
+              setError(errorData.error || 'Failed to exchange code for token');
               setStatus('error');
             }
-          } else {
-            const errorData = await response.json();
-            setError(errorData.error || 'Failed to exchange code for token');
+          } catch (err) {
+            console.error('Error during OAuth callback:', err);
+            setError('Network error during authentication');
             setStatus('error');
           }
-        } catch (err) {
-          console.error('Error during OAuth callback:', err);
-          setError('Network error during authentication');
+        } else {
+          console.log('No code or access token found');
+          setError('No authorization code or access token received');
           setStatus('error');
         }
-      } else {
-        setError('No authorization code or access token received');
-        setStatus('error');
+      } finally {
+        isProcessing.current = false;
+        console.log('OAuth redirect processing completed');
       }
     };
 

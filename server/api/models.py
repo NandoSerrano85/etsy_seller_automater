@@ -6,6 +6,8 @@ from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.sql import func
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
 
 # Load environment variables
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,6 +35,8 @@ class User(Base):
     watermark_path = Column(String, nullable=True)
     etsy_templates = relationship('EtsyTemplate', order_by='EtsyTemplate.id', back_populates='user')
     mockup_masks = relationship('MockupMaskData', order_by='MockupMaskData.id', back_populates='user')
+    canvas_configs = relationship('CanvasConfig', order_by='CanvasConfig.id', back_populates='user')
+    size_configs = relationship('SizeConfig', order_by='SizeConfig.id', back_populates='user')
 
 class OAuthToken(Base):
     __tablename__ = 'oauth_tokens'
@@ -44,6 +48,35 @@ class OAuthToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     user = relationship('User', back_populates='tokens')
     __table_args__ = (UniqueConstraint('user_id', 'access_token', name='_user_token_uc'),)
+
+class CanvasConfig(Base):
+    __tablename__ = 'canvas_configs'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    template_name = Column(String, nullable=False)  # e.g., 'UVDTF Decal'
+    width_inches = Column(Float, nullable=False)
+    height_inches = Column(Float, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = relationship('User', back_populates='canvas_configs')
+    __table_args__ = (UniqueConstraint('user_id', 'template_name', name='_user_canvas_template_uc'),)
+
+class SizeConfig(Base):
+    __tablename__ = 'size_configs'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    template_name = Column(String, nullable=False)  # e.g., 'UVDTF 16oz'
+    size_name = Column(String, nullable=True)  # e.g., 'Adult+', 'Adult', 'Youth', 'Toddler', 'Pocket'
+    width_inches = Column(Float, nullable=False)
+    height_inches = Column(Float, nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = relationship('User', back_populates='size_configs')
+    __table_args__ = (UniqueConstraint('user_id', 'template_name', 'size_name', name='_user_size_template_uc'),)
 
 class EtsyTemplate(Base):
     __tablename__ = 'etsy_templates'
@@ -105,4 +138,59 @@ class UserCreate(BaseModel):
 
 class UserLogin(BaseModel):
     email: str
-    password: str 
+    password: str
+
+class CanvasConfigCreate(BaseModel):
+    template_name: str
+    width_inches: float
+    height_inches: float
+    description: Optional[str] = None
+
+class CanvasConfigUpdate(BaseModel):
+    template_name: Optional[str] = None
+    width_inches: Optional[float] = None
+    height_inches: Optional[float] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class CanvasConfigOut(BaseModel):
+    id: int
+    template_name: str
+    width_inches: float
+    height_inches: float
+    description: Optional[str] = None
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class SizeConfigCreate(BaseModel):
+    template_name: str
+    size_name: Optional[str] = None
+    width_inches: float
+    height_inches: float
+    description: Optional[str] = None
+
+class SizeConfigUpdate(BaseModel):
+    template_name: Optional[str] = None
+    size_name: Optional[str] = None
+    width_inches: Optional[float] = None
+    height_inches: Optional[float] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class SizeConfigOut(BaseModel):
+    id: int
+    template_name: str
+    size_name: Optional[str] = None
+    width_inches: float
+    height_inches: float
+    description: Optional[str] = None
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True 

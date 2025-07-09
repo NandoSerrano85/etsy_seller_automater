@@ -14,6 +14,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+import logging
 
 # Import OAuth logic from etsy_oath_token
 from server.engine.etsy_api_engine import EtsyAPI
@@ -40,7 +41,12 @@ from server.constants import (
 from server.engine.mockup_engine import process_uploaded_mockups
 
 # Import models
-from server.api.models import Base, User, OAuthToken, EtsyTemplate, get_db
+from server.api.models import (
+    Base, User, OAuthToken, EtsyTemplate, CanvasConfig, SizeConfig, 
+    CanvasConfigCreate, CanvasConfigUpdate, CanvasConfigOut,
+    SizeConfigCreate, SizeConfigUpdate, SizeConfigOut,
+    get_db
+)
 
 # JWT settings and security
 SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'supersecretkey')
@@ -158,6 +164,13 @@ elif os.path.exists(frontend_build_path):
     static_dir = os.path.join(frontend_build_path, "static")
     if os.path.exists(static_dir):
         app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+@app.on_event("startup")
+def log_routes():
+    logging.basicConfig(level=logging.INFO)
+    route_list = [route.path for route in app.routes]
+    logging.info(f"FastAPI app started. Registered routes: {route_list}")
+    print(f"FastAPI app started. Registered routes: {route_list}")
 
 # API Routes
 @app.get("/api/oauth-data")
@@ -1751,6 +1764,309 @@ async def serve_base_mockup_image(template_name: str, filename: str, token: str 
         print(f"Error reading base mockup image {file_path}: {img_error}")
         raise HTTPException(status_code=500, detail="Error serving image")
 
+# Example usage for a protected endpoint:
+# @app.get('/api/protected')
+# def protected_route(current_user: User = Depends(get_current_user)):
+#     return {"message": f"Hello, {current_user.email}"}
+
+# --- Canvas Configuration API Endpoints ---
+@app.get('/api/canvas-configs', response_model=List[CanvasConfigOut])
+def list_canvas_configs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all canvas configurations for the current user."""
+    try:
+        canvas_configs = db.query(CanvasConfig).filter(
+            CanvasConfig.user_id == current_user.id,
+            CanvasConfig.is_active == True
+        ).all()
+        return canvas_configs
+    except Exception as e:
+        print(f"Error listing canvas configs: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list canvas configurations")
+
+@app.get('/api/canvas-configs/{config_id}', response_model=CanvasConfigOut)
+def get_canvas_config(config_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get a specific canvas configuration by ID."""
+    try:
+        canvas_config = db.query(CanvasConfig).filter(
+            CanvasConfig.id == config_id,
+            CanvasConfig.user_id == current_user.id
+        ).first()
+        
+        if not canvas_config:
+            raise HTTPException(status_code=404, detail="Canvas configuration not found")
+        
+        return canvas_config
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting canvas config {config_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get canvas configuration")
+
+@app.post('/api/canvas-configs', response_model=CanvasConfigOut)
+def create_canvas_config(canvas_config: CanvasConfigCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a new canvas configuration."""
+    try:
+        # Check if template already exists for this user
+        existing_config = db.query(CanvasConfig).filter(
+            CanvasConfig.user_id == current_user.id,
+            CanvasConfig.template_name == canvas_config.template_name,
+            CanvasConfig.is_active == True
+        ).first()
+    
+        if existing_config:
+            raise HTTPException(status_code=400, detail="Canvas configuration already exists for this template")
+        
+        new_canvas_config = CanvasConfig(
+            user_id=current_user.id,
+            template_name=canvas_config.template_name,
+            width_inches=canvas_config.width_inches,
+            height_inches=canvas_config.height_inches,
+            description=canvas_config.description
+        )
+        
+        db.add(new_canvas_config)
+        db.commit()
+        db.refresh(new_canvas_config)
+        
+        return new_canvas_config
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating canvas config: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create canvas configuration")
+
+@app.put('/api/canvas-configs/{config_id}', response_model=CanvasConfigOut)
+def update_canvas_config(config_id: int, canvas_config: CanvasConfigUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update an existing canvas configuration."""
+    try:
+        existing_config = db.query(CanvasConfig).filter(
+            CanvasConfig.id == config_id,
+            CanvasConfig.user_id == current_user.id
+        ).first()
+        
+        if not existing_config:
+            raise HTTPException(status_code=404, detail="Canvas configuration not found")
+        
+        # Update fields if provided
+        if canvas_config.template_name is not None:
+            existing_config.template_name = canvas_config.template_name
+        if canvas_config.width_inches is not None:
+            existing_config.width_inches = canvas_config.width_inches
+        if canvas_config.height_inches is not None:
+            existing_config.height_inches = canvas_config.height_inches
+        if canvas_config.description is not None:
+            existing_config.description = canvas_config.description
+        if canvas_config.is_active is not None:
+            existing_config.is_active = canvas_config.is_active
+        
+        db.commit()
+        db.refresh(existing_config)
+        
+        return existing_config
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating canvas config {config_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update canvas configuration")
+
+@app.delete('/api/canvas-configs/{config_id}')
+def delete_canvas_config(config_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a canvas configuration (soft delete by setting is_active to False)."""
+    try:
+        canvas_config = db.query(CanvasConfig).filter(
+            CanvasConfig.id == config_id,
+            CanvasConfig.user_id == current_user.id
+        ).first()
+        
+        if not canvas_config:
+            raise HTTPException(status_code=404, detail="Canvas configuration not found")
+        
+        canvas_config.is_active = False
+        db.commit()
+        
+        return {'success': True, 'message': 'Canvas configuration deleted successfully'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting canvas config {config_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete canvas configuration")
+
+# --- Size Configuration API Endpoints ---
+@app.get('/api/size-configs', response_model=List[SizeConfigOut])
+def list_size_configs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List all size configurations for the current user."""
+    try:
+        size_configs = db.query(SizeConfig).filter(
+            SizeConfig.user_id == current_user.id,
+            SizeConfig.is_active == True
+        ).all()
+        return size_configs
+    except Exception as e:
+        print(f"Error listing size configs: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to list size configurations")
+
+@app.get('/api/size-configs/{config_id}', response_model=SizeConfigOut)
+def get_size_config(config_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get a specific size configuration by ID."""
+    try:
+        size_config = db.query(SizeConfig).filter(
+            SizeConfig.id == config_id,
+            SizeConfig.user_id == current_user.id
+        ).first()
+        
+        if not size_config:
+            raise HTTPException(status_code=404, detail="Size configuration not found")
+        
+        return size_config
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting size config {config_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get size configuration")
+
+@app.post('/api/size-configs', response_model=SizeConfigOut)
+def create_size_config(size_config: SizeConfigCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Create a new size configuration."""
+    try:
+        # Check if template and size combination already exists for this user
+        existing_config = db.query(SizeConfig).filter(
+            SizeConfig.user_id == current_user.id,
+            SizeConfig.template_name == size_config.template_name,
+            SizeConfig.size_name == size_config.size_name,
+            SizeConfig.is_active == True
+        ).first()
+        
+        if existing_config:
+            raise HTTPException(status_code=400, detail="Size configuration already exists for this template and size")
+        
+        new_size_config = SizeConfig(
+            user_id=current_user.id,
+            template_name=size_config.template_name,
+            size_name=size_config.size_name,
+            width_inches=size_config.width_inches,
+            height_inches=size_config.height_inches,
+            description=size_config.description
+        )
+        
+        db.add(new_size_config)
+        db.commit()
+        db.refresh(new_size_config)
+        
+        return new_size_config
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error creating size config: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create size configuration")
+
+@app.put('/api/size-configs/{config_id}', response_model=SizeConfigOut)
+def update_size_config(config_id: int, size_config: SizeConfigUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Update an existing size configuration."""
+    try:
+        existing_config = db.query(SizeConfig).filter(
+            SizeConfig.id == config_id,
+            SizeConfig.user_id == current_user.id
+        ).first()
+        
+        if not existing_config:
+            raise HTTPException(status_code=404, detail="Size configuration not found")
+        
+        # Update fields if provided
+        if size_config.template_name is not None:
+            existing_config.template_name = size_config.template_name
+        if size_config.size_name is not None:
+            existing_config.size_name = size_config.size_name
+        if size_config.width_inches is not None:
+            existing_config.width_inches = size_config.width_inches
+        if size_config.height_inches is not None:
+            existing_config.height_inches = size_config.height_inches
+        if size_config.description is not None:
+            existing_config.description = size_config.description
+        if size_config.is_active is not None:
+            existing_config.is_active = size_config.is_active
+        
+        db.commit()
+        db.refresh(existing_config)
+        
+        return existing_config
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating size config {config_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update size configuration")
+
+@app.delete('/api/size-configs/{config_id}')
+def delete_size_config(config_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a size configuration (soft delete by setting is_active to False)."""
+    try:
+        size_config = db.query(SizeConfig).filter(
+            SizeConfig.id == config_id,
+            SizeConfig.user_id == current_user.id
+        ).first()
+        
+        if not size_config:
+            raise HTTPException(status_code=404, detail="Size configuration not found")
+        
+        size_config.is_active = False
+        db.commit()
+        
+        return {'success': True, 'message': 'Size configuration deleted successfully'}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting size config {config_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete size configuration")
+
+# --- Get Canvas and Size Configurations for Resizing ---
+@app.get('/api/resizing-configs/{template_name}')
+def get_resizing_configs(template_name: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get canvas and size configurations for a specific template name, formatted for resizing.py."""
+    try:
+        # Get canvas configuration
+        canvas_config = db.query(CanvasConfig).filter(
+            CanvasConfig.user_id == current_user.id,
+            CanvasConfig.template_name == template_name,
+            CanvasConfig.is_active == True
+        ).first()
+        
+        # Get size configurations
+        size_configs = db.query(SizeConfig).filter(
+            SizeConfig.user_id == current_user.id,
+            SizeConfig.template_name == template_name,
+            SizeConfig.is_active == True
+        ).all()
+        
+        # Format for resizing.py compatibility
+        canvas_data = {}
+        if canvas_config:
+            canvas_data = {
+                'width': canvas_config.width_inches,
+                'height': canvas_config.height_inches
+            }
+        
+        sizing_data = {}
+        for size_config in size_configs:
+            if size_config.size_name:
+                sizing_data[size_config.size_name] = {
+                    'width': size_config.width_inches,
+                    'height': size_config.height_inches
+                }
+            else:
+                # For templates without size names, use template name as key
+                sizing_data[template_name] = {
+                    'width': size_config.width_inches,
+                    'height': size_config.height_inches
+                }
+        
+        return {
+            'canvas': canvas_data,
+            'sizing': sizing_data
+        }
+    except Exception as e:
+        print(f"Error getting resizing configs for {template_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to get resizing configurations")
+
+
 @app.get("/")
 async def serve_frontend():
     """Serve the React frontend."""
@@ -1785,11 +2101,3 @@ async def serve_frontend_routes(full_path: str):
         return FileResponse(index_path)
     else:
         return {"message": ERROR_MESSAGES['frontend_not_built']}
-
-# Example usage for a protected endpoint:
-# @app.get('/api/protected')
-# def protected_route(current_user: User = Depends(get_current_user)):
-#     return {"message": f"Hello, {current_user.email}"}
-
-
-
