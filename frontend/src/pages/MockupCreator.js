@@ -1,153 +1,136 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi';
+import ViewMockupModal from '../components/ViewMockupModal';
+import EditMockupModal from '../components/EditMockupModal';
+import DeleteMockupModal from '../components/DeleteMockupModal';
 
 const MockupCreator = () => {
   const api = useApi();
-  const [mockupImage, setMockupImage] = useState(null);
-  const [points, setPoints] = useState([]);
-  const [drawingMode, setDrawingMode] = useState('point'); // 'point' or 'rectangle'
-  const [rectStart, setRectStart] = useState(null);
-  const [masks, setMasks] = useState([]);
-  const [currentMaskIndex, setCurrentMaskIndex] = useState(0);
-  const [numMasks, setNumMasks] = useState(1);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState('');
-  const [templates, setTemplates] = useState([]);
-  const [loadingTemplates, setLoadingTemplates] = useState(true);
-  const [message, setMessage] = useState('');
-  const [existingMaskData, setExistingMaskData] = useState(null);
-  const [loadingMaskData, setLoadingMaskData] = useState(false);
   const canvasRef = useRef(null);
+  
+  // Workflow state
+  const [currentStep, setCurrentStep] = useState(1); // 1: Template, 2: Images, 3: Masks, 4: Final
+  const [showModal, setShowModal] = useState(false);
+  
+  // Step 1: Template Selection
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  
+  // Step 2: Image Selection
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [imageFiles, setImageFiles] = useState([]);
+  
+  // Step 3: Mask Creation
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [currentMaskIndex, setCurrentMaskIndex] = useState(0);
+  const [masksPerImage, setMasksPerImage] = useState({}); // {imageIndex: numMasks}
+  const [allMasks, setAllMasks] = useState({}); // {imageIndex: {maskIndex: {points, isPolygon, isCropped, alignment}}}
+  
+  // Canvas state
+  const [points, setPoints] = useState([]);
+  const [rectStart, setRectStart] = useState(null);
+  const [drawingMode, setDrawingMode] = useState('point');
+  const [currentImage, setCurrentImage] = useState(null);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [isDrawing, setIsDrawing] = useState(false);
   const [scaleFactor, setScaleFactor] = useState(1.0);
-  const [startingName, setStartingName] = useState(100);
-  const [storedMasks, setStoredMasks] = useState([]);
-  const [storedImageSize, setStoredImageSize] = useState({ width: 0, height: 0 });
-  const [showMockupModal, setShowMockupModal] = useState(false);
-  const [baseMockups, setBaseMockups] = useState([]);
-  const [loadingBaseMockups, setLoadingBaseMockups] = useState(false);
-  const [mockupError, setMockupError] = useState('');
+  const [rectangleFinalized, setRectangleFinalized] = useState(false);
+  
+  // Step 4: Final Details
+  const [mockupName, setMockupName] = useState('');
+  const [startingNumber, setStartingNumber] = useState(100);
+  
+  // UI state
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  
+  // Existing mockups
+  const [existingMockups, setExistingMockups] = useState([]);
+  const [loadingMockups, setLoadingMockups] = useState(true);
 
-  // Load user templates on component mount
+  // Modal states
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [selectedMockup, setSelectedMockup] = useState(null);
+
+  // Add new state for rectangle drawing
+  const [isDrawingRect, setIsDrawingRect] = useState(false);
+  const [rectPreview, setRectPreview] = useState(null);
+
   useEffect(() => {
-    loadUserTemplates();
+    loadTemplates();
+    loadExistingMockups();
   }, []);
 
-  // Load existing mask data when template is selected
-  useEffect(() => {
-    if (selectedTemplate) {
-      loadExistingMaskData(selectedTemplate);
-    }
-  }, [selectedTemplate]);
+  const setMode = (mode) => {
+    setDrawingMode(mode);
+    setPoints([]);
+    setRectStart(null);
+    setMessage('');
+  };
 
-  const loadUserTemplates = async () => {
+  const loadTemplates = async () => {
     try {
-      setLoadingTemplates(true);
-      const response = await api.get('/api/user-templates');
+      const response = await api.get('/settings/product-template');
       setTemplates(response);
-      
-      // Set default template if available
-      if (response.length > 0) {
-        setSelectedTemplate(response[0].name);
-      }
     } catch (error) {
       console.error('Error loading templates:', error);
       setMessage('Failed to load templates');
-    } finally {
-      setLoadingTemplates(false);
     }
   };
 
-  const loadExistingMaskData = async (templateName) => {
-    if (!templateName) {
-      setExistingMaskData(null);
-      return;
-    }
-
+  const loadExistingMockups = async () => {
     try {
-      setLoadingMaskData(true);
-      const response = await api.get(`/api/user-mask-data/${templateName}`);
-      
-      if (response.success) {
-        setExistingMaskData(response);
-        setMessage(`Found existing mask data for ${templateName}: ${response.masks_count} masks`);
-      } else {
-        setExistingMaskData(null);
-        setMessage(`No existing mask data found for ${templateName}`);
-      }
+      setLoadingMockups(true);
+      const response = await api.get('/mockups/');
+      setExistingMockups(response.mockups || []);
     } catch (error) {
-      console.error('Error loading mask data:', error);
-      setExistingMaskData(null);
-      setMessage('Failed to load existing mask data');
+      console.error('Error loading mockups:', error);
+      setMessage('Failed to load existing mockups');
     } finally {
-      setLoadingMaskData(false);
+      setLoadingMockups(false);
     }
   };
 
-  const openMockupModal = async () => {
-    setShowMockupModal(true);
-    setMockupError('');
-    setLoadingBaseMockups(true);
-    try {
-      if (selectedTemplate) {
-        const response = await api.get(`/api/base-mockups/${selectedTemplate}`);
-        setBaseMockups(response.images || []);
-      } else {
-        setBaseMockups([]);
-      }
-    } catch (e) {
-      setBaseMockups([]);
-      setMockupError('Failed to load base mockups');
-    } finally {
-      setLoadingBaseMockups(false);
-    }
+  // Modal handlers
+  const handleViewMockup = (mockup) => {
+    setSelectedMockup(mockup);
+    setViewModalOpen(true);
   };
 
-  const handleSelectBaseMockup = async (url) => {
-    try {
-      const img = new window.Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        setMockupImage(img);
-        setShowMockupModal(false);
-        setMockupError('');
-        // Calculate scale factor for display
-        const maxSize = 1200;
-        const scale = Math.min(maxSize / img.width, maxSize / img.height);
-        setScaleFactor(scale);
-      };
-      img.onerror = () => setMockupError('Failed to load image');
-      img.src = url;
-    } catch (e) {
-      setMockupError('Failed to load image');
-    }
+  const handleEditMockup = (mockup) => {
+    setSelectedMockup(mockup);
+    setEditModalOpen(true);
   };
 
-  const handleUploadMockup = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-    const img = new window.Image();
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      img.onload = () => {
-        if (img.width > 2048 || img.height > 2048) {
-          setMockupError('Image must be 2048x2048 pixels or smaller');
-          return;
-        }
-        setMockupImage(img);
-        setShowMockupModal(false);
-        setMockupError('');
-        // Calculate scale factor for display
-        const maxSize = 1200;
-        const scale = Math.min(maxSize / img.width, maxSize / img.height);
-        setScaleFactor(scale);
-      };
-      img.onerror = () => setMockupError('Failed to load image');
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
+  const handleDeleteMockup = (mockup) => {
+    setSelectedMockup(mockup);
+    setDeleteModalOpen(true);
   };
 
+  const handleModalClose = () => {
+    setViewModalOpen(false);
+    setEditModalOpen(false);
+    setDeleteModalOpen(false);
+    setSelectedMockup(null);
+  };
+
+  const handleMockupUpdate = () => {
+    loadExistingMockups();
+  };
+
+  const handleMockupDelete = () => {
+    loadExistingMockups();
+  };
+
+  const handleImageUpload = (event) => {
+    const files = Array.from(event.target.files);
+    setImageFiles(files);
+    setSelectedImages(files.map(file => URL.createObjectURL(file)));
+  };
+
+  // Replace drawImage and drawPoints with the more advanced logic from MockupCreator.js
   const getCanvasContext = () => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
@@ -157,30 +140,32 @@ const MockupCreator = () => {
 
   const drawImage = () => {
     const context = getCanvasContext();
-    if (!context || !context.canvas || !context.ctx || !mockupImage) return;
+    if (!context || !context.canvas || !context.ctx || !currentImage) return;
     const { canvas, ctx } = context;
 
-    // Set canvas size
-    const displayWidth = mockupImage.width * scaleFactor;
-    const displayHeight = mockupImage.height * scaleFactor;
-    canvas.width = displayWidth;
-    canvas.height = displayHeight;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw mockup image
-    ctx.drawImage(mockupImage, 0, 0, displayWidth, displayHeight);
-
-    // Draw existing masks
-    masks.forEach((mask, index) => {
-      if (index < currentMaskIndex) {
-        drawMask(mask.points, index === currentMaskIndex - 1 ? '#00ff00' : '#ffff00');
-      }
-    });
-
-    // Draw current points
-    drawPoints();
+    const img = new window.Image();
+    img.onload = () => {
+      // Set canvas size
+      let displayWidth = img.width;
+      let displayHeight = img.height;
+      // Calculate scale factor for display (max 900x700)
+      const maxWidth = 900;
+      const maxHeight = 700;
+      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+      displayWidth = img.width * scale;
+      displayHeight = img.height * scale;
+      setScaleFactor(scale);
+      canvas.width = displayWidth;
+      canvas.height = displayHeight;
+      setImageSize({ width: displayWidth, height: displayHeight });
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw image
+      ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
+      // Draw current points and overlays
+      drawPoints();
+    };
+    img.src = currentImage;
   };
 
   const drawPoints = () => {
@@ -197,7 +182,6 @@ const MockupCreator = () => {
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
       ctx.stroke();
-
       // Add point numbers
       ctx.fillStyle = '#ffffff';
       ctx.font = '16px Arial';
@@ -218,33 +202,18 @@ const MockupCreator = () => {
 
     // Draw rectangle preview
     if (drawingMode === 'rectangle' && rectStart) {
-      // Note: We can't get mouse position here without the event
-      // The rectangle preview will be updated on mouse move
+      // Draw preview rectangle
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeRect(rectStart.x, rectStart.y, points[0]?.x - rectStart.x, points[0]?.y - rectStart.y);
+      ctx.setLineDash([]);
     }
-  };
-
-  const drawMask = (maskPoints, color) => {
-    const context = getCanvasContext();
-    if (!context || !context.ctx || !maskPoints.length) return;
-    const { ctx } = context;
-
-    ctx.beginPath();
-    ctx.moveTo(maskPoints[0].x, maskPoints[0].y);
-    for (let i = 1; i < maskPoints.length; i++) {
-      ctx.lineTo(maskPoints[i].x, maskPoints[i].y);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    ctx.fillStyle = color + '40';
-    ctx.fill();
   };
 
   const getMousePos = (event) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
-
     const rect = canvas.getBoundingClientRect();
     return {
       x: (event.clientX - rect.left) * (canvas.width / rect.width),
@@ -253,17 +222,26 @@ const MockupCreator = () => {
   };
 
   const handleCanvasClick = (event) => {
-    if (!mockupImage) return;
-
+    if (!currentImage) return;
     const mousePos = getMousePos(event);
     if (!mousePos) return;
-
+    console.log(rectStart)
     if (drawingMode === 'point') {
       setPoints([...points, mousePos]);
     } else if (drawingMode === 'rectangle') {
+      // if (rectangleFinalized) {
+      //   // Reset and start a new rectangle
+      //   setRectStart(mousePos);
+      //   setIsDrawing(true);
+      //   setPoints([mousePos]);
+      //   setRectangleFinalized(false);
+      //   return;
+      // }
       if (!rectStart) {
         setRectStart(mousePos);
+        setPoints([mousePos]);
       } else {
+        console.log(mousePos)
         // Create rectangle points
         const rectPoints = [
           rectStart,
@@ -281,7 +259,8 @@ const MockupCreator = () => {
     if (drawingMode === 'rectangle' && rectStart) {
       const mousePos = getMousePos(event);
       if (mousePos) {
-        // Redraw with rectangle preview
+        // Update rectangle preview
+        setPoints([mousePos]);
         drawImage();
         const { ctx } = getCanvasContext();
         if (ctx) {
@@ -301,467 +280,663 @@ const MockupCreator = () => {
       return;
     }
 
-    // Scale points back to original image size
     const scaledPoints = points.map(point => ({
       x: point.x / scaleFactor,
       y: point.y / scaleFactor
     }));
 
-    console.log('DEBUG: Scaled points:', scaledPoints);
-    const newMask = {
+    const maskData = {
       points: scaledPoints,
-      displayPoints: [...points]
+      displayPoints: [...points],
+      isCropped: false,
+      alignment: 'center'
     };
-    console.log('DEBUG: masks:', [...masks, newMask]);
 
-    setMasks([...masks, newMask]);
-    setPoints([]);
-    setRectStart(null);
-    setCurrentMaskIndex(currentMaskIndex + 1);
+    setAllMasks(prev => ({
+      ...prev,
+      [currentImageIndex]: {
+        ...prev[currentImageIndex],
+        [currentMaskIndex]: maskData
+      }
+    }));
 
-    if (currentMaskIndex + 1 >= numMasks) {
-      // All masks created
-      saveMasks([...masks, newMask]);
+    // Move to next mask or next image
+    const currentImageMasks = masksPerImage[currentImageIndex] || 1;
+    if (currentMaskIndex < currentImageMasks - 1) {
+      setCurrentMaskIndex(prev => prev + 1);
+      setPoints([]);
+      setRectStart(null);
+    } else {
+      // Move to next image
+      if (currentImageIndex < selectedImages.length - 1) {
+        setCurrentImageIndex(prev => prev + 1);
+        setCurrentMaskIndex(0);
+        setPoints([]);
+        setRectStart(null);
+      } else {
+        // All done, move to final step
+        setCurrentStep(4);
+      }
     }
   };
 
   const resetCurrentMask = () => {
     setPoints([]);
     setRectStart(null);
+  };
+
+  const goToNextStep = () => {
+    if (currentStep === 1 && !selectedTemplate) {
+      setMessage('Please select a template');
+      return;
+    }
+    if (currentStep === 2 && selectedImages.length === 0) {
+      setMessage('Please select at least one image');
+      return;
+    }
+    
+    setCurrentStep(prev => prev + 1);
     setMessage('');
   };
 
-  const saveMasks = async (masks_data) => {
-    if (!selectedTemplate) {
-      setMessage('Please select a template first');
-      return;
-    }
-
-    if (existingMaskData) {
-      setMessage('Please clear existing mask data first or select a different template');
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      setMessage('');
-      const maskPoints = masks_data.map(mask => mask.points);
-      const imageWidth = mockupImage ? mockupImage.width : 1000;
-      const imageHeight = mockupImage ? mockupImage.height : 1000;
-      const dataToSend = {
-        masks: maskPoints,
-        points: maskPoints, // for compatibility
-        starting_name: startingName,
-        imageType: selectedTemplate,
-        imageWidth,
-        imageHeight
-      };
-      console.log('DEBUG: Data being sent to API:', dataToSend);
-      await api.post('/api/masks', dataToSend);
-
-      setMessage('Masks saved successfully!');
-      setMasks([]);
-      setCurrentMaskIndex(0);
-      setPoints([]);
-      loadExistingMaskData(selectedTemplate);
-      // Fetch and display stored masks
-      fetchStoredMasks(selectedTemplate);
-    } catch (error) {
-      console.error('Error saving masks:', error);
-      setMessage('Error saving masks: ' + (error.message || 'Unknown error'));
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const fetchStoredMasks = async (templateName) => {
-    try {
-      const response = await api.get(`/api/user-mask-data/${templateName}`);
-      if (response.success && response.masks && response.inspection) {
-        // Use the inspection data to get the mask arrays and image size
-        const maskAnalysis = response.inspection.mask_analysis || [];
-        setStoredMasks(maskAnalysis.map(m => m.mask_array).filter(Boolean));
-        setStoredImageSize({
-          width: response.inspection.image_width || 1000,
-          height: response.inspection.image_height || 1000
-        });
-      } else {
-        setStoredMasks([]);
-        setStoredImageSize({ width: 0, height: 0 });
-      }
-    } catch (error) {
-      setStoredMasks([]);
-      setStoredImageSize({ width: 0, height: 0 });
-    }
-  };
-
-  const setMode = (mode) => {
-    setDrawingMode(mode);
-    setPoints([]);
-    setRectStart(null);
+  const goToPreviousStep = () => {
+    setCurrentStep(prev => prev - 1);
     setMessage('');
   };
 
-  const resetAll = () => {
-    setMasks([]);
+  const startWorkflow = () => {
+    setShowModal(true);
+    setCurrentStep(1);
+    setSelectedTemplate(null);
+    setSelectedImages([]);
+    setImageFiles([]);
+    setCurrentImageIndex(0);
     setCurrentMaskIndex(0);
-    setPoints([]);
-    setRectStart(null);
+    setMasksPerImage({});
+    setAllMasks({});
+    setMockupName('');
+    setStartingNumber(100);
     setMessage('');
   };
 
+  const createMockup = async () => {
+    if (!mockupName.trim()) {
+      setMessage('Please enter a mockup name');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Create mockup group
+      const mockupGroup = await api.post('/mockups/group', {
+        name: mockupName,
+        product_template_id: selectedTemplate.id,
+        starting_name: startingNumber
+      });
+
+      // Upload all images at once
+      const formData = new FormData();
+      imageFiles.forEach(file => {
+        formData.append('files', file);
+      });
+      formData.append('mockup_id', mockupGroup.id);
+            const uploadResponse = await api.postFormData('/mockups/upload', formData);
+      const uploadedImages = uploadResponse.uploaded_images || uploadResponse;
+  
+      console.log('selectedImages:', selectedImages)
+      console.log('allMasks:', allMasks)
+      console.log('uploadResponse:', uploadResponse)
+      console.log('uploadedImages:', uploadedImages)
+      console.log('uploadedImages type:', typeof uploadedImages)
+      console.log('uploadedImages length:', uploadedImages?.length)
+      console.log('uploadedImages is array:', Array.isArray(uploadedImages))
+      // Create mask data for each image
+      for (let imageIndex = 0; imageIndex < selectedImages.length; imageIndex++) {
+        const imageMasks = allMasks[imageIndex] || {};
+        
+        for (let maskIndex = 0; maskIndex < Object.keys(imageMasks).length; maskIndex++) {
+          const maskData = imageMasks[maskIndex];
+          if (maskData && uploadedImages[imageIndex]) {
+            // Convert points from {x, y} objects to [x, y] arrays
+            const convertedPoints = maskData.points.map(point => [point.x, point.y]);
+            
+            console.log(convertedPoints);
+            // Create mask data using the actual image ID
+            await api.post(`/mockups/images/${uploadedImages[imageIndex].id}/mask-data`, {
+              mockup_image_id: uploadedImages[imageIndex].id,
+              masks: [convertedPoints],
+              points: [convertedPoints],
+              is_cropped: maskData.isCropped,
+              alignment: maskData.alignment
+            });
+          }
+        }
+      }
+
+      setMessage('Mockup created successfully!');
+      setShowModal(false);
+      loadExistingMockups(); // Refresh the mockups list
+    } catch (error) {
+      console.error('Error creating mockup:', error);
+      setMessage('Failed to create mockup');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update current image when image index changes
+  useEffect(() => {
+    if (selectedImages.length > 0 && currentImageIndex < selectedImages.length) {
+      setCurrentImage(selectedImages[currentImageIndex]);
+    }
+  }, [currentImageIndex, selectedImages]);
+
+  // Redraw canvas when image changes
   useEffect(() => {
     drawImage();
-  }, [mockupImage, points, masks, currentMaskIndex, rectStart]);
+  }, [currentImage]);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 py-4 sm:py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center text-white mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2 sm:mb-4">Mockup Creator</h1>
-          <p className="text-sm sm:text-base lg:text-xl opacity-90 px-4">Create masks for mockup images by drawing polygons or rectangles</p>
-        </div>
+  // Redraw points when they change
+  useEffect(() => {
+    drawPoints();
+  }, [points, rectPreview]);
 
-        {/* Message Display */}
-        {message && (
-          <div className={`card p-4 mb-6 ${
-            message.includes('successfully') 
-              ? 'bg-green-100 text-green-700 border border-green-300' 
-              : 'bg-red-100 text-red-700 border border-red-300'
-          }`}>
-            {message}
+
+  const renderStep1 = () => (
+    <div className="space-y-6">
+      <h3 className="text-xl font-semibold text-gray-900">Step 1: Select Template</h3>
+      <p className="text-gray-600">Choose the template that will be associated with your mockups.</p>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {templates.map((template) => (
+          <div
+            key={template.id}
+            onClick={() => setSelectedTemplate(template)}
+            className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+              selectedTemplate?.id === template.id
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <h4 className="font-semibold text-gray-900">{template.name}</h4>
+            {template.template_title && (
+              <p className="text-sm text-gray-600">{template.template_title}</p>
+            )}
+            <div className="text-xs text-gray-500 mt-2">
+              <div>Price: ${template.price || 0}</div>
+              <div>Type: {template.type || 'N/A'}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderStep2 = () => (
+    <div className="space-y-6">
+      <h3 className="text-xl font-semibold text-gray-900">Step 2: Select Images</h3>
+      <p className="text-gray-600">Choose one or more images to create mockups from.</p>
+      
+      <div className="space-y-4">
+        <input
+          type="file"
+          multiple
+          accept="image/*"
+          onChange={handleImageUpload}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        />
+        
+        {selectedImages.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {selectedImages.map((url, index) => (
+              <div key={index} className="relative">
+                <img
+                  src={url}
+                  alt={`Selected image ${index + 1}`}
+                  className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
+                />
+                <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                  {index + 1}
+                </div>
+              </div>
+            ))}
           </div>
         )}
+      </div>
+    </div>
+  );
 
-        {/* Controls */}
-        <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Select or Upload Mockup Image:
-              </label>
-              <button
-                type="button"
-                onClick={openMockupModal}
-                className="input-field bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-              >
-                Choose Mockup Image
-              </button>
-              {mockupImage && (
-                <div className="mt-2 text-xs text-gray-600">Current image: {mockupImage.src.slice(0, 40)}...</div>
-              )}
-            </div>
+  const renderStep3 = () => (
+    <div className="space-y-6">
+      <h3 className="text-xl font-semibold text-gray-900">Step 3: Create Masks</h3>
+      <p className="text-gray-600">
+        Creating masks for image {currentImageIndex + 1} of {selectedImages.length}
+      </p>
+      
+      {/* Image Progress */}
+      <div className="flex items-center space-x-4">
+        <div className="flex-1 bg-gray-200 rounded-full h-2">
+          <div
+            className="bg-blue-500 h-2 rounded-full transition-all"
+            style={{ width: `${((currentImageIndex + 1) / selectedImages.length) * 100}%` }}
+          />
+        </div>
+        <span className="text-sm text-gray-600">
+          {currentImageIndex + 1} / {selectedImages.length}
+        </span>
+      </div>
 
-            <div className="space-y-2">
-              <label htmlFor="template-select" className="block text-sm font-medium text-gray-700">
-                Select Template:
-              </label>
-              {loadingTemplates ? (
-                <div className="input-field bg-gray-100 text-gray-500">Loading templates...</div>
-              ) : (
-                                  <select
-                    id="template-select"
-                    value={selectedTemplate}
-                    onChange={(e) => {
-                      setSelectedTemplate(e.target.value);
-                      loadExistingMaskData(e.target.value);
-                    }}
-                    className="input-field"
-                  >
-                  <option value="">Select a template</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.name}>
-                      {template.template_title || template.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+      {/* Current Image */}
+      <div className="flex justify-center">
+        <img
+          src={selectedImages[currentImageIndex]}
+          alt={`Image ${currentImageIndex + 1}`}
+          className="max-h-64 object-contain rounded-lg border-2 border-gray-200"
+        />
+      </div>
 
-            <div className="space-y-2">
-              <label htmlFor="num-masks" className="block text-sm font-medium text-gray-700">
-                Number of Masks:
-              </label>
-              <select
-                id="num-masks"
-                value={numMasks}
-                onChange={(e) => setNumMasks(parseInt(e.target.value))}
-                className="input-field"
-              >
-                <option value={1}>1</option>
-                <option value={2}>2</option>
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Drawing Mode:</label>
-              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                <button
-                  className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-                    drawingMode === 'point' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                  onClick={() => setMode('point')}
-                >
-                  Point Mode
-                </button>
-                <button
-                  className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-                    drawingMode === 'rectangle' 
-                      ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                  onClick={() => setMode('rectangle')}
-                >
-                  Rectangle Mode
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Actions:</label>
-              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-                <button 
-                  onClick={createMask} 
-                  disabled={points.length < 3 || isSaving}
-                  className={`px-3 py-2 rounded-lg font-medium transition-colors text-sm ${
-                    points.length < 3 || isSaving
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                      : 'bg-green-500 text-white hover:bg-green-600'
-                  }`}
-                >
-                  {isSaving ? 'Saving...' : `Create Mask (${currentMaskIndex + 1}/${numMasks})`}
-                </button>
-                <button 
-                  onClick={resetCurrentMask}
-                  disabled={isSaving}
-                  className="px-3 py-2 bg-gray-500 text-white rounded-lg font-medium hover:bg-gray-600 transition-colors disabled:opacity-50 text-sm"
-                >
-                  Reset Current
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Reset All:</label>
-              <button 
-                onClick={resetAll}
-                disabled={isSaving}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg font-medium hover:bg-red-600 transition-colors disabled:opacity-50"
-              >
-                Reset All
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="starting-name" className="block text-sm font-medium text-gray-700">
-                Starting Name:
-              </label>
-              <input
-                id="starting-name"
-                type="number"
-                min={1}
-                value={startingName}
-                onChange={e => setStartingName(Number(e.target.value))}
-                className="input-field"
-              />
-            </div>
-          </div>
+      {/* Mask Configuration */}
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Number of masks for this image:
+          </label>
+          <input
+            type="number"
+            min="1"
+            max="10"
+            value={masksPerImage[currentImageIndex] || 1}
+            onChange={(e) => setMasksPerImage(prev => ({
+              ...prev,
+              [currentImageIndex]: parseInt(e.target.value) || 1
+            }))}
+            className="w-20 px-3 py-2 border border-gray-300 rounded-lg"
+          />
         </div>
 
-        {/* Canvas */}
-        <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
-          {mockupImage ? (
-            <div className="flex justify-center overflow-x-auto">
-              <canvas
-                ref={canvasRef}
-                onClick={handleCanvasClick}
-                onMouseMove={handleCanvasMouseMove}
-                className="border-2 border-gray-300 cursor-crosshair rounded-lg max-w-full"
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Mask {currentMaskIndex + 1} of {masksPerImage[currentImageIndex] || 1}
+          </label>
+          
+          {/* Mode Selection */}
+          <div className="flex space-x-4 mb-4">
+            <label className="flex items-center">
+              <input
+                type="radio"
+                checked={drawingMode === 'point' }
+                onChange={() => setMode('point')}
+                className="mr-2"
               />
+              <span className="text-sm">Point Mode</span>
+            </label>
+            <label className="flex items-center">
+              <input
+                type="radio"
+                checked={drawingMode === 'rectangle' }
+                onChange={() => setMode('rectangle')}
+                className="mr-2"
+              />
+              <span className="text-sm">Rectangle Mode</span>
+            </label>
+          </div>
+
+                     {/* Canvas */}
+           <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+             <canvas
+               ref={canvasRef}
+               onClick={handleCanvasClick}
+               onMouseMove={handleCanvasMouseMove}
+               className="cursor-crosshair block mx-auto"
+               style={{ 
+                 maxWidth: '900px', 
+                 maxHeight: '700px',
+                 width: imageSize.width ? Math.min(imageSize.width, 900) : 900,
+                 height: imageSize.height ? Math.min(imageSize.height, 700) : 700,
+                 display: 'block'
+               }}
+             />
+           </div>
+
+                     {/* Instructions */}
+           <div className="mt-4 text-sm text-gray-600">
+             {drawingMode === 'points' ? (
+               <p>Click to add points. You need at least 3 points to create a mask.</p>
+             ) : (
+               <p>Click and drag to create a rectangle mask.</p>
+             )}
+             <p className="mt-2 text-xs text-gray-500">
+               Canvas size: {imageSize.width} x {imageSize.height} | Points: {points.length}
+             </p>
+           </div>
+
+          {/* Actions */}
+          <div className="flex space-x-4 mt-4">
+            <button
+              onClick={createMask}
+              disabled={points.length < 3}
+              className={`px-4 py-2 rounded-lg font-medium ${
+                points.length < 3
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-500 text-white hover:bg-green-600'
+              }`}
+            >
+              Create Mask
+            </button>
+            <button
+              onClick={resetCurrentMask}
+              className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep4 = () => (
+    <div className="space-y-6">
+      <h3 className="text-xl font-semibold text-gray-900">Step 4: Final Details</h3>
+      <p className="text-gray-600">Enter the final details for your mockup.</p>
+      
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Mockup Name:
+          </label>
+          <input
+            type="text"
+            value={mockupName}
+            onChange={(e) => setMockupName(e.target.value)}
+            placeholder="Enter a name for your mockup"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Starting Number:
+          </label>
+          <input
+            type="number"
+            min="1"
+            value={startingNumber}
+            onChange={(e) => setStartingNumber(parseInt(e.target.value) || 100)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Summary */}
+        <div className="bg-gray-50 p-4 rounded-lg">
+          <h4 className="font-medium text-gray-900 mb-2">Summary:</h4>
+          <ul className="text-sm text-gray-600 space-y-1">
+            <li>Template: {selectedTemplate?.name}</li>
+            <li>Images: {selectedImages.length}</li>
+            <li>Total Masks: {Object.values(allMasks).reduce((sum, masks) => sum + Object.keys(masks).length, 0)}</li>
+            <li>Name: {mockupName || 'Not set'}</li>
+            <li>Starting Number: {startingNumber}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderModalContent = () => {
+    switch (currentStep) {
+      case 1:
+        return renderStep1();
+      case 2:
+        return renderStep2();
+      case 3:
+        return renderStep3();
+      case 4:
+        return renderStep4();
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Mockup Creator</h1>
+          <p className="text-gray-600 mb-6">
+            Create professional mockups with custom masks and templates
+          </p>
+          <button
+            onClick={startWorkflow}
+            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+          >
+            Add New Base Mockup
+          </button>
+        </div>
+
+        {/* Existing Mockups Section */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-semibold text-gray-900">Your Mockups</h2>
+            <button
+              onClick={loadExistingMockups}
+              disabled={loadingMockups}
+              className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+            >
+              {loadingMockups ? 'Loading...' : 'Refresh'}
+            </button>
+          </div>
+
+          {loadingMockups ? (
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading your mockups...</p>
             </div>
-          ) : (
-            <div className="text-center py-8 sm:py-12">
+          ) : existingMockups.length === 0 ? (
+            <div className="text-center py-8 bg-gray-50 rounded-lg">
               <div className="text-gray-400 mb-4">
-                <svg className="mx-auto h-8 w-8 sm:h-12 sm:w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
-              <p className="text-gray-600 text-sm sm:text-base">Please upload a mockup image to start creating masks</p>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No mockups yet</h3>
+              <p className="text-gray-600 mb-4">Create your first mockup to get started</p>
+              <button
+                onClick={startWorkflow}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Create Your First Mockup
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white shadow-md rounded-lg overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Mockup Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Template Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Starting Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Images
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Masks
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {existingMockups.map((mockup) => (
+                    <tr key={mockup.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {mockup.name || `Mockup #${mockup.id.slice(0, 8)}`}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {mockup.template_name || mockup.product_template_id ? `Template ${mockup.product_template_id}` : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {mockup.starting_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {mockup.mockup_images?.length || 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {mockup.mockup_images?.reduce((total, image) => 
+                          total + (image.mask_data?.length || 0), 0) || 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleViewMockup(mockup)}
+                            className="text-blue-600 hover:text-blue-900 px-2 py-1 rounded text-xs"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => handleEditMockup(mockup)}
+                            className="text-green-600 hover:text-green-900 px-2 py-1 rounded text-xs"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMockup(mockup)}
+                            className="text-red-600 hover:text-red-900 px-2 py-1 rounded text-xs"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
 
-        {/* Instructions */}
-        <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Instructions:</h3>
-          <ul className="space-y-2 text-gray-600 text-sm sm:text-base">
-            <li className="flex items-start">
-              <span className="text-blue-500 mr-2">•</span>
-              <span><strong>Select Template:</strong> Choose the template that will use these masks</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-blue-500 mr-2">•</span>
-              <span><strong>Point Mode:</strong> Click to add points, then click "Create Mask" to close the shape</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-blue-500 mr-2">•</span>
-              <span><strong>Rectangle Mode:</strong> Click and drag to create a rectangle</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-blue-500 mr-2">•</span>
-              <span>You need at least 3 points to create a mask</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-blue-500 mr-2">•</span>
-              <span>Use "Reset Current" to start over with the current mask</span>
-            </li>
-            <li className="flex items-start">
-              <span className="text-blue-500 mr-2">•</span>
-              <span>Masks will be automatically saved to the database when all are created</span>
-            </li>
-          </ul>
-        </div>
+        {message && (
+          <div className={`p-4 rounded-lg mb-6 ${
+            message.includes('successfully') 
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {message}
+          </div>
+        )}
+      </div>
 
-        {/* Existing Mask Data */}
-        {existingMaskData && (
-          <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Existing Mask Data:</h3>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-2 space-y-1 sm:space-y-0">
-                <span className="text-sm font-medium text-blue-800">
-                  Template: <strong>{existingMaskData.template_name}</strong>
-                </span>
-                <span className="text-sm text-blue-600">
-                  {existingMaskData.masks_count} masks, {existingMaskData.points_count} point sets
-                </span>
-              </div>
-              <p className="text-sm text-blue-700">
-                Starting ID: {existingMaskData.starting_name}
-              </p>
-              <div className="mt-3">
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-gray-900">Create Mockups</h2>
                 <button
-                  onClick={() => {
-                    setExistingMaskData(null);
-                    setMessage('Existing mask data cleared. You can create new masks.');
-                  }}
-                  className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                  onClick={() => setShowModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
                 >
-                  Clear & Create New
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mask Summary */}
-        {masks.length > 0 && (
-          <div className="card p-4 sm:p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Created Masks:</h3>
-            <ul className="space-y-2">
-              {masks.map((mask, index) => (
-                <li key={index} className="flex items-center text-gray-600 text-sm sm:text-base">
-                  <span className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium mr-3">
-                    {index + 1}
-                  </span>
-                  Mask {index + 1}: {mask.points.length} points
-                </li>
-              ))}
-            </ul>
-            {selectedTemplate && (
-              <p className="text-sm text-gray-500 mt-2">
-                Template: <strong>{selectedTemplate}</strong>
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Mask Visualizations */}
-        {storedMasks.length > 0 && (
-          <div className="card p-4 sm:p-6 mb-6 sm:mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Stored Mask Visualizations:</h3>
-            <div className="flex flex-wrap gap-4">
-              {storedMasks.map((maskArray, idx) => (
-                <canvas
-                  key={idx}
-                  width={storedImageSize.width}
-                  height={storedImageSize.height}
-                  ref={el => {
-                    if (el && maskArray) {
-                      const ctx = el.getContext('2d');
-                      const imgData = ctx.createImageData(storedImageSize.width, storedImageSize.height);
-                      for (let y = 0; y < storedImageSize.height; y++) {
-                        for (let x = 0; x < storedImageSize.width; x++) {
-                          const i = y * storedImageSize.width + x;
-                          const val = maskArray[y] && maskArray[y][x] ? maskArray[y][x] : 0;
-                          imgData.data[i * 4 + 0] = val; // R
-                          imgData.data[i * 4 + 1] = val; // G
-                          imgData.data[i * 4 + 2] = val; // B
-                          imgData.data[i * 4 + 3] = 255; // A
-                        }
-                      }
-                      ctx.putImageData(imgData, 0, 0);
-                    }
-                  }}
-                  style={{ border: '1px solid #ccc', background: '#fff', maxWidth: 200, maxHeight: 200 }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Mockup Selection Modal */}
-        {showMockupModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-            <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full relative">
-              <button
-                className="absolute top-2 right-2 text-gray-500 hover:text-gray-700"
-                onClick={() => setShowMockupModal(false)}
-              >
-                &times;
-              </button>
-              <h2 className="text-lg font-semibold mb-4">Select a Base Mockup or Upload</h2>
-              {mockupError && <div className="mb-2 text-red-600">{mockupError}</div>}
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Upload Custom Image (max 2048x2048):</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleUploadMockup}
-                  className="input-field"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Or select a base mockup:</label>
-                {loadingBaseMockups ? (
-                  <div>Loading...</div>
-                ) : (
-                  <div className="flex flex-wrap gap-3 max-h-64 overflow-y-auto">
-                    {baseMockups.length === 0 && <div className="text-gray-500">No base mockups found.</div>}
-                    {baseMockups.map((img) => (
-                      <div
-                        key={img.filename}
-                        className="cursor-pointer border rounded hover:shadow-lg"
-                        onClick={() => handleSelectBaseMockup(img.url)}
-                        style={{ width: 100, height: 100, overflow: 'hidden' }}
-                      >
-                        <img
-                          src={img.url}
-                          alt={img.filename}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                        <div className="text-xs text-center truncate">{img.filename}</div>
-                      </div>
-                    ))}
+              
+              {/* Progress Steps */}
+              <div className="flex items-center mt-6 space-x-4">
+                {[1, 2, 3, 4].map((step) => (
+                  <div key={step} className="flex items-center">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                      step <= currentStep
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {step}
+                    </div>
+                    {step < 4 && (
+                      <div className={`w-12 h-1 mx-2 ${
+                        step < currentStep ? 'bg-blue-500' : 'bg-gray-200'
+                      }`} />
+                    )}
                   </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {renderModalContent()}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200 flex justify-between">
+              <button
+                onClick={goToPreviousStep}
+                disabled={currentStep === 1}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  currentStep === 1
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-gray-500 text-white hover:bg-gray-600'
+                }`}
+              >
+                Previous
+              </button>
+
+              <div className="flex space-x-4">
+                {currentStep < 4 ? (
+                  <button
+                    onClick={goToNextStep}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    onClick={createMockup}
+                    disabled={loading}
+                    className={`px-4 py-2 rounded-lg font-medium ${
+                      loading
+                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                        : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
+                  >
+                    {loading ? 'Creating...' : 'Create Mockup'}
+                  </button>
                 )}
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Action Modals */}
+      <ViewMockupModal
+        isOpen={viewModalOpen}
+        onClose={handleModalClose}
+        mockup={selectedMockup}
+      />
+      
+      <EditMockupModal
+        isOpen={editModalOpen}
+        onClose={handleModalClose}
+        mockup={selectedMockup}
+        onUpdate={handleMockupUpdate}
+      />
+      
+      <DeleteMockupModal
+        isOpen={deleteModalOpen}
+        onClose={handleModalClose}
+        mockup={selectedMockup}
+        onDelete={handleMockupDelete}
+      />
     </div>
   );
 };

@@ -4,9 +4,14 @@ import { useApi } from '../hooks/useApi';
 const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload, onUploadComplete }) => {
   const api = useApi();
   const [templates, setTemplates] = useState([]);
+  const [formData, setFormData] = useState([])
   const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [stage, setStage] = useState('template'); // 'template' or 'mockup'
+  const [mockups, setMockups] = useState([]);
+  const [selectedMockup, setSelectedMockup] = useState(null);
+  const [loadingMockups, setLoadingMockups] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -17,7 +22,7 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/user-templates');
+      const response = await api.get('/settings/product-template');
       setTemplates(response);
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -26,13 +31,43 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
     }
   };
 
+  const fetchMockups = async () => {
+    try {
+      setLoadingMockups(true);
+      const response = await api.get('/mockups/');
+      setMockups(response.mockups || []);
+    } catch (error) {
+      console.error('Error fetching mockups:', error);
+    } finally {
+      setLoadingMockups(false);
+    }
+  };
+
   const handleTemplateSelect = (template) => {
     setSelectedTemplate(template);
   };
 
-  const handleUpload = async () => {
+  const handleMockupSelect = (mockup) => {
+    setSelectedMockup(mockup);
+  };
+
+  const handleContinueToMockups = () => {
     if (!selectedTemplate) {
       alert('Please select a template first');
+      return;
+    }
+    fetchMockups();
+    setStage('mockup');
+  };
+
+  const handleBack = () => {
+    setStage('template');
+    setSelectedMockup(null);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedTemplate || !selectedMockup) {
+      alert('Please select both a template and mockup');
       return;
     }
 
@@ -44,27 +79,26 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
       
-      console.log('DEBUG: Starting upload process');
-      console.log('DEBUG: Selected template:', selectedTemplate);
-      console.log('DEBUG: Number of files:', files.length);
-      
       setUploading(true);
       try {
-        // Create FormData to send files and template info
+        // Create FormData object
         const formData = new FormData();
-        files.forEach((file, index) => {
+        
+        // Append each file to the FormData
+        files.forEach((file) => {
           formData.append('files', file);
-          console.log(`DEBUG: Added file ${index + 1}:`, file.name, file.size, 'bytes');
         });
+
+        // Add template name to FormData
         formData.append('template_name', selectedTemplate.name);
-        console.log('DEBUG: Template name added to FormData:', selectedTemplate.name);
-        console.log('DEBUG: FormData contents:', formData);
+        formData.append('mockup_id', selectedMockup.id);
+        console.log(formData);
+        const result = await api.postFormData('/mockups/upload-mockup', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          }
+        });
         
-        console.log('DEBUG: Making API call to /api/upload-mockup');
-        const result = await api.postFormData('/api/upload-mockup', formData);
-        console.log('DEBUG: Upload result:', result);
-        
-        // Handle digital files response
         let successMessage = 'Files uploaded successfully!';
         if (result.result?.digital_message) {
           successMessage += `\n\n${result.result.digital_message}`;
@@ -73,28 +107,55 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
           successMessage += `\n${result.result.message}`;
         }
         
-        console.log('DEBUG: Success message:', successMessage);
         alert(successMessage);
         
-        console.log('DEBUG: Calling upload complete callback');
         if (onUploadComplete) {
-          onUploadComplete(); // Callback to refresh images
+          onUploadComplete();
         } else if (onUpload) {
-          onUpload(); // Fallback for backward compatibility
+          onUpload();
         }
-        onClose(); // Close the modal
+        onClose();
       } catch (err) {
-        console.error('DEBUG: Upload error:', err);
-        console.error('DEBUG: Error message:', err.message);
-        console.error('DEBUG: Error stack:', err.stack);
+        console.error('Upload error:', err);
         alert(`Upload failed: ${err.message || 'Unknown error'}`);
       } finally {
-        console.log('DEBUG: Upload process finished');
         setUploading(false);
       }
     };
     input.click();
   };
+
+  const renderMockupSelection = () => (
+    <div className="space-y-4">
+      <p className="text-gray-600 mb-4">
+        Select a mockup to use with your template:
+      </p>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+        {mockups.map((mockup) => (
+          <div
+            key={mockup.id}
+            className={`border rounded-lg p-4 cursor-pointer transition-all ${
+              selectedMockup?.id === mockup.id
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+            onClick={() => handleMockupSelect(mockup)}
+          >
+            {mockup.preview_url && (
+              <img 
+                src={mockup.preview_url} 
+                alt={mockup.name}
+                className="w-full h-40 object-cover mb-2 rounded"
+              />
+            )}
+            <h3 className="font-semibold text-gray-900">{mockup.name}</h3>
+            <p className="text-sm text-gray-600">{mockup.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   if (!isOpen) return null;
 
@@ -103,7 +164,7 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
       <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
-            Select Template for Upload
+            {stage === 'template' ? 'Select Template' : 'Select Mockup'}
           </h2>
           <button
             onClick={onClose}
@@ -115,13 +176,15 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
           </button>
         </div>
 
-        {loading ? (
+        {loading || loadingMockups ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading templates...</p>
+            <p className="text-gray-600">Loading...</p>
           </div>
         ) : (
-          <div className="space-y-4">
+          <>
+          {stage === 'template' ? (
+            <div className="space-y-4">
             <p className="text-gray-600 mb-4">
               Select a template to use for creating Etsy listings from your uploaded images:
             </p>
@@ -187,9 +250,21 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
                 ))
               )}
             </div>
-
-            {/* Action Buttons */}
+          </div>
+          ) : (
+            renderMockupSelection()
+          )}
+          {/* Action Buttons */}
             <div className="flex justify-end space-x-4 pt-6 border-t">
+              {stage === 'mockup' && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                >
+                  Back
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -199,18 +274,18 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
               </button>
               <button
                 type="button"
-                onClick={handleUpload}
-                disabled={!selectedTemplate || uploading}
+                onClick={stage === 'template' ? handleContinueToMockups : handleUpload}
+                disabled={stage === 'template' ? !selectedTemplate : (!selectedMockup || uploading)}
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                  !selectedTemplate || uploading
+                  (stage === 'template' ? !selectedTemplate : (!selectedMockup || uploading))
                     ? 'bg-gray-400 text-white cursor-not-allowed'
                     : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
               >
-                {uploading ? 'Uploading...' : 'Upload Images'}
+                {uploading ? 'Uploading...' : stage === 'template' ? 'Continue' : 'Upload Images'}
               </button>
             </div>
-          </div>
+          </>
         )}
       </div>
     </div>

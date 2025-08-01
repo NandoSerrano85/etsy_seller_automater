@@ -501,6 +501,25 @@ def process_uploaded_mockups(file_paths, root_path, template_name="UVDTF 16oz", 
                 generated_mockup_path = f'{root_path}Mockups/Cup Wraps/UV {cup_wrap_id_number} Cup_Wrap{cup_wrap_id_number}{color}.jpg'
                 mockups_list.append(generated_mockup_path)
                 cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                
+                # Save mockup image to database with mask information
+                if user_id and db:
+                    try:
+                        from server.engine.mockup_db_utils import save_mockup_image_to_db
+                        filename = f"UV {cup_wrap_id_number} Cup_Wrap{cup_wrap_id_number}{color}.jpg"
+                        save_mockup_image_to_db(
+                            db=db,
+                            user_id=user_id,
+                            template_name=template_name,
+                            filename=filename,
+                            file_path=generated_mockup_path,
+                            mask_data=mask_points_list,
+                            points_data=points_list,
+                            image_type=template_name,
+                            design_id=designs_filename_list[i]
+                        )
+                    except Exception as e:
+                        print(f"Warning: Could not save mockup image to database: {e}")
             return mockups_list
         
         print(f"DEBUG MOCKUP: Creating mockups for {len(designs_filename_list)} designs")

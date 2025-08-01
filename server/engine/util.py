@@ -37,7 +37,7 @@ def inches_to_pixels(inches, dpi):
 #             if chunk_type == b'IEND':
 #                 break
 
-    return default_dpi, default_dpi
+    # return default_dpi, default_dpi
 
 def rotate_image_90(image, rotations=1):
     """

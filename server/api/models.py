@@ -35,6 +35,7 @@ class User(Base):
     watermark_path = Column(String, nullable=True)
     etsy_templates = relationship('EtsyTemplate', order_by='EtsyTemplate.id', back_populates='user')
     mockup_masks = relationship('MockupMaskData', order_by='MockupMaskData.id', back_populates='user')
+    mockup_images = relationship('MockupImage', order_by='MockupImage.id', back_populates='user')
     canvas_configs = relationship('CanvasConfig', order_by='CanvasConfig.id', back_populates='user')
     size_configs = relationship('SizeConfig', order_by='SizeConfig.id', back_populates='user')
 
@@ -121,8 +122,24 @@ class MockupMaskData(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     user = relationship('User', back_populates='mockup_masks')
 
+class MockupImage(Base):
+    __tablename__ = 'mockup_images'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
+    template_name = Column(String, nullable=False)  # e.g., 'UVDTF 16oz'
+    filename = Column(String, nullable=False)  # Original filename
+    file_path = Column(String, nullable=False)  # Full path to the mockup image
+    mask_data = Column(JSON, nullable=True)  # Store mask data as JSON
+    points_data = Column(JSON, nullable=True)  # Store points data as JSON
+    image_type = Column(String, nullable=True)  # e.g., 'UVDTF 16oz'
+    design_id = Column(String, nullable=True)  # ID of the design this mockup was created from
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = relationship('User', back_populates='mockup_images')
+    __table_args__ = (UniqueConstraint('user_id', 'filename', name='_user_mockup_filename_uc'),)
+
 # Create tables
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 def get_db():
     db = SessionLocal()

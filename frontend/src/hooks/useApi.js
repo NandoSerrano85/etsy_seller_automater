@@ -14,8 +14,12 @@ export const apiCall = async (url, options = {}, token = null) => {
     ...options.headers,
   };
 
-  // Only set Content-Type for JSON requests, not for FormData
-  if (!(options.body instanceof FormData)) {
+  // Only set Content-Type to application/json if not already set, and not for FormData or URLSearchParams
+  if (
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof URLSearchParams) &&
+    !headers['Content-Type']
+  ) {
     headers['Content-Type'] = 'application/json';
   }
 

@@ -388,7 +388,7 @@ class EtsyAPI:
         Fetch all open (paid, unshipped) orders and return a summary of product items and their total quantities.
         """
         print("\n--- Fetching Open Orders Items ---")
-        receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false&was_cancelled=false"
+        receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false&was_canceled=false"
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}'

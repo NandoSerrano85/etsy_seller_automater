@@ -81,7 +81,7 @@ const Home = () => {
     // Fetch OAuth data from the backend
     const fetchOAuthData = async () => {
       try {
-        const response = await api.get('/api/oauth-data');
+        const response = await api.get('/third-party/oauth-data');
         setOauthData(response);
       } catch (err) {
         setError('Failed to load OAuth configuration');
@@ -98,7 +98,7 @@ const Home = () => {
     if (!accessToken) return;
     
     try {
-      const response = await api.get(`/api/top-sellers?access_token=${accessToken}&year=${currentYear}`);
+      const response = await api.get(`/dashboard/top-sellers?access_token=${accessToken}&year=${currentYear}`);
       setTopSellers(response.top_sellers);
     } catch (err) {
       console.error('Error fetching top sellers:', err);
@@ -109,7 +109,7 @@ const Home = () => {
     if (!accessToken) return;
     
     try {
-      const response = await api.get(`/api/monthly-analytics?access_token=${accessToken}&year=${currentYear}`);
+      const response = await api.get(`/dashboard/analytics?access_token=${accessToken}&year=${currentYear}`);
       setMonthlyAnalytics(response);
     } catch (err) {
       console.error('Error fetching monthly analytics:', err);
@@ -120,7 +120,7 @@ const Home = () => {
     if (!accessToken) return;
     
     try {
-      const response = await api.get(`/api/shop-listings?access_token=${accessToken}&limit=50`);
+      const response = await api.get(`/dashboard/shop-listings?access_token=${accessToken}&limit=50`);
       setDesigns(response.designs);
     } catch (err) {
       console.error('Error fetching designs:', err);
@@ -130,12 +130,29 @@ const Home = () => {
   const fetchLocalImages = useCallback(async () => {
     console.log('DEBUG: fetchLocalImages called');
     try {
-      const response = await api.get('/api/local-images');
+      const response = await api.get('/mockups');
       console.log('Local images response:', response);
-      if (response.images && response.images.length > 0) {
-        console.log('Sample image data:', response.images[0]);
+      
+      // Extract images from the new API structure
+      const images = [];
+      if (response.mockups) {
+        response.mockups.forEach(mockup => {
+          if (mockup.mockup_images) {
+            mockup.mockup_images.forEach(image => {
+              images.push({
+                filename: image.filename,
+                path: `/api/mockup-images/${image.id}`,
+                full_path: image.file_path,
+                template_name: mockup.product_template_id, // This is now a UUID
+                template_title: 'Mockup Image'
+              });
+            });
+          }
+        });
       }
-      setLocalImages(response.images || []);
+      
+      console.log('Processed images:', images);
+      setLocalImages(images);
     } catch (err) {
       console.error('Error fetching local images:', err);
       setLocalImages([]);
@@ -145,12 +162,29 @@ const Home = () => {
   const fetchMockupImages = useCallback(async () => {
     console.log('DEBUG: fetchMockupImages called');
     try {
-      const response = await api.get('/api/mockup-images');
+      const response = await api.get('/mockups');
       console.log('Mockup images response:', response);
-      if (response.images && response.images.length > 0) {
-        console.log('Sample mockup data:', response.images[0]);
+      
+      // Extract images from the new API structure
+      const images = [];
+      if (response.mockups) {
+        response.mockups.forEach(mockup => {
+          if (mockup.mockup_images) {
+            mockup.mockup_images.forEach(image => {
+              images.push({
+                filename: image.filename,
+                path: `/api/mockup-images/${image.id}`,
+                full_path: image.file_path,
+                template_name: mockup.product_template_id, // This is now a UUID
+                template_title: 'Mockup Image'
+              });
+            });
+          }
+        });
       }
-      setMockupImages(response.images || []);
+      
+      console.log('Processed mockup images:', images);
+      setMockupImages(images);
     } catch (err) {
       console.error('Error fetching mockup images:', err);
       setMockupImages([]);
@@ -161,7 +195,7 @@ const Home = () => {
     if (!accessToken) return;
     
     try {
-      const response = await api.get(`/api/orders?access_token=${accessToken}`);
+      const response = await api.get(`/orders/?access_token=${accessToken}`);
       console.log('Orders response:', response);
       setOrders(response.orders || []);
       
@@ -182,7 +216,7 @@ const Home = () => {
   const createPrintfile = async () => {
     setCreatingPrintfile(true);
     try {
-      await api.get('/api/create-gang-sheets');
+      await api.get('/orders/create-print-files');
       alert('Printfile created successfully!');
     } catch (err) {
       console.error('Error creating printfile:', err);
@@ -294,7 +328,7 @@ const Home = () => {
           console.log(`Sending file ${index + 1}: ${file.name}`);
         });
         
-        const result = await api.postFormData('/api/upload-mockup', formData);
+        const result = await api.postFormData('/mockups/upload', formData);
         
         // Handle digital files response
         let successMessage = 'Files uploaded successfully!';
@@ -422,7 +456,7 @@ const Home = () => {
                 <button 
                   onClick={async () => {
                     try {
-                      const response = await api.get('/api/oauth-data-legacy');
+                      const response = await api.get('/third-party/oauth-data');
                       const legacyAuthUrl = `${response.oauthConnectUrl}?response_type=${response.responseType}&redirect_uri=${response.redirectUri}&scope=${response.scopes}&client_id=${response.clientId}&state=${response.state}&code_challenge=${response.codeChallenge}&code_challenge_method=${response.codeChallengeMethod}`;
                       window.open(legacyAuthUrl, '_blank');
                     } catch (err) {

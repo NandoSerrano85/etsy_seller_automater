@@ -14,7 +14,7 @@ const ApiTest = () => {
     setLoading(true);
     setTestResult('Testing...');
     try {
-      const result = await apiCall('/api/ping', { method: 'GET' });
+      const result = await apiCall('/ping', { method: 'GET' });
       setTestResult(`✅ Success! Backend responded: ${JSON.stringify(result)}`);
     } catch (error) {
       setTestResult(`❌ Error: ${error.message}`);
@@ -28,7 +28,7 @@ const ApiTest = () => {
     setLoading(true);
     setTestResult('Registering...');
     try {
-      const result = await apiCall('/api/register', {
+      const result = await apiCall('/auth', {
         method: 'POST',
         body: JSON.stringify({ email: regEmail, password: regPassword })
       });
@@ -45,7 +45,7 @@ const ApiTest = () => {
     setLoading(true);
     setTestResult('Logging in...');
     try {
-      const result = await apiCall('/api/login', {
+      const result = await apiCall('/auth/token', {
         method: 'POST',
         body: JSON.stringify({ email: loginEmail, password: loginPassword })
       });

@@ -27,7 +27,7 @@ const SettingsTab = () => {
       setMessage('');
   
       try {
-        const response = await api.post('/api/change-password', {
+        const response = await api.post('/auth/change-password', {
           current_password: currentPassword,
           new_password: newPassword
         });

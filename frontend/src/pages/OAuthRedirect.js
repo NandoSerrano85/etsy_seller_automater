@@ -63,7 +63,7 @@ const OAuthRedirect = () => {
           console.log('Authorization code flow');
           try {
             // Call the backend oauth_redirect endpoint directly
-            const response = await fetch(`/oauth/redirect?code=${code}`);
+            const response = await fetch(`/third-party/oauth-redirect-legacy?code=${code}`);
             console.log('Backend response status:', response.status);
             
             if (response.ok) {

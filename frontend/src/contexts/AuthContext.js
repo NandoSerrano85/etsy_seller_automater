@@ -28,7 +28,7 @@ export const AuthProvider = ({ children }) => {
   const verifyToken = async () => {
     try {
       console.log('[verifyToken] Using token:', token);
-      const userData = await apiCall('/api/verify-token', {
+      const userData = await apiCall('/auth/verify-token', {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -47,9 +47,14 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const data = await apiCall('/api/login', {
+      console.log(normalizedEmail)
+      const formData = new URLSearchParams();
+      formData.append('username', normalizedEmail); // <-- must be 'username'
+      formData.append('password', password);
+      const data = await apiCall('/auth/token', {
         method: 'POST',
-        body: JSON.stringify({ email: normalizedEmail, password })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formData.toString() // <-- serialize to string!
       });
       setToken(data.access_token);
       setUser(data.user);
@@ -68,7 +73,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
       const normalizedShopName = shopName.trim();
-      const data = await apiCall('/api/register', {
+      const data = await apiCall('/auth/', {
         method: 'POST',
         body: JSON.stringify({ email: normalizedEmail, password, shop_name: normalizedShopName })
       });

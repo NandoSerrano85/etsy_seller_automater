@@ -4,6 +4,8 @@ from datetime import date
 from functools import lru_cache
 from server.engine.util import inches_to_pixels, rotate_image_90, save_single_image
 from server.engine.resizing import resize_image_by_inches
+from server.engine.mockup_db_utils import get_mockup_images_with_mask_data
+from sqlalchemy.orm import Session
 
 
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
@@ -31,11 +33,77 @@ def process_image(img_path):
    return None
 
 
-def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=400, text='Single '):
+def create_gang_sheets_from_db(db: Session, user_id: int, template_name: str, output_path: str, dpi: int = 400, text: str = 'Single '):
+   """
+   Create gang sheets from mockup images stored in the database.
+   
+   Args:
+       db: Database session
+       user_id: ID of the user
+       template_name: Name of the template (e.g., 'UVDTF 16oz')
+       output_path: Path where gang sheets will be saved
+       dpi: DPI for the gang sheets
+       text: Text to include in the filename
+   """
+   # Get mockup images with mask data from database
+   mockup_images = get_mockup_images_with_mask_data(db, user_id, template_name)
+   
+   if not mockup_images:
+       print(f"No mockup images found for user {user_id} and template {template_name}")
+       return None
+   
    # Pre-calculate common values
    width_px = cached_inches_to_pixels(GANG_SHEET_MAX_WIDTH, dpi)
    height_px = cached_inches_to_pixels(GANG_SHEET_MAX_HEIGHT, dpi)
 
+   # Group mockup images by design_id to handle multiple mockups per design
+   design_groups = {}
+   for mockup in mockup_images:
+       design_id = mockup.get('design_id', mockup['filename'])
+       if design_id not in design_groups:
+           design_groups[design_id] = []
+       design_groups[design_id].append(mockup)
+
+   # Create a list of image data for gangsheet processing
+   image_data = {
+       'Title': [],
+       'Size': [],
+       'Total': []
+   }
+   
+   processed_images = {}
+   image_index = 0
+   
+   for design_id, mockups in design_groups.items():
+       for mockup in mockups:
+           # Use the first mockup's mask data for this design
+           mask_data = mockup.get('mask_data')
+           points_data = mockup.get('points_data')
+           
+           if mask_data and points_data:
+               # Process the mockup image
+               img_path = mockup['file_path']
+               processed_img = process_image(img_path)
+               
+               if processed_img is not None:
+                   image_data['Title'].append(img_path)
+                   image_data['Size'].append(template_name)
+                   image_data['Total'].append(1)  # Each mockup counts as 1
+                   processed_images[image_index] = processed_img
+                   image_index += 1
+
+   if not image_data['Title']:
+       print(f"No valid mockup images found for gangsheet creation")
+       return None
+
+   # Create gang sheets using the existing logic
+   return create_gang_sheets(image_data, template_name, output_path, len(image_data['Title']), dpi, text)
+
+
+def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=400, text='Single '):
+   # Pre-calculate common values
+   width_px = cached_inches_to_pixels(GANG_SHEET_MAX_WIDTH, dpi)
+   height_px = cached_inches_to_pixels(GANG_SHEET_MAX_HEIGHT, dpi)
 
    image_index, part = 0, 1
    current_image_amount_left = 0
@@ -50,7 +118,6 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
    processed_images = {}
    for i in range(len(image_data['Title'])):
        processed_images[i] = process_image(image_data['Title'][i])
-
 
    while len(visited) > 0:
         gang_sheet = np.zeros((height_px, width_px, 4), dtype=np.uint8)

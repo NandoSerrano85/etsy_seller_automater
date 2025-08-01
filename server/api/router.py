@@ -725,6 +725,56 @@ async def get_etsy_item_summary(current_user: User = Depends(get_current_user), 
         raise HTTPException(status_code=500, detail=f"Failed to create gang sheets: {str(e)}")
     return item_summary
 
+@app.post('/api/create-gang-sheets-from-mockups')
+async def create_gang_sheets_from_mockups_endpoint(
+    template_name: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create gang sheets from mockup images stored in the database."""
+    try:
+        # Get user's root path
+        local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
+        if not local_root_path:
+            raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
+        
+        # Create output directory
+        output_dir = f"{local_root_path}{current_user.shop_name}/Gang Sheets/"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Create gang sheets from database-stored mockup images
+        from server.engine.gangsheet_engine import create_gang_sheets_from_db
+        result = create_gang_sheets_from_db(
+            db=db,
+            user_id=current_user.id,
+            template_name=template_name,
+            output_path=output_dir
+        )
+        
+        if result is None:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": f"No mockup images found for template '{template_name}'"
+                }
+            )
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "message": f"Successfully created gang sheets from mockup images for template '{template_name}'",
+                "output_directory": output_dir
+            }
+        )
+    except Exception as e:
+        print(f"Error creating gang sheets from mockups: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": str(e)}
+        )
+
 @app.get('/api/local-images/{filename}')
 async def serve_local_image(filename: str, token: str = Query(None)):
     """API endpoint to serve local PNG images."""
@@ -1068,26 +1118,28 @@ async def get_monthly_analytics(access_token: str, year: Optional[int] = None, c
         raise HTTPException(status_code=500, detail=f"Failed to fetch monthly analytics: {str(e)}")
 
 @app.get('/api/mockup-images')
-async def get_mockup_images(current_user: User = Depends(get_current_user)):
-    """API endpoint to get list of local mockup images."""
+async def get_mockup_images(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """API endpoint to get list of mockup images from database."""
     print(f"DEBUG API: get_mockup_images endpoint called for user {current_user.id}")
     try:
-        mockup_path = f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Mockups/Cup Wraps/"
-        print(f"DEBUG API: Checking mockup path: {mockup_path}")
-        if not os.path.exists(mockup_path):
-            print(f"DEBUG API: Mockup path does not exist")
-            return {"images": [], "error": "Mockup images directory not found"}
-        files = [f for f in os.listdir(mockup_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        print(f"DEBUG API: Found {len(files)} mockup files")
+        from server.engine.mockup_db_utils import get_user_mockup_images
+        
+        # Get mockup images from database
+        mockup_images = get_user_mockup_images(db, current_user.id)
+        print(f"DEBUG API: Found {len(mockup_images)} mockup images in database")
         
         # Create a token for image URLs
         token = create_access_token({"user_id": current_user.id})
         
         images = []
-        for f in files:
+        for mockup in mockup_images:
             images.append({
-                "filename": f,
-                "url": f"/api/mockup-images/{f}?token={token}"  # Include token in URL
+                "filename": getattr(mockup, "filename"),
+                "url": f"/api/mockup-images/{getattr(mockup, 'filename')}?token={token}",
+                "template_name": getattr(mockup, "template_name"),
+                "image_type": getattr(mockup, "image_type"),
+                "design_id": getattr(mockup, "design_id"),
+                "created_at": getattr(mockup, "created_at").isoformat() if getattr(mockup, "created_at") else None
             })
         
         return {"images": images}
@@ -1144,137 +1196,9 @@ async def serve_mockup_image(filename: str, token: str = Query(None)):
         print(f"Error serving mockup image {filename}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error serving mockup image")
 
-@app.post('/api/upload-mockup')
-async def upload_mockup(files: List[UploadFile] = File(...), template_name: str = Form('UVDTF 16oz'), current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    print(f"DEBUG API: upload-mockup endpoint called")
-    print(f"DEBUG API: User: {current_user.id} ({current_user.shop_name})")
-    print(f"DEBUG API: Template name: {template_name}")
-    print(f"DEBUG API: Number of files: {len(files)}")
-    
-    try:
-        # Get template to check if it's digital
-        template = db.query(EtsyTemplate).filter(
-            EtsyTemplate.user_id == current_user.id,
-            EtsyTemplate.name == template_name
-        ).first()
-        
-        print(f"DEBUG API: Template found: {template is not None}")
-        if not template:
-            print(f"DEBUG API: Template not found for name: {template_name}")
-            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
-        
-        is_digital = template.type == 'digital'
-        print(f"DEBUG API: Template type: {template.type}, is_digital: {is_digital}")
-        
-        # Create appropriate directories based on template type
-        local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
-        if not local_root_path:
-            raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
-            
-        image_dir = f"{local_root_path}{current_user.shop_name}/Origin/16oz/"
-        os.makedirs(image_dir, exist_ok=True)
-        
-        uploaded_file_paths = []
-        digital_file_paths = []
-        
-        print(f"DEBUG API: Processing {len(files)} files")
-        for i, file in enumerate(files):
-            print(f"DEBUG API: Processing file {i+1}: {file.filename}")
-            if not file.filename:
-                print(f"DEBUG API: Skipping file {i+1} - no filename")
-                continue  # Skip files without names
-                
-            # Save to mockup directory (for both physical and digital)
-            image_file_path = os.path.join(image_dir, file.filename)
-            print(f"DEBUG API: Saving file to: {image_file_path}")
-            with open(image_file_path, "wb") as f:
-                file_content = await file.read()
-                f.write(file_content)
-                print(f"DEBUG API: File saved, size: {len(file_content)} bytes")
-            uploaded_file_paths.append(image_file_path)
-            
-        print(f"DEBUG API: Calling process_uploaded_mockups with {len(uploaded_file_paths)} files")
-        result = process_uploaded_mockups(
-            uploaded_file_paths,
-            f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/",
-            template_name,
-            is_digital=is_digital,
-            user_id=current_user.id,
-            db=db
-        )
-        print(f"DEBUG API: process_uploaded_mockups returned: {result}")
-        
-        print(f"DEBUG API: finished processing uploaded files")
-        print(f"DEBUG API: Starting Etsy API calls")
-        etsy_api = EtsyAPI()
-        # Fetch the user's template by name
-        template = db.query(EtsyTemplate).filter(EtsyTemplate.user_id == current_user.id, EtsyTemplate.name == template_name).first()
-        if not template:
-            print(f"DEBUG API: Template not found for Etsy API calls")
-            return JSONResponse(status_code=400, content={"success": False, "error": f"No template named '{template_name}' found for this user."})
-        # Parse materials and tags from string to list if needed
-        materials = template.materials.split(',') if template.materials else []
-        tags = template.tags.split(',') if template.tags else []
-        print(f"DEBUG API: Creating Etsy listings for {len(result)} designs")
-        for i, (design, mockups) in enumerate(result.items()):
-            print(f"DEBUG API: Creating listing {i+1}/{len(result)} for design: {design}")
-            title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
-            listing_response = etsy_api.create_draft_listing(
-                title=' '.join(title + [template.title]) if template.title else ' '.join(title),
-                description=template.description,
-                price=template.price,
-                quantity=template.quantity,
-                tags=tags,
-                materials=materials,
-                is_digital=is_digital,
-                when_made=template.when_made,
-                )
-            listing_id = listing_response["listing_id"]
-            print(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
-            for j, mockup in enumerate(random.sample(mockups, len(mockups))):
-                print(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
-                etsy_api.upload_listing_image(listing_id, mockup)
-            print(f"DEBUG API: Completed listing {i+1}")
-
-            # Upload digital file(s) if digital template
-            if is_digital:
-                # The digital file path and name are the key (design) in result.items()
-                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Digital/{template_name}/", design)
-                digital_file_name = design
-                print(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
-                try:
-                    etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
-                    print(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
-                except Exception as e:
-                    print(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
-
-        for filename in os.listdir(image_dir):
-            file_path = os.path.join(image_dir, filename)
-            if os.path.isfile(file_path):
-                try:
-                    os.remove(file_path)
-                except OSError as e:
-                    print(f"Error deleting file {filename}: {e}")
-        print(f"DEBUG API: Returning success response")
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "result": {
-                    "message": f"Successfully processed {len(uploaded_file_paths)} files",
-                    "files_processed": len(uploaded_file_paths),
-                    "designs_created": len(result)
-                }
-            }
-        )
-    except Exception as e:
-        print(f"DEBUG API: Error in upload-mockup: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": f"Server error: {str(e)}"}
-        )
+# Include the mockups router
+from server.src.routes.mockups import router as mockups_router
+app.include_router(mockups_router, prefix="/api/mockups", tags=["Mockups"])
 
 @app.get('/api/orders')
 async def get_orders(access_token: str, current_user: User = Depends(get_current_user)):

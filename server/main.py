@@ -1,9 +1,41 @@
-import uvicorn
-import webbrowser
-import os
-import sys
+# from threading import Timer
+# from dotenv import load_dotenv
+# from server.api.router import app
+# from server.constants import SERVER_CONFIG
+# import uvicorn, webbrowser, os, sys
+
+from fastapi import FastAPI
+from server.src.database.core import engine, Base
+from fastapi.middleware.cors import CORSMiddleware
+from server.src.api import register_routes
+from server.src.logging import config_logging, LogLevels
+from server.src import message
 from threading import Timer
 from dotenv import load_dotenv
+
+import uvicorn, webbrowser, os, sys
+
+SERVER_CONFIG = {
+    'default_host': '127.0.0.1',
+    'default_port': 3003,
+    'default_debug': False,
+}
+
+config_logging(LogLevels.info)
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+register_routes(app)
+message.register_error_handlers(app)
+Base.metadata.create_all(bind=engine)
 
 # Add the project root to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -12,12 +44,6 @@ sys.path.insert(0, project_root)
 # Load environment variables
 dotenv_path = os.path.join(project_root, '.env')
 load_dotenv(dotenv_path)
-
-# Import the FastAPI app from routes
-from server.api.routes import app
-
-# Import constants
-from server.constants import SERVER_CONFIG
 
 def open_browser():
     """Function to open the browser to the root URL of the FastAPI app."""
@@ -46,4 +72,5 @@ def run_server():
     )
 
 if __name__ == '__main__':
-    run_server() 
+    run_server()
+
