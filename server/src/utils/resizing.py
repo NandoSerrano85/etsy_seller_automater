@@ -2,7 +2,7 @@
 Example of how resizing.py can be modified to use database configurations.
 This is a demonstration of the integration pattern.
 """
-import cv2, os
+import cv2, os, logging
 import numpy as np
 from server.src.utils.util import (
     inches_to_pixels, 
@@ -70,7 +70,17 @@ def fit_image_to_center_canvas(resized_img, new_width_px, new_height_px, target_
 """
     This function resizes an image based on inches
 """
-def resize_image_by_inches(image_path, image_type, db=None, canvas_id=None, product_template_id=None, image_size=None, image=None, target_dpi=STD_DPI, is_new_mk=False, shop_name=None):
+def resize_image_by_inches(
+        image_path='', 
+        image_type='', 
+        db=None, 
+        canvas_id=None, 
+        product_template_id=None, 
+        image_size=None, 
+        image=None, 
+        target_dpi=STD_DPI, 
+        is_new_mk=False, 
+        shop_name=None):
     """
     This function resizes an image based on inches.
     Now requires db, user_id, and product_template_id to fetch configs from DB.
@@ -113,6 +123,7 @@ def resize_image_by_inches(image_path, image_type, db=None, canvas_id=None, prod
     else:
         current_largest_side_inches = current_height_inches
 
+    logging.info(SIZING);
     # Check if image_type exists in SIZING config
     if image_type not in SIZING:
         raise ValueError(f"No sizing configuration found for image type: {image_type}")

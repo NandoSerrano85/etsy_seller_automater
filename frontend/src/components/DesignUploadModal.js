@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 
-const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload, onUploadComplete }) => {
+const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const api = useApi();
   const [templates, setTemplates] = useState([]);
-  const [formData, setFormData] = useState([])
   const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [stage, setStage] = useState('template'); // 'template' or 'mockup'
+  const [stage, setStage] = useState('template'); // 'template', 'mockup', 'canvas', 'size', 'upload'
+  const [canvasConfigs, setCanvasConfigs] = useState([]);
+  const [selectedCanvasConfig, setSelectedCanvasConfig] = useState(null);
+  const [sizeConfigs, setSizeConfigs] = useState([]);
+  const [selectedSizeConfig, setSelectedSizeConfig] = useState(null);
   const [mockups, setMockups] = useState([]);
   const [selectedMockup, setSelectedMockup] = useState(null);
   const [loadingMockups, setLoadingMockups] = useState(false);
@@ -43,6 +46,30 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
     }
   };
 
+  const fetchCanvasConfigs = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/settings/canvas-config');
+      setCanvasConfigs(response || []);
+    } catch (error) {
+      console.error('Error fetching canvas configs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchSizeConfigs = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/settings/size-config');
+      setSizeConfigs(response || []);
+    } catch (error) {
+      console.error('Error fetching size configs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleTemplateSelect = (template) => {
     setSelectedTemplate(template);
   };
@@ -60,14 +87,55 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
     setStage('mockup');
   };
 
+  const handleContinueToCanvas = () => {
+    if (!selectedMockup) {
+      alert('Please select a mockup first');
+      return;
+    }
+    fetchCanvasConfigs();
+    setStage('canvas');
+  };
+
+  const handleContinueToSize = () => {
+    if (!selectedCanvasConfig) {
+      alert('Please select a canvas configuration first');
+      return;
+    }
+    fetchSizeConfigs();
+    setStage('size');
+  };
+
+  const handleContinueToUpload = () => {
+    if (!selectedSizeConfig) {
+      alert('Please select a size configuration first');
+      return;
+    }
+    setStage('upload');
+  };
+
   const handleBack = () => {
-    setStage('template');
-    setSelectedMockup(null);
+    switch (stage) {
+      case 'mockup':
+        setStage('template');
+        setSelectedMockup(null);
+        break;
+      case 'canvas':
+        setStage('mockup');
+        setSelectedCanvasConfig(null);
+        break;
+      case 'size':
+        setStage('canvas');
+        setSelectedSizeConfig(null);
+        break;
+      case 'upload':
+        setStage('size');
+        break;
+    }
   };
 
   const handleUpload = async () => {
-    if (!selectedTemplate || !selectedMockup) {
-      alert('Please select both a template and mockup');
+    if (!selectedTemplate || !selectedMockup || !selectedCanvasConfig || !selectedSizeConfig) {
+      alert('Please complete all configuration steps first');
       return;
     }
 
@@ -81,25 +149,43 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
       
       setUploading(true);
       try {
-        // Create FormData object
-        const formData = new FormData();
+        // First, save the design information
+        const designData = {
+          product_template_id: selectedTemplate.id,
+          mockup_id: selectedMockup.id,
+          starting_name: selectedMockup.starting_name,
+          canvas_config_id: selectedCanvasConfig.id,
+          size_config_id: selectedSizeConfig.id,
+          is_digital: false
+        };
         
-        // Append each file to the FormData
+        // Then proceed with file upload
+        const uploadFormData = new FormData();
         files.forEach((file) => {
-          formData.append('files', file);
+          uploadFormData.append('files', file);
         });
+        uploadFormData.append('design_data', JSON.stringify(designData));
+        const designResponse = await api.postFormData('/designs/', uploadFormData);
 
-        // Add template name to FormData
-        formData.append('template_name', selectedTemplate.name);
-        formData.append('mockup_id', selectedMockup.id);
-        console.log(formData);
-        const result = await api.postFormData('/mockups/upload-mockup', formData, {
+        const productData = {
+          product_template_id: selectedTemplate.id,
+          mockup_id: selectedMockup.id,
+          design_ids:[]
+        }
+        const mockupFormData = new FormData();
+        designResponse.designs.forEach((design) => {
+          productData.design_ids.push(design.id);
+        });
+        
+        mockupFormData.append('product_data', JSON.stringify(productData));
+        
+        const result = await api.postFormData('/mockups/upload-mockup', mockupFormData, {
           headers: {
             'Content-Type': 'multipart/form-data',
           }
         });
         
-        let successMessage = 'Files uploaded successfully!';
+        let successMessage = 'Design saved and files uploaded successfully!';
         if (result.result?.digital_message) {
           successMessage += `\n\n${result.result.digital_message}`;
         }
@@ -151,6 +237,54 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
             )}
             <h3 className="font-semibold text-gray-900">{mockup.name}</h3>
             <p className="text-sm text-gray-600">{mockup.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderCanvasSelection = () => (
+    <div className="space-y-4">
+      <p className="text-gray-600 mb-4">
+        Select a canvas configuration:
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+        {canvasConfigs.map((config) => (
+          <div
+            key={config.id}
+            className={`border rounded-lg p-4 cursor-pointer transition-all ${
+              selectedCanvasConfig?.id === config.id
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+            onClick={() => setSelectedCanvasConfig(config)}
+          >
+            <h3 className="font-semibold text-gray-900">{config.name}</h3>
+            <p className="text-sm text-gray-600">{config.description}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderSizeSelection = () => (
+    <div className="space-y-4">
+      <p className="text-gray-600 mb-4">
+        Select a size configuration:
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+        {sizeConfigs.map((config) => (
+          <div
+            key={config.id}
+            className={`border rounded-lg p-4 cursor-pointer transition-all ${
+              selectedSizeConfig?.id === config.id
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+            onClick={() => setSelectedSizeConfig(config)}
+          >
+            <h3 className="font-semibold text-gray-900">{config.name}</h3>
+            <p className="text-sm text-gray-600">{config.dimensions}</p>
           </div>
         ))}
       </div>
@@ -251,8 +385,16 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
               )}
             </div>
           </div>
-          ) : (
+          ) : stage === 'mockup' ? (
             renderMockupSelection()
+          ) : stage === 'canvas' ? (
+            renderCanvasSelection()
+          ) : stage === 'size' ? (
+            renderSizeSelection()
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-600 mb-4">Click "Upload Images" to select and upload your designs</p>
+            </div>
           )}
           {/* Action Buttons */}
             <div className="flex justify-end space-x-4 pt-6 border-t">
@@ -274,15 +416,30 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
               </button>
               <button
                 type="button"
-                onClick={stage === 'template' ? handleContinueToMockups : handleUpload}
-                disabled={stage === 'template' ? !selectedTemplate : (!selectedMockup || uploading)}
+                onClick={
+                  stage === 'template' ? handleContinueToMockups :
+                  stage === 'mockup' ? handleContinueToCanvas :
+                  stage === 'canvas' ? handleContinueToSize :
+                  stage === 'size' ? handleContinueToUpload :
+                  handleUpload
+                }
+                disabled={
+                  (stage === 'template' && !selectedTemplate) ||
+                  (stage === 'mockup' && !selectedMockup) ||
+                  (stage === 'canvas' && !selectedCanvasConfig) ||
+                  (stage === 'size' && !selectedSizeConfig) ||
+                  (stage === 'upload' && uploading)
+                }
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
-                  (stage === 'template' ? !selectedTemplate : (!selectedMockup || uploading))
+                  (stage === 'template' ?
+                    !selectedTemplate : (stage === 'mockup' ?
+                      !selectedMockup : (stage === 'canvas' ?
+                        !selectedCanvasConfig : (!selectedSizeConfig || uploading))))
                     ? 'bg-gray-400 text-white cursor-not-allowed'
                     : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
               >
-                {uploading ? 'Uploading...' : stage === 'template' ? 'Continue' : 'Upload Images'}
+                {uploading ? 'Uploading...' : stage === 'template' ? 'Continue' : stage === 'mockup' ? 'Continue to Canvas' : stage === 'canvas' ? 'Continue to Size' : 'Upload Images'}
               </button>
             </div>
           </>
@@ -292,4 +449,4 @@ const TemplateSelectionModal = ({ isOpen, onClose, onTemplateSelected, onUpload,
   );
 };
 
-export default TemplateSelectionModal; 
+export default DesignUploadModal;

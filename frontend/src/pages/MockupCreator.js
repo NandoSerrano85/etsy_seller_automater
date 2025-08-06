@@ -19,6 +19,9 @@ const MockupCreator = () => {
   // Step 2: Image Selection
   const [selectedImages, setSelectedImages] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
+
+  const [watermarkFile, setWatermarkFile] = useState(null);
+  const [imageWatermarkFile, setImageWatermarkFile] = useState([]);
   
   // Step 3: Mask Creation
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -30,11 +33,11 @@ const MockupCreator = () => {
   const [points, setPoints] = useState([]);
   const [rectStart, setRectStart] = useState(null);
   const [drawingMode, setDrawingMode] = useState('point');
+  const [isCropped, setIsCropped] = useState(false);
+  const [alignment, setAlignment] = useState('center');
   const [currentImage, setCurrentImage] = useState(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  const [isDrawing, setIsDrawing] = useState(false);
   const [scaleFactor, setScaleFactor] = useState(1.0);
-  const [rectangleFinalized, setRectangleFinalized] = useState(false);
   
   // Step 4: Final Details
   const [mockupName, setMockupName] = useState('');
@@ -54,9 +57,7 @@ const MockupCreator = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedMockup, setSelectedMockup] = useState(null);
 
-  // Add new state for rectangle drawing
-  const [isDrawingRect, setIsDrawingRect] = useState(false);
-  const [rectPreview, setRectPreview] = useState(null);
+  
 
   useEffect(() => {
     loadTemplates();
@@ -128,6 +129,14 @@ const MockupCreator = () => {
     const files = Array.from(event.target.files);
     setImageFiles(files);
     setSelectedImages(files.map(file => URL.createObjectURL(file)));
+  };
+
+  const handleImageWatermarkUpload = (event) => {
+    const file = event.target.files[0];
+    const files = Array(file)
+    setWatermarkFile(file || null);
+    setImageWatermarkFile(files.map(f => URL.createObjectURL(f)));
+    console.log('Watermark file set:', file);
   };
 
   // Replace drawImage and drawPoints with the more advanced logic from MockupCreator.js
@@ -229,14 +238,6 @@ const MockupCreator = () => {
     if (drawingMode === 'point') {
       setPoints([...points, mousePos]);
     } else if (drawingMode === 'rectangle') {
-      // if (rectangleFinalized) {
-      //   // Reset and start a new rectangle
-      //   setRectStart(mousePos);
-      //   setIsDrawing(true);
-      //   setPoints([mousePos]);
-      //   setRectangleFinalized(false);
-      //   return;
-      // }
       if (!rectStart) {
         setRectStart(mousePos);
         setPoints([mousePos]);
@@ -288,8 +289,8 @@ const MockupCreator = () => {
     const maskData = {
       points: scaledPoints,
       displayPoints: [...points],
-      isCropped: false,
-      alignment: 'center'
+      isCropped: isCropped,
+      alignment: alignment
     };
 
     setAllMasks(prev => ({
@@ -315,7 +316,7 @@ const MockupCreator = () => {
         setRectStart(null);
       } else {
         // All done, move to final step
-        setCurrentStep(4);
+        setCurrentStep(5);
       }
     }
   };
@@ -331,6 +332,11 @@ const MockupCreator = () => {
       return;
     }
     if (currentStep === 2 && selectedImages.length === 0) {
+      setMessage('Please select at least one image');
+      return;
+    }
+
+    if (currentStep === 3 && imageWatermarkFile.length === 0) {
       setMessage('Please select at least one image');
       return;
     }
@@ -350,6 +356,8 @@ const MockupCreator = () => {
     setSelectedTemplate(null);
     setSelectedImages([]);
     setImageFiles([]);
+    setWatermarkFile(null);
+    setImageWatermarkFile([]);
     setCurrentImageIndex(0);
     setCurrentMaskIndex(0);
     setMasksPerImage({});
@@ -380,36 +388,51 @@ const MockupCreator = () => {
         formData.append('files', file);
       });
       formData.append('mockup_id', mockupGroup.id);
-            const uploadResponse = await api.postFormData('/mockups/upload', formData);
+      formData.append('watermark_file', watermarkFile);
+      
+      const uploadResponse = await api.postFormData('/mockups/upload', formData);
       const uploadedImages = uploadResponse.uploaded_images || uploadResponse;
-  
-      console.log('selectedImages:', selectedImages)
-      console.log('allMasks:', allMasks)
-      console.log('uploadResponse:', uploadResponse)
-      console.log('uploadedImages:', uploadedImages)
-      console.log('uploadedImages type:', typeof uploadedImages)
-      console.log('uploadedImages length:', uploadedImages?.length)
-      console.log('uploadedImages is array:', Array.isArray(uploadedImages))
+
       // Create mask data for each image
       for (let imageIndex = 0; imageIndex < selectedImages.length; imageIndex++) {
         const imageMasks = allMasks[imageIndex] || {};
         
-        for (let maskIndex = 0; maskIndex < Object.keys(imageMasks).length; maskIndex++) {
-          const maskData = imageMasks[maskIndex];
-          if (maskData && uploadedImages[imageIndex]) {
-            // Convert points from {x, y} objects to [x, y] arrays
-            const convertedPoints = maskData.points.map(point => [point.x, point.y]);
-            
-            console.log(convertedPoints);
-            // Create mask data using the actual image ID
-            await api.post(`/mockups/images/${uploadedImages[imageIndex].id}/mask-data`, {
-              mockup_image_id: uploadedImages[imageIndex].id,
-              masks: [convertedPoints],
-              points: [convertedPoints],
-              is_cropped: maskData.isCropped,
-              alignment: maskData.alignment
-            });
-          }
+        // Get all masks for this image
+        const maskKeys = Object.keys(imageMasks);
+        if (maskKeys.length > 0 && uploadedImages[imageIndex]) {
+          
+          // Prepare all masks for this image
+          const allMasksForImage = [];
+          const allPointsForImage = [];
+          
+          maskKeys.forEach(maskIndex => {
+            const maskData = imageMasks[maskIndex];
+            if (maskData && maskData.points) {
+              // Convert points from {x, y} objects to [x, y] arrays
+              const convertedPoints = maskData.points.map(point => [point.x, point.y]);
+              allMasksForImage.push(convertedPoints);
+              allPointsForImage.push(convertedPoints);
+            }
+          });
+
+          // Use the first mask's properties for the entire image (or you might want to handle this differently)
+          const firstMask = imageMasks[Object.keys(imageMasks)[0]];
+          
+          console.log('Sending mask data for image', imageIndex, ':', {
+            masks: allMasksForImage,
+            points: allPointsForImage,
+            is_cropped: firstMask?.isCropped || false,
+            alignment: firstMask?.alignment || 'center'
+          });
+          
+          // Create mask data using the actual image ID
+          await api.post(`/mockups/images/${uploadedImages[imageIndex].id}/mask-data`, {
+            mockup_image_id: uploadedImages[imageIndex].id,
+            masks: allMasksForImage,
+            points: allPointsForImage,
+            is_cropped: firstMask?.isCropped || false,
+            alignment: firstMask?.alignment || 'center'
+          });
         }
       }
 
@@ -439,7 +462,7 @@ const MockupCreator = () => {
   // Redraw points when they change
   useEffect(() => {
     drawPoints();
-  }, [points, rectPreview]);
+  }, [points]);
 
 
   const renderStep1 = () => (
@@ -500,6 +523,37 @@ const MockupCreator = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderStep2_5 = () => (
+    <div className="space-y-6">
+      <h3 className="text-xl font-semibold text-gray-900">Step 2.5: Select Watermark Image</h3>
+      <p className="text-gray-600">Choose one image to create mockups from.</p>
+      
+      <div className="space-y-4">
+        <input
+          type="file"
+          accept="image/*"
+          onChange={handleImageWatermarkUpload}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        />
+        
+        {watermarkFile !== null && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <div key={1} className="relative">
+                <img
+                  src={watermarkFile.url}
+                  alt={`Selected Watermark Image`}
+                  className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
+                />
+                <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+                  {1}
+                </div>
+              </div>
           </div>
         )}
       </div>
@@ -578,6 +632,27 @@ const MockupCreator = () => {
                 className="mr-2"
               />
               <span className="text-sm">Rectangle Mode</span>
+            </label>
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={isCropped}
+                onChange={() => setIsCropped(!isCropped)}
+                className="mr-2"
+              />
+              <span className="text-sm">Crop Image</span>
+            </label>
+            <label className="flex items-center">
+              <select
+                value={alignment || 'center'}
+                onChange={(e) => setAlignment(e.target.value)}
+                className="mr-2 px-2 py-1 border border-gray-300 rounded text-sm"
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+              <span className="text-sm">Select Alignment</span>
             </label>
           </div>
 
@@ -689,8 +764,10 @@ const MockupCreator = () => {
       case 2:
         return renderStep2();
       case 3:
-        return renderStep3();
+        return renderStep2_5();
       case 4:
+        return renderStep3();
+      case 5:
         return renderStep4();
       default:
         return null;
@@ -852,7 +929,7 @@ const MockupCreator = () => {
               
               {/* Progress Steps */}
               <div className="flex items-center mt-6 space-x-4">
-                {[1, 2, 3, 4].map((step) => (
+                {[1, 2, 3, 4, 5].map((step) => (
                   <div key={step} className="flex items-center">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                       step <= currentStep
@@ -861,7 +938,7 @@ const MockupCreator = () => {
                     }`}>
                       {step}
                     </div>
-                    {step < 4 && (
+                    {step < 5 && (
                       <div className={`w-12 h-1 mx-2 ${
                         step < currentStep ? 'bg-blue-500' : 'bg-gray-200'
                       }`} />
@@ -891,7 +968,7 @@ const MockupCreator = () => {
               </button>
 
               <div className="flex space-x-4">
-                {currentStep < 4 ? (
+                {currentStep < 5 ? (
                   <button
                     onClick={goToNextStep}
                     className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium"

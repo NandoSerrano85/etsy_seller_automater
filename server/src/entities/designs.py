@@ -22,6 +22,7 @@ class DesignImages(Base):
     description = Column(String, nullable=True)
     canvas_config_id = Column(UUID(as_uuid=True), ForeignKey('canvas_configs.id'), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_digital = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

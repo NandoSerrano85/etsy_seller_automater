@@ -2,9 +2,12 @@ import os, cv2, numpy as np
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = str(pow(2,40))
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
 
-def crop_transparent(image_path):
+def crop_transparent(image_path='', image=None):
     # Read the image with OpenCV
-    img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    if image is None:
+        img = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
+    else:
+        img = image
     
     # Ensure the image has an alpha channel
     if img.shape[2] != 4:

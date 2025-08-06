@@ -1,5 +1,6 @@
 import cv2, os, numpy as np, struct, zlib, math
 from PIL import Image
+from typing import Tuple, List
 
 STD_DPI = 400
 def inches_to_pixels(inches, dpi):
@@ -76,3 +77,15 @@ def get_dpi_from_image(image_path):
     with Image.open(image_path) as img:
         dpi_x, dpi_y = img.info.get('dpi', (400, 400))
         return math.ceil(dpi_x), math.ceil(dpi_y)
+    
+def find_png_files(folder_path: str) -> Tuple[List[str], List[str]]:
+    """Find all PNG files in a directory"""
+    folder_path = os.path.join(folder_path, '')
+    png_filepath = []
+    png_filenames = []
+    
+    for root, dirs, files in os.walk(folder_path):
+        png_filepath.extend([os.path.join(root, file) for file in files if file.lower().endswith('.png')])
+        png_filenames.extend([file for file in files if file.lower().endswith('.png')])
+    
+    return png_filepath, png_filenames

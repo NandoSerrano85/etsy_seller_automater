@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Column, Integer, String, Boolean, DateTime, func, ForeignKey
+from sqlalchemy import ARRAY, JSON, Column, Float, Integer, String, Boolean, DateTime, func, ForeignKey
 from sqlalchemy.orm import relationship
 from server.src.database.core import Base
 import uuid
@@ -10,8 +10,8 @@ class MockupMaskData(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mockup_image_id = Column(UUID(as_uuid=True), ForeignKey('mockup_images.id'), nullable=False)
-    masks = Column(JSON, nullable=False)  # Store mask data as JSON array
-    points = Column(JSON, nullable=False)  # Store points data as JSON array
+    masks = Column(JSON, nullable=False)  # Store masks as JSON array
+    points = Column(JSON, nullable=False)  # Store points as JSON array
     is_cropped = Column(Boolean, default=False)
     alignment = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

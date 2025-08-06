@@ -1,9 +1,12 @@
 from typing import List, Optional
+from datetime import datetime, timedelta
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+from sqlalchemy.orm import Session, joinedload
 from server.src.entities.mockup import Mockups, MockupImage, MockupMaskData
 from server.src.entities.user import User
 from server.src.entities.template import EtsyProductTemplate
+from server.src.entities.designs import DesignImages
 from server.src.message import (
     MockupNotFoundError,
     MockupCreateError,
@@ -25,11 +28,10 @@ from server.src.message import (
     MockupMaskDataDeleteError
 )
 from . import model
-import logging
-import os
-from server.src.utils.mockups_util import create_mockup_images
+import logging, os, random, json
+from server.src.utils.mockups_util import create_mockup_images, create_mockups_for_etsy
 from server.src.utils.etsy_api_engine import EtsyAPI
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 
 
 def _validate_user_owns_mockup(db: Session, user_id: UUID, mockup_id: UUID) -> bool:
@@ -70,28 +72,37 @@ def _validate_template_exists(db: Session, user_id: UUID, template_id: UUID) -> 
 
 def _get_mask_data_for_mockup_image(db: Session, mockup_image_id: UUID):
     """
-    Fetch mask data for a specific mockup image using the MockupMaskData entity.
-    Returns (masks, points, is_cropped, alignment) where masks and points are lists of coordinate arrays.
+    Fetch all mask data for a specific mockup image.
     """
     mask_data = db.query(MockupMaskData).filter(
         MockupMaskData.mockup_image_id == mockup_image_id
-    ).first()
+    ).all()  # Get all masks instead of just first()
     
     if not mask_data:
         raise ValueError(f"No mask data found for mockup image {mockup_image_id}")
     
-    # Parse JSON if needed (for legacy compatibility)
-    masks_data = mask_data.masks
-    points_data = mask_data.points
+    # Combine all masks and points
+    all_masks = []
+    all_points = []
+    is_cropped = False
+    alignment = 'center'
     
-    if isinstance(masks_data, str):
-        import json
-        masks_data = json.loads(masks_data)
-    if isinstance(points_data, str):
-        import json
-        points_data = json.loads(points_data)
+    for data in mask_data:
+        masks_data = data.masks
+        points_data = data.points
+        
+        if isinstance(masks_data, str):
+            masks_data = json.loads(masks_data)
+        if isinstance(points_data, str):
+            points_data = json.loads(points_data)
+            
+        all_masks.extend(masks_data)
+        all_points.extend(points_data)
+        is_cropped = is_cropped or data.is_cropped
+        if data.alignment != 'center':
+            alignment = data.alignment
     
-    return masks_data, points_data, mask_data.is_cropped, mask_data.alignment
+    return all_masks, all_points, is_cropped, alignment
 
 def _get_template_mask_data_by_name(db: Session, template_name: str):
     """
@@ -109,7 +120,6 @@ def _get_template_mask_data_by_name(db: Session, template_name: str):
     
     # Get mask data for this mockup image
     mockup_image_id = mockup_image.id
-    from uuid import UUID
     if not isinstance(mockup_image_id, UUID):
         mockup_image_id = UUID(str(mockup_image_id))
     return _get_mask_data_for_mockup_image(db, mockup_image_id)
@@ -836,135 +846,8 @@ def upload_mockup_image_watermark(db: Session, image_id: UUID, user_id: UUID, wa
         db.rollback()
         raise MockupImageUpdateError(image_id)
 
-def upload_mockups_to_etsy(
-    product_template_id: UUID,
-    user_id: UUID,
-    files,
-    db
-    ):
 
-    try:
-        template = db.query(EtsyProductTemplate).filter(
-            EtsyProductTemplate.user_id == user_id,
-            EtsyProductTemplate.id == product_template_id
-        ).first()
-        user = db.query(User).filter(User.id == user_id)
-        
-        print(f"DEBUG API: Template found: {template is not None}")
-        if not template:
-            print(f"DEBUG API: Template not found for name: {product_template_id}")
-            raise HTTPException(status_code=404, detail=f"Template '{product_template_id}' not found")
-        
-        is_digital = template.type == 'digital'
-        print(f"DEBUG API: Template type: {template.type}, is_digital: {is_digital}")
-        
-        # Create appropriate directories based on template type
-        local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
-        if not local_root_path:
-            raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
-            
-        image_dir = f"{local_root_path}{user.shop_name}/Origin/16oz/"
-        os.makedirs(image_dir, exist_ok=True)
-        
-        uploaded_file_paths = []
-        digital_file_paths = []
-        
-        print(f"DEBUG API: Processing {len(files)} files")
-        for i, file in enumerate(files):
-            print(f"DEBUG API: Processing file {i+1}: {file.filename}")
-            if not file.filename:
-                print(f"DEBUG API: Skipping file {i+1} - no filename")
-                continue  # Skip files without names
-                
-            # Save to mockup directory (for both physical and digital)
-            image_file_path = os.path.join(image_dir, file.filename)
-            print(f"DEBUG API: Saving file to: {image_file_path}")
-            with open(image_file_path, "wb") as f:
-                file_content = file.read()
-                f.write(file_content)
-                print(f"DEBUG API: File saved, size: {len(file_content)} bytes")
-            uploaded_file_paths.append(image_file_path)
-            
-        print(f"DEBUG API: Calling process_uploaded_mockups with {len(uploaded_file_paths)} files")
-        result = create_mockup_images(
-            uploaded_file_paths,
-            f"{os.getenv('LOCAL_ROOT_PATH')}{user.shop_name}/",
-            template.name,
-            is_digital=is_digital,
-            user_id=user_id,
-            db=db
-        )
-        print(f"DEBUG API: process_uploaded_mockups returned: {result}")
-        
-        print(f"DEBUG API: finished processing uploaded files")
-        print(f"DEBUG API: Starting Etsy API calls")
-        etsy_api = EtsyAPI(user_id, db)
-        # Parse materials and tags from string to list if needed
-        materials = template.materials.split(',') if template.materials else []
-        tags = template.tags.split(',') if template.tags else []
-        print(f"DEBUG API: Creating Etsy listings for {len(result)} designs")
-        for i, (design, mockups) in enumerate(result.items()):
-            print(f"DEBUG API: Creating listing {i+1}/{len(result)} for design: {design}")
-            title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
-            listing_response = etsy_api.create_draft_listing(
-                title=' '.join(title + [template.title]) if template.title else ' '.join(title),
-                description=template.description,
-                price=template.price,
-                quantity=template.quantity,
-                tags=tags,
-                materials=materials,
-                is_digital=is_digital,
-                when_made=template.when_made,
-                )
-            listing_id = listing_response["listing_id"]
-            print(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
-            for j, mockup in enumerate(random.sample(mockups, len(mockups))):
-                print(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
-                etsy_api.upload_listing_image(listing_id, mockup)
-            print(f"DEBUG API: Completed listing {i+1}")
-
-            # Upload digital file(s) if digital template
-            if is_digital:
-                # The digital file path and name are the key (design) in result.items()
-                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{current_user.shop_name}/Digital/{template_name}/", design)
-                digital_file_name = design
-                print(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
-                try:
-                    etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
-                    print(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
-                except Exception as e:
-                    print(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
-
-        for filename in os.listdir(image_dir):
-            file_path = os.path.join(image_dir, filename)
-            if os.path.isfile(file_path):
-                try:
-                    os.remove(file_path)
-                except OSError as e:
-                    print(f"Error deleting file {filename}: {e}")
-        print(f"DEBUG API: Returning success response")
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "result": {
-                    "message": f"Successfully processed {len(uploaded_file_paths)} files",
-                    "files_processed": len(uploaded_file_paths),
-                    "designs_created": len(result)
-                }
-            }
-        )
-    except Exception as e:
-        print(f"DEBUG API: Error in upload-mockup: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": f"Server error: {str(e)}"}
-        )
-
-
-async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile], mockup_id: UUID):
+async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile], mockup_id: UUID, watermark_file: UploadFile):
     """
     Upload mockup files and create mockup images for a specific mockup group.
     """
@@ -1004,7 +887,13 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
         root_path = f"{local_root_path}{user.shop_name}/"
         target_dir = os.path.join(root_path, f"Mockups/BaseMockups/{template_name}/")
         os.makedirs(target_dir, exist_ok=True)
-
+        # Handle watermark file
+        watermark_dir = os.path.join(root_path, f"Mockups/BaseMockups/Watermarks/")
+        os.makedirs(watermark_dir, exist_ok=True)
+        watermark_path = os.path.join(watermark_dir, watermark_file.filename)
+        with open(watermark_path, "wb") as f:
+            watermark_content = await watermark_file.read()
+            f.write(watermark_content)
         # Process each uploaded file
         mockup_images = []
         for i, file in enumerate(files):
@@ -1027,7 +916,8 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
                 mockups_id=mockup_id,
                 filename=unique_filename,
                 file_path=file_path,
-                image_type=template_name
+                image_type=template_name,
+                watermark_path=watermark_path
             )
             db.add(mockup_image)
             db.flush()  # Get the ID
@@ -1053,78 +943,114 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
         raise MockupCreateError()
 
 
-async def upload_mockup_files_to_etsy(db: Session, user_id: UUID, files: List[UploadFile], template_name: str, mockup_id: UUID):
+async def upload_mockup_files_to_etsy(
+        db: Session, 
+        user_id: UUID, 
+        product_data: model.UploadToEtsyRequest):
     """
     Upload mockup files, process them, and create Etsy listings.
     This function replicates the functionality of the original upload_mockup endpoint.
     """
-    import random
-    from fastapi import HTTPException
-    from fastapi.responses import JSONResponse
-    
     try:
-        # Get template to check if it's digital
-        template = db.query(EtsyProductTemplate).filter(
-            EtsyProductTemplate.user_id == user_id,
-            EtsyProductTemplate.name == template_name
-        ).first()
+        ten_seconds_ago = datetime.utcnow() - timedelta(seconds=10)
 
-        mockup = db.query(Mockups).filter(
-            Mockups.id == mockup_id
+        mockup_with_images = (
+            db.query(Mockups)
+            .options(
+                joinedload(Mockups.mockup_images)
+                .joinedload(MockupImage.mask_data)
+            )
+            .filter(
+                Mockups.id == product_data.mockup_id,
+                Mockups.user_id == user_id
+            )
+            .first()
         )
-        
-        logging.info(f"DEBUG API: Template found: {template is not None}")
-        if not template:
-            logging.warning(f"DEBUG API: Template not found for name: {template_name}")
-            raise HTTPException(status_code=404, detail=f"Template '{template_name}' not found")
-        
-        is_digital = template.type == 'digital'
-        logging.info(f"DEBUG API: Template type: {template.type}, is_digital: {is_digital}")
-        
-        # Get user information
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get template to check if it's digital
+        result = (
+            db.query(
+                User.shop_name,
+                EtsyProductTemplate,
+                Mockups,
+                func.array_agg(DesignImages.id).label('design_ids')  # Aggregate designs into an array
+            )
+            .join(EtsyProductTemplate, EtsyProductTemplate.user_id == User.id)
+            .join(Mockups, Mockups.product_template_id == EtsyProductTemplate.id)
+            .join(DesignImages, DesignImages.user_id == User.id)  # Changed to inner join
+            .filter(
+                User.id == user_id,
+                EtsyProductTemplate.id == product_data.product_template_id,
+                Mockups.id == product_data.mockup_id,
+                DesignImages.is_active == True,  # Only get active designs
+                DesignImages.created_at >= ten_seconds_ago  
+            )
+            .group_by(
+                User.shop_name,
+                EtsyProductTemplate.id,
+                Mockups.id
+            )
+            .order_by(desc(func.max(DesignImages.created_at)))  # Order by most recent design
+            .first()
+        )
+
+        shop_name = result[0]
+        template = result[1]
+        mockup = result[2]
+        design_ids = result[3]
+        designs = (
+            db.query(DesignImages)
+            .filter(DesignImages.id.in_(design_ids))
+            .all()
+        )
+
+        mockup_mask_data = {}
+        for mockup_image in mockup_with_images.mockup_images:
+            if mockup_image.mask_data:
+                all_masks = []
+                all_points = []
+                is_cropped = False
+                alignment = 'center'
+                
+                for mask in mockup_image.mask_data:
+                    masks_data = json.loads(mask.masks) if isinstance(mask.masks, str) else mask.masks
+                    points_data = json.loads(mask.points) if isinstance(mask.points, str) else mask.points
+                    all_masks.extend(masks_data)
+                    all_points.extend(points_data)
+                    is_cropped |= mask.is_cropped
+                    if mask.alignment != 'center':
+                        alignment = mask.alignment
+                
+                mockup_mask_data[mockup_image.id] = {
+                    'masks': all_masks,
+                    'points': all_points,
+                    'is_cropped': is_cropped,
+                    'alignment': alignment
+                }
         
         # Create appropriate directories based on template type
         local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
         if not local_root_path:
-            raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
-            
-        image_dir = f"{local_root_path}{user.shop_name}/Origin/16oz/"
-        os.makedirs(image_dir, exist_ok=True)
+            pass
+            # raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
         
-        mask_points_list, points_list, _, is_cropped, alignment = _get_mask_data_for_user_and_template(db, int(user_id), str(template_name))
-
-        uploaded_file_paths = []
+        mask_points_list, points_list, _, is_cropped, alignment = _get_mask_data_for_user_and_template(db, int(user_id), str(template.name))
+        mask_data = {
+            'masks': mask_points_list,
+            'points': points_list,
+            'is_cropped': is_cropped,
+            'alignment': alignment
+        }
         
-        logging.info(f"DEBUG API: Processing {len(files)} files")
-        for i, file in enumerate(files):
-            logging.info(f"DEBUG API: Processing file {i+1}: {file.filename}")
-            if not file.filename:
-                logging.warning(f"DEBUG API: Skipping file {i+1} - no filename")
-                continue  # Skip files without names
-                
-            # Save to mockup directory (for both physical and digital)
-            image_file_path = os.path.join(image_dir, file.filename)
-            logging.info(f"DEBUG API: Saving file to: {image_file_path}")
-            file_content = await file.read()
-            with open(image_file_path, "wb") as f:
-                f.write(file_content)
-                logging.info(f"DEBUG API: File saved, size: {len(file_content)} bytes")
-            uploaded_file_paths.append(image_file_path)
-            
-       
-        
-            logging.info(f"DEBUG API: Calling process_uploaded_mockups with {len(uploaded_file_paths)} files")
-            result = create_mockup_images(
-                design_file_path=image_file_path,
-                root_path=f"{os.getenv('LOCAL_ROOT_PATH')}{user.shop_name}/",
-                template_name=template.name,
-                starting_name=mockup.starting_name,
-                mask_data=mask_points_list,
-                mockup_id=mockup_id
-            )
+        current_id_number, mockup_data, digital_image_paths = (create_mockups_for_etsy(
+            designs=designs,
+            mockup=mockup,
+            root_path=f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/",
+            template_name=template.name,
+            mask_data=mockup_mask_data
+        ))
+        is_digital = len(digital_image_paths) > 0
+        current_id_number = int(current_id_number)
         logging.info(f"DEBUG API: process_uploaded_mockups returned: {result}")
         
         logging.info(f"DEBUG API: finished processing uploaded files")
@@ -1135,8 +1061,8 @@ async def upload_mockup_files_to_etsy(db: Session, user_id: UUID, files: List[Up
         materials = template.materials.split(',') if template.materials else []
         tags = template.tags.split(',') if template.tags else []
         
-        logging.info(f"DEBUG API: Creating Etsy listings for {len(result)} designs")
-        for i, (design, mockups) in enumerate(result.items()):
+        logging.info(f"DEBUG API: Creating Etsy listings for {mockup_data} designs")
+        for i,(design, mockups) in enumerate(mockup_data.items()):
             logging.info(f"DEBUG API: Creating listing {i+1}/{len(result)} for design: {design}")
             title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
             listing_response = etsy_api.create_draft_listing(
@@ -1153,15 +1079,15 @@ async def upload_mockup_files_to_etsy(db: Session, user_id: UUID, files: List[Up
             logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
             
             # Upload images to the listing
-            for j, mockup in enumerate(random.sample(mockups, len(mockups))):
+            for j, mockup_image in enumerate(random.sample(mockups, len(mockups))):
                 logging.info(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
-                etsy_api.upload_listing_image(listing_id, mockup)
+                etsy_api.upload_listing_image(listing_id, mockup_image)
             logging.info(f"DEBUG API: Completed listing {i+1}")
 
             # Upload digital file(s) if digital template
             if is_digital:
                 # The digital file path and name are the key (design) in result.items()
-                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{user.shop_name}/Digital/{template_name}/", design)
+                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/Digital/{template.name}/", design)
                 digital_file_name = design
                 logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
                 try:
@@ -1170,19 +1096,16 @@ async def upload_mockup_files_to_etsy(db: Session, user_id: UUID, files: List[Up
                 except Exception as e:
                     logging.error(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
 
-        # Clean up temporary files
-        for filename in os.listdir(image_dir):
-            file_path = os.path.join(image_dir, filename)
-            if os.path.isfile(file_path):
-                try:
-                    os.remove(file_path)
-                except OSError as e:
-                    logging.error(f"Error deleting file {filename}: {e}")
+        setattr(mockup, "starting_name", current_id_number)
         
+        db.commit()
+        db.refresh(mockup)
+
         logging.info(f"DEBUG API: Returning success response")
-        return model.MockupImageUploadResponse(
-            uploaded_images=[],  # We might want to populate this with actual image data
-            total=len(uploaded_file_paths)
+        return model.UploadToEtsyResponse(
+            success=True,
+            success_code=200,
+            message="Successfully processed mockup files and created Etsy listings.",
         )
         
     except Exception as e:

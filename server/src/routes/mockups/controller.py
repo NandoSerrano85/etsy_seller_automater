@@ -7,6 +7,7 @@ from server.src.routes.auth.service import CurrentUser
 from server.src.message import InvalidUserToken
 from . import model
 from . import service
+import json
 
 router = APIRouter(
     prefix='/mockups',
@@ -58,12 +59,13 @@ async def upload_mockup_files(
     db: Session = Depends(get_db),
     files: List[UploadFile] = File(...),
     mockup_id: UUID = Form(...),
+    watermark_file: UploadFile = Form(...),
 ):
     """Upload mockup files with template name (legacy compatibility)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    result = await service.upload_mockup_files(db, user_id, files, mockup_id)
+    result = await service.upload_mockup_files(db, user_id, files, mockup_id, watermark_file)
     print(f"Controller returning: {type(result)} - {result}")
     return result
 
@@ -264,15 +266,15 @@ async def delete_mockup_mask_data(
     service.delete_mockup_mask_data(db, mask_data_id, user_id)
 
 
-@router.post('/upload-mockup', response_model=model.MockupImageUploadResponse)
+@router.post('/upload-mockup', response_model=model.UploadToEtsyResponse, status_code=status.HTTP_201_CREATED)
 async def upload_mockup(
     current_user: CurrentUser,
-    mockup_id: UUID,
-    files: List[UploadFile] = File(...),
-    template_name: str = Form('UVDTF 16oz'),
+    product_data:str = Form(...),
     db: Session = Depends(get_db)
 ):
     """Upload mockup files and create Etsy listings"""
+    product_data_dict = json.loads(product_data)
+    product_request_model = model.UploadToEtsyRequest(**product_data_dict)
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
@@ -280,7 +282,5 @@ async def upload_mockup(
     return await service.upload_mockup_files_to_etsy(
         db=db,
         user_id=user_id,
-        files=files,
-        template_name=template_name,
-        mockup_id=mockup_id
+        product_data=product_request_model
     )

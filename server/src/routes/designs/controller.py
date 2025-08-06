@@ -1,4 +1,5 @@
-from fastapi import APIRouter, status, Query, HTTPException, Depends
+from fastapi import APIRouter, status, Query, UploadFile, File, Depends, Form
+from typing import List
 from uuid import UUID
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
@@ -6,23 +7,27 @@ from server.src.routes.auth.service import CurrentUser
 from server.src.message import InvalidUserToken
 from . import model
 from . import service
+import json
 
 router = APIRouter(
     prefix='/designs',
     tags=['Designs']
 )
 
-@router.post('/', response_model=model.DesignImageResponse, status_code=status.HTTP_201_CREATED)
+@router.post('/', response_model=model.DesignImageListResponse, status_code=status.HTTP_201_CREATED)
 async def create_design(
-    design_data: model.DesignImageCreate,
     current_user: CurrentUser,
+    design_data:str = Form(...),
+    files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
     """Create a new design for the current user"""
     user_id = current_user.get_uuid()
+    design_data_dict = json.loads(design_data)
+    design_model = model.DesignImageCreate(**design_data_dict)
     if not user_id:
         raise InvalidUserToken()
-    return service.create_design(db, user_id, design_data)
+    return await service.create_design(db, user_id, design_model, files)
 
 @router.get('/list', response_model=model.DesignImageListResponse)
 async def get_designs(

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import MockupsGallery from '../../components/MockupsGallery';
 import DesignFilesGallery from '../../components/DesignFilesGallery';
-import TemplateSelectionModal from '../../components/TemplateSelectionModal';
+import DesignUploadModal from '../../components/DesignUploadModal';
 import BackToTop from '../../components/BackToTop';
 
 const DesignsTab = ({
@@ -16,7 +16,7 @@ const DesignsTab = ({
   openImageModal,
   onUploadComplete
 }) => {
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showDesignUploadModal, setShowDesignUploadModal] = useState(false);
   if (!accessToken) {
     return (
       <div className="card p-6 sm:p-8 text-center">
@@ -34,7 +34,7 @@ const DesignsTab = ({
               ? 'bg-gray-400 text-white cursor-not-allowed' 
               : 'bg-green-500 text-white hover:bg-green-600'
           }`}
-          onClick={() => setShowTemplateModal(true)}
+          onClick={() => setShowDesignUploadModal(true)}
           disabled={uploading}
         >
           {uploading ? (
@@ -76,9 +76,9 @@ const DesignsTab = ({
       )}
 
       {/* Template Selection Modal */}
-      <TemplateSelectionModal
-        isOpen={showTemplateModal}
-        onClose={() => setShowTemplateModal(false)}
+      <DesignUploadModal
+        isOpen={showDesignUploadModal}
+        onClose={() => setShowDesignUploadModal(false)}
         onUpload={onUploadComplete}
       />
       

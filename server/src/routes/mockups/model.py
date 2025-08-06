@@ -107,3 +107,14 @@ class MockupImageListResponse(BaseModel):
 class MockupImageUploadResponse(BaseModel):
     uploaded_images: List[MockupImageResponse]
     total: int
+
+# --- Upload To Etsy Models ---
+class UploadToEtsyRequest(BaseModel):
+    design_ids: List[UUID]  # List of design IDs to upload
+    mockup_id: UUID  # ID of the mockup to upload
+    product_template_id: UUID  # ID of the product template
+
+class UploadToEtsyResponse(BaseModel):
+    success: bool
+    success_code: int
+    message: str

@@ -499,7 +499,9 @@ class EtsyAPI:
         Search for image files in image_dir (recursively) whose filenames match search_name (regex).
         Returns a list of full paths to all matches.
         """
-        pattern = re.compile(search_name, re.IGNORECASE)
+        parts = search_name.split(" ")
+        search_name = " ".join(parts[:2])
+        pattern = re.compile(re.escape(search_name), re.IGNORECASE)
         for root, dirs, files in os.walk(image_dir):
             for file in files:
                 if file.lower().endswith(extensions) and pattern.search(file):

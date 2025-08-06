@@ -10,9 +10,19 @@ class DesignImageBase(BaseModel):
     canvas_config_id: Optional[UUID] = None
     size_config_id: Optional[UUID] = None
     is_active: bool = True
+    is_digital: bool = False
 
-class DesignImageCreate(DesignImageBase):
-    pass
+class DesignImageCreate(BaseModel):
+    product_template_id: UUID
+    starting_name: int = 100
+    mockup_id: UUID
+    description: Optional[str] = None
+    canvas_config_id: Optional[UUID] = None
+    size_config_id: Optional[UUID] = None
+    is_active: bool = True
+    is_digital: bool = False
+    filename: str = ''
+    file_path: str = ''
 
 class DesignImageUpdate(BaseModel):
     filename: Optional[str] = None
@@ -21,6 +31,7 @@ class DesignImageUpdate(BaseModel):
     canvas_config_id: Optional[UUID] = None
     size_config_id: Optional[UUID] = None
     is_active: Optional[bool] = None
+    is_digital: Optional[bool] = None
 
 class DesignImageResponse(DesignImageBase):
     id: UUID

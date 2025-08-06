@@ -1,12 +1,17 @@
 """
 Mockup processing utilities for creating mockup images from design files.
 """
-import os, cv2, re
+import os, cv2, re, logging, json
 import numpy as np
 from typing import List, Tuple, Dict, Any
 from server.src.utils.cropping import crop_transparent
 from server.src.utils.resizing import resize_image_by_inches
-from server.src.utils.util import save_single_image
+from server.src.entities.designs import DesignImages
+from server.src.entities.mockup import Mockups
+from server.src.utils.util import (
+    save_single_image,
+    find_png_files
+)
 
 
 class MockupTemplateCache:
@@ -73,7 +78,7 @@ class MockupImageProcessor:
             'bounds': (x_min, y_min, x_max, y_max)
         }
 
-    def create_mockup(self, mask_points_list, points_list, image_type=None, image=None, index=0, is_cropped=False, alignment='center'):
+    def create_mockup(self, mask_points_list, points_list, image_type=None, image=None, index=0, is_cropped_list=None, alignment_list=None):
         """
         Create mockup by replacing masked areas with design image
         
@@ -91,101 +96,78 @@ class MockupImageProcessor:
         else:
             design_img = cv2.imread(f"{self.design_image_path}{image}", cv2.IMREAD_UNCHANGED)
         
-        # Apply cropping if requested
-        if is_cropped and design_img is not None and design_img.shape[2] == 4:
-            # Crop to non-transparent area
-            alpha = design_img[:, :, 3]
-            rows = np.any(alpha != 0, axis=1)
-            cols = np.any(alpha != 0, axis=0)
-            if np.any(rows) and np.any(cols):
-                ymin, ymax = np.where(rows)[0][[0, -1]]
-                xmin, xmax = np.where(cols)[0][[0, -1]]
-                design_img = design_img[ymin:ymax+1, xmin:xmax+1]
-        
         background = self.get_background(index)
         if background.shape[2] == 3:
             background = cv2.cvtColor(background, cv2.COLOR_BGR2BGRA)
 
         result = background.copy()
 
-        # Create masks from points
-        masks = []
-        for i, mask_points in enumerate(mask_points_list):
+        # Process each mask with its own settings
+        for i, (mask_points, points) in enumerate(zip(mask_points_list, points_list)):
+            # Get mask-specific properties
+            is_cropped = is_cropped_list[i] if is_cropped_list else False
+            alignment = alignment_list[i] if alignment_list else 'center'
+
+            # Create mask
             if not mask_points or len(mask_points) < 3:
                 continue
             
             points = np.array(mask_points, dtype=np.int32)
             mask = np.zeros(background.shape[:2], dtype=np.uint8)
             cv2.fillPoly(mask, [points], (255,))
-            masks.append(mask)
-        
-        for i, (mask, points) in enumerate(zip(masks, points_list)):
-            placement = self.get_optimal_placement_area(mask, points, image_type, mask_index=i)
+
+            # Get mask bounds
+            mask_indices = np.argwhere(mask)
+            y_min, x_min = mask_indices.min(axis=0)
+            y_max, x_max = mask_indices.max(axis=0)
+            mask_height = y_max - y_min
+            mask_width = x_max - x_min
+
+            # Calculate scaling based on mask height
             design_aspect = design_img.shape[1] / design_img.shape[0]
-            
-            if is_cropped:
-                # First mask - crop and resize
-                new_width = int(placement['width'])
-                new_height = int(placement['height'])
-                if design_aspect > (placement['width'] / placement['height']):
-                    new_width = int(placement['width'])
-                    new_height = int(new_width / design_aspect)
-                else:
-                    new_height = int(placement['height'])
-                    new_width = int(new_height * design_aspect)
-                design_to_place = cv2.resize(design_img, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
-                
-                # Calculate x_offset based on alignment
-                if alignment == 'left':
-                    x_offset = int(placement['bounds'][0])  # Left edge of mask
-                elif alignment == 'right':
-                    x_offset = int(placement['bounds'][2] - new_width)  # Right edge of mask
-                else:  # center (default)
-                    x_offset = int(placement['center'][0] - new_width / 2)
-                
-                y_offset = int(placement['center'][1] - new_height / 2)
+            scale = mask_height / design_img.shape[0]
+            scaled_width = int(design_img.shape[1] * scale)
+            scaled_height = mask_height
+
+            # Resize design to match mask height while maintaining aspect ratio
+            design_resized = cv2.resize(design_img, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
+
+            # Calculate cropping bounds based on alignment
+            if alignment == 'left':
+                start_x = 0
+                end_x = min(mask_width, scaled_width)
+            elif alignment == 'right':
+                start_x = max(0, scaled_width - mask_width)
+                end_x = scaled_width
+            else:  # center
+                center_x = scaled_width // 2
+                half_mask_width = mask_width // 2
+                start_x = max(0, center_x - half_mask_width)
+                end_x = min(scaled_width, center_x + half_mask_width)
+
+            # Crop design to mask width
+            design_cropped = design_resized[:, start_x:end_x]
+
+            # If cropped design is narrower than mask, pad it
+            if design_cropped.shape[1] < mask_width:
+                pad_left = (mask_width - design_cropped.shape[1]) // 2
+                pad_right = mask_width - design_cropped.shape[1] - pad_left
+                design_to_place = cv2.copyMakeBorder(
+                    design_cropped, 
+                    0, 0, pad_left, pad_right, 
+                    cv2.BORDER_CONSTANT, 
+                    value=[0,0,0,0]
+                )
             else:
-                # Second mask - match height to mask, center, crop horizontally
-                mask_indices = np.argwhere(mask)
-                y_min, x_min = mask_indices.min(axis=0)
-                y_max, x_max = mask_indices.max(axis=0)
-                mask_h = y_max - y_min
-                mask_w = x_max - x_min
-                
-                scale = mask_h / design_img.shape[0]
-                resized_width = int(design_img.shape[1] * scale)
-                resized_height = mask_h
-                resized = cv2.resize(design_img, (resized_width, resized_height), interpolation=cv2.INTER_LANCZOS4)
-                
-                center_x = (x_max + x_min) // 2
-                
-                # Calculate crop position based on alignment
-                if alignment == 'left':
-                    crop_x1 = 0
-                    crop_x2 = min(mask_w, resized.shape[1])
-                elif alignment == 'right':
-                    crop_x1 = max(0, resized.shape[1] - mask_w)
-                    crop_x2 = resized.shape[1]
-                else:  # center (default)
-                    crop_x1 = max(0, (resized.shape[1] - mask_w) // 2)
-                    crop_x2 = crop_x1 + mask_w
-                
-                cropped = resized[:, crop_x1:crop_x2]
-                
-                if cropped.shape[1] < mask_w:
-                    pad_left = (mask_w - cropped.shape[1]) // 2
-                    pad_right = mask_w - cropped.shape[1] - pad_left
-                    cropped = cv2.copyMakeBorder(cropped, 0, 0, pad_left, pad_right, cv2.BORDER_CONSTANT, value=[0,0,0,0])
-                
-                design_to_place = cropped
-                new_width = mask_w
-                new_height = mask_h
-                x_offset = x_min
-                y_offset = y_min
+                design_to_place = design_cropped
+
+            # Calculate placement coordinates
+            x_offset = x_min
+            y_offset = y_min
             
             # Ensure coordinates are within bounds
-            y_end = min(y_offset + new_height, result.shape[0])
-            x_end = min(x_offset + new_width, result.shape[1])
+            y_end = min(y_offset + design_to_place.shape[0], result.shape[0])
+            x_end = min(x_offset + design_to_place.shape[1], result.shape[1])
             y_start = max(y_offset, 0)
             x_start = max(x_offset, 0)
             
@@ -195,17 +177,19 @@ class MockupImageProcessor:
             w_y_end = w_y_start + (y_end - y_start)
             w_x_end = w_x_start + (x_end - x_start)
             
-            # Composite the design onto the background
+            # Only apply design where the mask is active
+            mask_region = mask[y_start:y_end, x_start:x_end]
+            
+            # Composite the design onto the background where mask is active
             if design_to_place.shape[2] == 4:  # Has alpha channel
                 alpha = design_to_place[w_y_start:w_y_end, w_x_start:w_x_end, 3] / 255.0
+                alpha = alpha * (mask_region > 0)  # Only apply where mask is active
                 for c in range(3):
                     result[y_start:y_end, x_start:x_end, c] = (
                         design_to_place[w_y_start:w_y_end, w_x_start:w_x_end, c] * alpha +
                         result[y_start:y_end, x_start:x_end, c] * (1.0 - alpha)
                     )
-            else:  # No alpha channel
-                result[y_start:y_end, x_start:x_end, :3] = design_to_place[w_y_start:w_y_end, w_x_start:w_x_end]
-        
+
         return result
 
     def add_watermark(self, image, watermark_path, points_list, mask_points_list, image_type, opacity=0.5):
@@ -275,20 +259,6 @@ class MockupImageProcessor:
         
         return image
 
-
-def find_png_files(folder_path: str) -> Tuple[List[str], List[str]]:
-    """Find all PNG files in a directory"""
-    folder_path = os.path.join(folder_path, '')
-    png_filepath = []
-    png_filenames = []
-    
-    for root, dirs, files in os.walk(folder_path):
-        png_filepath.extend([os.path.join(root, file) for file in files if file.lower().endswith('.png')])
-        png_filenames.extend([file for file in files if file.lower().endswith('.png')])
-    
-    return png_filepath, png_filenames
-
-
 def process_design_image(design_file_path: str, template_name: str) -> Tuple[np.ndarray, str]:
     """
     Process a design image for mockup creation.
@@ -317,7 +287,7 @@ def process_design_image(design_file_path: str, template_name: str) -> Tuple[np.
 
 
 def create_mockup_images(
-    design_file_path: str,
+    design_file_paths: str,
     template_name: str,
     mockup_id: str,
     root_path: str,
@@ -341,10 +311,8 @@ def create_mockup_images(
     # Set up paths
     mockup_path = f"{root_path}Mockups/BaseMockups/{template_name}/"
     watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
-    
-    # Check if design file exists
-    if not os.path.exists(design_file_path):
-        raise FileNotFoundError(f"Design file not found: {design_file_path}")
+    temp_design_path_list = []
+    temp_deisgn_filename_list = []
     
     # Extract mask data from the provided dictionary
     mask_points_list = mask_data.get('masks', [])
@@ -361,16 +329,25 @@ def create_mockup_images(
         raise FileNotFoundError(f"No mockup files found in {mockup_path}")
     
     # Process the design image
-    resized_image = process_design_image(design_file_path, template_name)
+
+    for design_file_path in design_file_paths:
+        
+        # Process the design image
+        if not os.path.exists(design_file_path):
+            raise FileNotFoundError(f"Design file not found: {design_file_path}")
+        
+        # Resize and crop the design image
+        resized_image = process_design_image(design_file_path, template_name)
     
-    # Create temporary design file for mockup processing
-    temp_design_dir = f"{root_path}Temp/"
-    os.makedirs(temp_design_dir, exist_ok=True)
-    temp_design_filename = f"temp_design_{mockup_id}_{os.path.basename(design_file_path)}"
-    temp_design_path = f"{temp_design_dir}{temp_design_filename}"
-    
-    # Save the processed design image
-    save_single_image(resized_image, temp_design_dir, temp_design_filename, target_dpi=(400, 400))
+        # Create temporary design file for mockup processing
+        temp_design_dir = f"{root_path}Temp/"
+        os.makedirs(temp_design_dir, exist_ok=True)
+        temp_design_filename = f"temp_design_{mockup_id}_{os.path.basename(design_file_path)}"
+        temp_design_path = f"{temp_design_dir}{temp_design_filename}"
+        temp_design_path_list.append(temp_design_path)
+        temp_deisgn_filename_list.append(temp_design_filename)
+        # Save the processed design image
+        save_single_image(resized_image, temp_design_dir, temp_design_filename, target_dpi=(400, 400))
     
     # Create mockup processor
     mockup_processor = MockupImageProcessor(mockup_file_paths, temp_design_dir)
@@ -439,3 +416,135 @@ def create_mockup_images(
         pass
     
     return generated_mockups
+
+def create_mockups_for_etsy(
+    designs: List[DesignImages],
+    mockup: Mockups,
+    template_name: str,
+    root_path: str,
+    mask_data: Dict[str, Any]
+) -> Tuple[str, Dict[str, List[str]], List[str]]:
+    
+    # Extract mask data from the provided dictionary
+    type_pattern = r"UV\s*DTF|UV"
+    id_number = mockup.starting_name
+    mockup_return = dict()
+
+    mockup_file_paths = set()
+    mockup_filenames = list()
+    watermark_path = set()
+    for mockup_image in mockup.mockup_images:
+        if mockup_image.file_path:
+            mockup_file_paths.add(mockup_image.file_path)
+        if mockup_image.filename:
+            mockup_filenames.append(mockup_image.filename)
+        if mockup_image.watermark_path:
+            watermark_path.add(mockup_image.watermark_path)
+    if len(watermark_path) > 1:
+        raise ValueError(f"More than one watermark file path {watermark_path}")
+    mockup_file_paths = list(mockup_file_paths)
+    watermark_path = str(watermark_path.pop())
+
+    design_file_paths = set()
+    design_filenames = list()
+    design_image_path_list = list()
+    for design_image in designs:
+        if design_image.file_path:
+            split_path = design_image.file_path.split('/')
+            split_path.pop()  # Remove filename
+            split_path = ['/'.join(split_path)]+['/']
+            design_file_paths.add(''.join(split_path))
+        if design_image.filename:
+            design_filenames.append(design_image.filename)
+        if design_image.is_digital:
+            design_image_path_list.append(design_image.file_path)
+    if len(design_file_paths) > 1:
+        raise ValueError(f"More than one design file path {design_file_paths}")
+    design_file_paths = str(design_file_paths.pop())
+
+    mockup_processor = MockupImageProcessor(mockup_file_paths, design_file_paths)
+
+    for n, filename in enumerate(design_filenames):
+        current_id_number = str(n + id_number).zfill(3)
+        generated_mockup_path_list = list()
+        for i, mockup_image in enumerate(mockup.mockup_images):
+            if mockup_image.id in mask_data:
+                current_masks = []
+                current_points = []
+                current_is_cropped = []
+                current_alignments = []
+                # Get all masks with their individual properties
+                for mask in mockup_image.mask_data:
+                    if isinstance(mask.masks, str):
+                        masks = json.loads(mask.masks)
+                    else:
+                        masks = mask.masks
+
+                    if isinstance(mask.points, str):
+                        points = json.loads(mask.points)
+                    else:
+                        points = mask.points
+
+                    # Add each mask with its properties
+                    for m, p in zip(masks, points):
+                        current_masks.append(m)
+                        current_points.append(p)
+                        current_is_cropped.append(mask.is_cropped)
+                        current_alignments.append(mask.alignment)
+            else:
+                # Fallback to empty defaults if no mask data
+                current_masks = []
+                current_points = []
+                current_is_cropped = [False]
+                current_alignments = ['center']
+
+            # Create mockup with all masks
+            logging.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
+            logging.info(f"Using {len(current_masks)} masks with properties:")
+            for idx, (is_crop, align) in enumerate(zip(current_is_cropped, current_alignments)):
+                logging.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
+
+            assembled_mockup = mockup_processor.create_mockup(
+                current_masks,
+                current_points,
+                image_type=template_name, 
+                image=filename, 
+                index=i,
+                is_cropped_list=current_is_cropped,
+                alignment_list=current_alignments
+            )
+            
+            # Add watermark
+            assembled_mockup_with_watermark = mockup_processor.add_watermark(
+                assembled_mockup, 
+                watermark_path, 
+                current_points,
+                current_masks,
+                image_type=template_name,
+                opacity=0.45
+            )
+            
+            # Resize for display
+            height, width = assembled_mockup_with_watermark.shape[:2]
+            scale_factor = min(2000 / width, 2000 / height)
+            new_size = (int(width * scale_factor), int(height * scale_factor))
+            resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
+
+            # Determine color suffix
+            postfix = "_".join(template_name.split()+[current_id_number]+[f"BG_{i}"])
+            prefix = "UV" if re.search(type_pattern, template_name) else "DTF"
+            
+            # Generate mockup filename and path
+            mockup_filename = f"{prefix} {current_id_number} {postfix}.jpg"
+            generated_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(generated_mockup_path), exist_ok=True)
+            
+            generated_mockup_path_list.append(generated_mockup_path)
+
+            # Save the mockup image
+            cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        mockup_return[filename] = generated_mockup_path_list
+
+    return current_id_number, mockup_return, design_image_path_list
