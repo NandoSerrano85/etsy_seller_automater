@@ -54,8 +54,8 @@ USER app
 EXPOSE 3003
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3003/api/ping || exit 1
+# HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+#     CMD curl -f http://localhost:3003/api/ping || exit 1
 
 # Run the application using the new main.py entry point
-CMD ["python", "server/main.py"] 
+CMD ["python", "-m", "server.main"] 

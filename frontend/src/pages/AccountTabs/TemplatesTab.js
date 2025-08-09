@@ -17,7 +17,7 @@ const TemplatesTab = () => {
     const fetchTemplates = async () => {
       try {
         setLoading(true);
-        const response = await api.get('/api/user-templates');
+        const response = await api.get('/settings/product-template');
         setTemplates(response);
         setMessage('');
       } catch (error) {
@@ -72,7 +72,7 @@ const TemplatesTab = () => {
       }
   
       try {
-        await api.delete(`/api/user-templates/${templateId}`);
+        await api.delete(`/settings/product-template/${templateId}`);
         setMessage('Template deleted successfully');
         fetchTemplates();
       } catch (error) {
@@ -85,11 +85,11 @@ const TemplatesTab = () => {
       try {
         if (editingTemplate.id) {
           // Update existing template
-          await api.put(`/api/user-templates/${editingTemplate.id}`, templateData);
+          await api.put(`/settings/product-template/${editingTemplate.id}`, templateData);
           setMessage('Template updated successfully');
         } else {
           // Create new template
-          await api.post('/api/user-templates', templateData);
+          await api.post('/settings/product-template', templateData);
           setMessage('Template created successfully');
         }
         setShowEditModal(false);
@@ -103,7 +103,7 @@ const TemplatesTab = () => {
   
     const handleCreateDefaultTemplate = async () => {
       try {
-        await api.post('/api/user-templates/default');
+        await api.post('/settings/product-template/default');
         setMessage('Default template created successfully');
         fetchTemplates();
       } catch (error) {
@@ -241,7 +241,27 @@ const TemplatesTab = () => {
   const TemplateEditModal = ({ template, onSave, onClose }) => {
     const [formData, setFormData] = useState(template);
     const [loading, setLoading] = useState(false);
-  
+    const [taxonomies, setTaxonomies] = useState([]);
+    const [shopSections, setShopSections] = useState([]);
+    const api = useApi();
+
+    useEffect(() => {
+      const fetchData = async () => {
+        try {
+          const [taxonomiesData, shopSectionsData] = await Promise.all([
+            api.get('/settings/product-template/taxonomies'),
+            api.get('/settings/product-template/shop-sections')
+          ]);
+          setTaxonomies(taxonomiesData);
+          setShopSections(shopSectionsData);
+        } catch (err) {
+          setTaxonomies([]);
+          setShopSections([]);
+        }
+      };
+      fetchData();
+    }, []);
+
     const handleSubmit = async (e) => {
       e.preventDefault();
       setLoading(true);
@@ -337,7 +357,7 @@ const TemplatesTab = () => {
                 </div>
   
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Listing Title</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Listing Title Postfix</label>
                   <input
                     type="text"
                     value={formData.title || ''}
@@ -461,6 +481,7 @@ const TemplatesTab = () => {
                 <input
                   type="text"
                   placeholder={formData.materials && formData.materials.length >= 13 ? "Maximum materials reached" : "Type materials and press Enter or comma to add"}
+                  onChange={(e) => handleArrayChange('materials', e.target.value)}
                   onKeyPress={(e) => handleArrayKeyPress('materials', e)}
                   disabled={formData.materials && formData.materials.length >= 13}
                   className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -503,6 +524,7 @@ const TemplatesTab = () => {
                 <input
                   type="text"
                   placeholder={formData.tags && formData.tags.length >= 13 ? "Maximum tags reached" : "Type tags and press Enter or comma to add"}
+                  onChange={(e) => handleArrayChange('tags', e.target.value)}
                   onKeyPress={(e) => handleArrayKeyPress('tags', e)}
                   disabled={formData.tags && formData.tags.length >= 13}
                   className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
@@ -553,23 +575,31 @@ const TemplatesTab = () => {
                 <h3 className="text-lg font-semibold text-gray-900">Etsy Settings</h3>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Taxonomy ID</label>
-                  <input
-                    type="number"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Taxonomy</label>
+                  <select
                     value={formData.taxonomy_id || ''}
                     onChange={(e) => handleInputChange('taxonomy_id', parseInt(e.target.value))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">Select a category</option>
+                    {taxonomies.map((tax) => (
+                      <option key={tax.id} value={tax.id}>{tax.name} (ID: {tax.id})</option>
+                    ))}
+                  </select>
                 </div>
   
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Shop Section ID</label>
-                  <input
-                    type="number"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Shop Section</label>
+                  <select
                     value={formData.shop_section_id || ''}
                     onChange={(e) => handleInputChange('shop_section_id', parseInt(e.target.value))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">Select a shop section</option>
+                    {shopSections.map((section) => (
+                      <option key={section.id} value={section.id}>{section.name} (ID: {section.id})</option>
+                    ))}
+                  </select>
                 </div>
   
                                               <div>

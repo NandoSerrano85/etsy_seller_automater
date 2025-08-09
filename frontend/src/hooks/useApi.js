@@ -1,4 +1,4 @@
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 // Standalone API call function for use in AuthContext (no circular dependency)
 export const apiCall = async (url, options = {}, token = null) => {
@@ -14,8 +14,12 @@ export const apiCall = async (url, options = {}, token = null) => {
     ...options.headers,
   };
 
-  // Only set Content-Type for JSON requests, not for FormData
-  if (!(options.body instanceof FormData)) {
+  // Only set Content-Type to application/json if not already set, and not for FormData or URLSearchParams
+  if (
+    !(options.body instanceof FormData) &&
+    !(options.body instanceof URLSearchParams) &&
+    !headers['Content-Type']
+  ) {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -48,10 +52,10 @@ export const apiCall = async (url, options = {}, token = null) => {
 };
 
 export const useApi = () => {
-  const { token } = useAuth();
+  const { userToken } = useAuth();
 
   const authenticatedApiCall = async (url, options = {}) => {
-    return apiCall(url, options, token);
+    return apiCall(url, options, userToken);
   };
 
   const get = (url) => authenticatedApiCall(url, { method: 'GET' });

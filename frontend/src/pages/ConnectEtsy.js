@@ -10,7 +10,7 @@ const ConnectEtsy = () => {
   useEffect(() => {
     const fetchOAuthData = async () => {
       try {
-        const response = await api.get('/api/oauth-data');
+        const response = await api.get('/third-party/oauth-data');
         setOauthData(response);
       } catch (err) {
         setError('Failed to load OAuth configuration');
@@ -20,7 +20,7 @@ const ConnectEtsy = () => {
       }
     };
     fetchOAuthData();
-  }, [api]);
+  }, []);
 
   if (loading) {
     return (

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
 
 // Settings Tab Component
@@ -27,7 +27,7 @@ const SettingsTab = () => {
       setMessage('');
   
       try {
-        const response = await api.post('/api/change-password', {
+        const response = await api.post('/auth/change-password', {
           current_password: currentPassword,
           new_password: newPassword
         });

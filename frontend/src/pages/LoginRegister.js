@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const LoginRegister = () => {
   const [tab, setTab] = useState('login');
@@ -13,17 +13,17 @@ const LoginRegister = () => {
   const [shopName, setShopName] = useState('');
   const [registerError, setRegisterError] = useState('');
   
-  const { login, register, isAuthenticated } = useAuth();
+  const { login, register, isUserAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Redirect if already logged in
   useEffect(() => {
-    if (isAuthenticated()) {
+    if (isUserAuthenticated) {
       const from = location.state?.from?.pathname || '/';
       navigate(from, { replace: true });
     }
-  }, [isAuthenticated, navigate, location]);
+  }, [isUserAuthenticated, navigate, location]);
 
   const validate = () => {
     if (!email || !password) {
@@ -75,17 +75,17 @@ const LoginRegister = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 p-4">
-      <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="bg-white/95 backdrop-blur-sm rounded-xl shadow-xl border border-lavender-200 p-6 sm:p-8 w-full max-w-md">
         <div className="flex mb-6">
           <button
-            className={`flex-1 py-2 sm:py-3 font-semibold rounded-l-lg transition-colors text-sm sm:text-base ${tab === 'login' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+            className={`flex-1 py-2 sm:py-3 font-semibold rounded-l-lg transition-colors text-sm sm:text-base ${tab === 'login' ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white' : 'bg-sage-100 text-sage-700'}`}
             onClick={() => { setTab('login'); setError(''); }}
           >
             Login
           </button>
           <button
-            className={`flex-1 py-2 sm:py-3 font-semibold rounded-r-lg transition-colors text-sm sm:text-base ${tab === 'register' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+            className={`flex-1 py-2 sm:py-3 font-semibold rounded-r-lg transition-colors text-sm sm:text-base ${tab === 'register' ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white' : 'bg-sage-100 text-sage-700'}`}
             onClick={() => { setTab('register'); setError(''); }}
           >
             Register
@@ -96,7 +96,7 @@ const LoginRegister = () => {
             <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Email</label>
             <input
               type="email"
-              className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+              className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
               value={email}
               onChange={e => setEmail(e.target.value)}
               autoComplete="email"
@@ -108,7 +108,7 @@ const LoginRegister = () => {
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+                className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
@@ -134,7 +134,7 @@ const LoginRegister = () => {
                 <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Confirm Password</label>
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  className="w-full px-3 sm:px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+                  className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   autoComplete="new-password"
@@ -159,7 +159,7 @@ const LoginRegister = () => {
           )}
           <button
             type="submit"
-            className="w-full py-2 sm:py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center text-sm sm:text-base"
+            className="w-full py-2 sm:py-3 bg-gradient-to-r from-lavender-500 to-lavender-600 text-white font-semibold rounded-lg hover:from-lavender-600 hover:to-lavender-700 transition-all duration-200 flex items-center justify-center text-sm sm:text-base shadow-sm hover:shadow-md"
             disabled={loading}
           >
             {loading ? (

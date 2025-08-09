@@ -1,27 +1,53 @@
 import React, { useState } from 'react';
 import MockupsGallery from '../../components/MockupsGallery';
 import DesignFilesGallery from '../../components/DesignFilesGallery';
-import TemplateSelectionModal from '../../components/TemplateSelectionModal';
+import DesignUploadModal from '../../components/DesignUploadModal';
 import BackToTop from '../../components/BackToTop';
+import { useSearchParams } from 'react-router-dom';
 
 const DesignsTab = ({
-  accessToken,
+  isConnected,
   authUrl,
-  uploading,
-  handleUploadClick,
-  designsTab,
-  setDesignsTab,
-  mockupImages,
-  localImages,
-  openImageModal,
-  onUploadComplete
+  designs,
+  loading,
+  error,
+  onRefresh,
+  defaultTab = 'gallery'
 }) => {
-  const [showTemplateModal, setShowTemplateModal] = useState(false);
-  if (!accessToken) {
+  const [showDesignUploadModal, setShowDesignUploadModal] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [designsTab, setDesignsTab] = useState('mockups');
+  const [searchParams] = useSearchParams();
+  const activeSubTab = searchParams.get('subtab') || defaultTab;
+
+  if (!isConnected) {
     return (
       <div className="card p-6 sm:p-8 text-center">
         <p className="text-base sm:text-lg text-gray-600 mb-6">Please connect your Etsy shop to view designs</p>
         <a href={authUrl} className="btn-primary">Connect Shop</a>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
+        <span className="ml-2 text-sage-600">Loading designs...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
+        <p className="text-rose-700">{error}</p>
+        <button 
+          onClick={onRefresh}
+          className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
+        >
+          Try again
+        </button>
       </div>
     );
   }
@@ -34,7 +60,7 @@ const DesignsTab = ({
               ? 'bg-gray-400 text-white cursor-not-allowed' 
               : 'bg-green-500 text-white hover:bg-green-600'
           }`}
-          onClick={() => setShowTemplateModal(true)}
+          onClick={() => setShowDesignUploadModal(true)}
           disabled={uploading}
         >
           {uploading ? (
@@ -68,18 +94,21 @@ const DesignsTab = ({
       </div>
       {/* Mockups Tab */}
       {designsTab === 'mockups' && (
-        <MockupsGallery mockupImages={mockupImages} openImageModal={openImageModal} />
+        <MockupsGallery mockupImages={designs?.mockups || []} openImageModal={() => {}} />
       )}
       {/* Design Files Tab */}
       {designsTab === 'designFiles' && (
-        <DesignFilesGallery designFiles={localImages} openImageModal={openImageModal} />
+        <DesignFilesGallery designFiles={designs?.files || []} openImageModal={() => {}} />
       )}
 
       {/* Template Selection Modal */}
-      <TemplateSelectionModal
-        isOpen={showTemplateModal}
-        onClose={() => setShowTemplateModal(false)}
-        onUpload={onUploadComplete}
+      <DesignUploadModal
+        isOpen={showDesignUploadModal}
+        onClose={() => setShowDesignUploadModal(false)}
+        onUpload={(data) => {
+          setUploading(false);
+          onRefresh();
+        }}
       />
       
       {/* Back to Top Button */}
@@ -88,4 +117,4 @@ const DesignsTab = ({
   );
 };
 
-export default DesignsTab; 
+export default DesignsTab;

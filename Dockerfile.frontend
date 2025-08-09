@@ -13,7 +13,7 @@ RUN apk add --no-cache \
 COPY frontend/package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm i
 
 # Copy frontend source code
 COPY frontend/ .

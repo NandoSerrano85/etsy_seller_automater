@@ -42,12 +42,12 @@ services:
       - /Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/:/Users/fserrano/Desktop/Desktop/NookTransfers/UVDTF 16oz/
       - /Users/fserrano/Desktop/Desktop/NookTransfers/:/Users/fserrano/Desktop/Desktop/NookTransfers/
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/api/ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:3003/api/ping"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     networks:
       - etsy-network
     depends_on:
