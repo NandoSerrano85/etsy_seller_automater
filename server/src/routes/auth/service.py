@@ -43,11 +43,17 @@ def authenticate_user(email: str, password: str, db: Session) -> User | bool:
 
 def verify_token(token: str) -> TokenData:
     try:
+        logging.info(f"Verifying token: {token[:20]}..." if token else "No token provided")
+        if not token or len(token.split('.')) != 3:
+            logging.error(f"Invalid JWT format: token has {len(token.split('.')) if token else 0} segments, expected 3")
+            raise AuthVerifyTokenError(token)
+        
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("id")
+        logging.info(f"Token verified for user: {user_id}")
         return TokenData(user_id=user_id)
     except PyJWTError as e:
-        logging.error(e)
+        logging.error(f"JWT decode error: {e}")
         raise AuthVerifyTokenError(token)
 
 def register_user(register_user_request: RegisterUserRequest, db: Session) -> User | bool:

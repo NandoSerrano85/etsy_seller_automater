@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const Header = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isUserAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -29,7 +29,7 @@ const Header = () => {
             </Link>
             
             {/* Desktop Navigation */}
-            {isAuthenticated() ? (
+            {isUserAuthenticated ? (
               <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
                 <Link to="/" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
                   Home
@@ -109,7 +109,7 @@ const Header = () => {
           </div>
 
           {/* Mobile Navigation - Popover */}
-          {showMobileMenu && isAuthenticated() && (
+          {showMobileMenu && isUserAuthenticated && (
             <div className="md:hidden fixed top-16 left-0 right-0 bg-white shadow-lg border-b border-gray-200 z-50 transform transition-transform duration-200 ease-in-out rounded-b-lg">
               <nav className="flex flex-col space-y-2 p-4">
                 <Link 
@@ -158,7 +158,7 @@ const Header = () => {
           )}
 
           {/* Mobile Login - Popover */}
-          {showMobileMenu && !isAuthenticated() && (
+          {showMobileMenu && !isUserAuthenticated && (
             <div className="md:hidden fixed top-16 left-0 right-0 bg-white shadow-lg border-b border-gray-200 z-50 transform transition-transform duration-200 ease-in-out rounded-b-lg">
               <div className="p-4">
                 <Link 

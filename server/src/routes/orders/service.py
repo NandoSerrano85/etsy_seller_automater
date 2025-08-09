@@ -81,5 +81,8 @@ def create_print_files(current_user, db):
             )
     except Exception as e:
         logging.error(f"Error creating gang sheets: {str(e)}")
-        raise Exception(f"Failed to create gang sheets: {str(e)}")
-    return item_summary
+        return {
+            "success": False,
+            "error": f"Failed to create gang sheets: {str(e)}"
+        }
+    return {"success": True, "message": "Print files created successfully"}

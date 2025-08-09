@@ -1,12 +1,12 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../hooks/useAuth';
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isUserAuthenticated, userLoading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  if (userLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
         <div className="text-center text-white">
@@ -17,7 +17,7 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  if (!isAuthenticated()) {
+  if (!isUserAuthenticated) {
     // Redirect to login page with the return url
     return <Navigate to="/login" state={{ from: location }} replace />;
   }

@@ -1,6 +1,12 @@
 import React from 'react';
 
-const OverviewTab = ({ user, accessToken, designs, topSellers, oauthData, authUrl }) => {
+const OverviewTab = ({ 
+  user,
+  isConnected,
+  designs,
+  topSellers,
+  authUrl 
+}) => {
   return (
     <div className="space-y-6 sm:space-y-8">
       <div className="card p-6 sm:p-8 text-center">
@@ -15,7 +21,7 @@ const OverviewTab = ({ user, accessToken, designs, topSellers, oauthData, authUr
         <p className="text-base sm:text-lg text-gray-600 mb-6 sm:mb-8">
           Get insights into your shop performance, manage your designs, and use powerful tools to grow your business.
         </p>
-        {!accessToken ? (
+        {!isConnected ? (
           <div className="bg-blue-50 border-l-4 border-blue-400 p-4 sm:p-6 rounded-lg">
             <p className="text-blue-700 mb-4 text-sm sm:text-base">Connect your Etsy shop to get started</p>
             <a href={authUrl} className="btn-primary">
