@@ -123,43 +123,82 @@ class MockupImageProcessor:
             mask_height = y_max - y_min
             mask_width = x_max - x_min
 
-            # Calculate scaling based on mask height
-            design_aspect = design_img.shape[1] / design_img.shape[0]
-            scale = mask_height / design_img.shape[0]
-            scaled_width = int(design_img.shape[1] * scale)
-            scaled_height = mask_height
-
-            # Resize design to match mask height while maintaining aspect ratio
-            design_resized = cv2.resize(design_img, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
-
-            # Calculate cropping bounds based on alignment
-            if alignment == 'left':
-                start_x = 0
-                end_x = min(mask_width, scaled_width)
-            elif alignment == 'right':
-                start_x = max(0, scaled_width - mask_width)
-                end_x = scaled_width
-            else:  # center
-                center_x = scaled_width // 2
-                half_mask_width = mask_width // 2
-                start_x = max(0, center_x - half_mask_width)
-                end_x = min(scaled_width, center_x + half_mask_width)
-
-            # Crop design to mask width
-            design_cropped = design_resized[:, start_x:end_x]
-
-            # If cropped design is narrower than mask, pad it
-            if design_cropped.shape[1] < mask_width:
-                pad_left = (mask_width - design_cropped.shape[1]) // 2
-                pad_right = mask_width - design_cropped.shape[1] - pad_left
-                design_to_place = cv2.copyMakeBorder(
-                    design_cropped, 
-                    0, 0, pad_left, pad_right, 
-                    cv2.BORDER_CONSTANT, 
-                    value=[0,0,0,0]
-                )
+            if is_cropped:
+                # When cropped: crop the image within the mask bounds, maintaining aspect ratio
+                design_aspect = design_img.shape[1] / design_img.shape[0]
+                mask_aspect = mask_width / mask_height
+                
+                if design_aspect > mask_aspect:
+                    # Design is wider than mask - fit by height and crop width
+                    scale = mask_height / design_img.shape[0]
+                    scaled_width = int(design_img.shape[1] * scale)
+                    scaled_height = mask_height
+                    design_resized = cv2.resize(design_img, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
+                    
+                    # Calculate cropping bounds based on alignment
+                    if alignment == 'left':
+                        start_x = 0
+                        end_x = min(mask_width, scaled_width)
+                    elif alignment == 'right':
+                        start_x = max(0, scaled_width - mask_width)
+                        end_x = scaled_width
+                    else:  # center
+                        center_x = scaled_width // 2
+                        half_mask_width = mask_width // 2
+                        start_x = max(0, center_x - half_mask_width)
+                        end_x = min(scaled_width, center_x + half_mask_width)
+                    
+                    design_to_place = design_resized[:, start_x:end_x]
+                else:
+                    # Design is taller than mask - fit by width and crop height
+                    scale = mask_width / design_img.shape[1]
+                    scaled_width = mask_width
+                    scaled_height = int(design_img.shape[0] * scale)
+                    design_resized = cv2.resize(design_img, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
+                    
+                    # Calculate cropping bounds based on vertical alignment (assume center for now)
+                    if scaled_height > mask_height:
+                        center_y = scaled_height // 2
+                        half_mask_height = mask_height // 2
+                        start_y = max(0, center_y - half_mask_height)
+                        end_y = min(scaled_height, center_y + half_mask_height)
+                        design_to_place = design_resized[start_y:end_y, :]
+                    else:
+                        design_to_place = design_resized
+                        
+                # Ensure the design fits exactly in the mask dimensions
+                if design_to_place.shape[0] != mask_height or design_to_place.shape[1] != mask_width:
+                    design_to_place = cv2.resize(design_to_place, (mask_width, mask_height), interpolation=cv2.INTER_LANCZOS4)
             else:
-                design_to_place = design_cropped
+                # When not cropped: resize the image to fit within the mask area, centered
+                design_aspect = design_img.shape[1] / design_img.shape[0]
+                mask_aspect = mask_width / mask_height
+                
+                if design_aspect > mask_aspect:
+                    # Design is wider - fit by width
+                    scale = mask_width / design_img.shape[1]
+                    scaled_width = mask_width
+                    scaled_height = int(design_img.shape[0] * scale)
+                else:
+                    # Design is taller - fit by height
+                    scale = mask_height / design_img.shape[0]
+                    scaled_width = int(design_img.shape[1] * scale)
+                    scaled_height = mask_height
+                
+                design_resized = cv2.resize(design_img, (scaled_width, scaled_height), interpolation=cv2.INTER_LANCZOS4)
+                
+                # Center the resized design within the mask dimensions
+                pad_top = (mask_height - scaled_height) // 2
+                pad_bottom = mask_height - scaled_height - pad_top
+                pad_left = (mask_width - scaled_width) // 2
+                pad_right = mask_width - scaled_width - pad_left
+                
+                design_to_place = cv2.copyMakeBorder(
+                    design_resized,
+                    pad_top, pad_bottom, pad_left, pad_right,
+                    cv2.BORDER_CONSTANT,
+                    value=[0,0,0,0] if design_resized.shape[2] == 4 else [0,0,0]
+                )
 
             # Calculate placement coordinates
             x_offset = x_min

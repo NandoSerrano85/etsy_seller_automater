@@ -15,7 +15,7 @@ router = APIRouter(
     tags=['Auth']
 )
 
-@router.post("/", response_model=model.UserToken, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=model.UserToken, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
 async def register_user(request: Request, register_user_request: model.RegisterUserRequest, db: Session = Depends(get_db)):
     user = service.register_user(register_user_request, db)

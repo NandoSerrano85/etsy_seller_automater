@@ -61,7 +61,7 @@ const LoginRegister = () => {
           setError(result.error);
         }
       } else {
-        const result = await register(email, password, confirmPassword, shopName);
+        const result = await register(email, password, shopName);
         if (result.success) {
           navigate('/', { replace: true });
         } else {

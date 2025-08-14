@@ -3,6 +3,7 @@ import logging
 import requests
 from typing import Any
 from fastapi import HTTPException
+from dotenv import load_dotenv
 
 from server.src.entities.user import User
 from . import model
@@ -10,7 +11,7 @@ from server.src.utils.gangsheet_engine import create_gang_sheets_from_db, create
 from server.src.utils.etsy_api_engine import EtsyAPI
 from server.src.entities.template import EtsyProductTemplate
 
-
+load_dotenv()
 API_CONFIG = {
     'base_url': 'https://openapi.etsy.com/v3',
 }
@@ -68,8 +69,17 @@ def create_print_files(current_user, db):
     etsy_api = EtsyAPI(user_id, db)
     template = db.query(EtsyProductTemplate).filter(EtsyProductTemplate.user_id == user_id).first() if hasattr(db, 'query') else None
     template_name = template.name if template else "UVDTF 16oz"
-    shop_name = db.query(User).filter(User.id==user_id).first().shop_name
+    user = db.query(User).filter(User.id==user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    shop_name = user.shop_name
+    if not shop_name:
+        raise HTTPException(status_code=400, detail="User shop name not set")
+    
     local_root = os.getenv('LOCAL_ROOT_PATH')
+    if not local_root:
+        raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
     item_summary = etsy_api.fetch_open_orders_items(f"{local_root}{shop_name}/", template_name) if etsy_api else None
     try:
         if item_summary and isinstance(item_summary, dict):
