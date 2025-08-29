@@ -196,7 +196,20 @@ async def upload_mockup_image_watermark(
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return service.upload_mockup_image_watermark(db, image_id, user_id, watermark)
+    return await service.upload_mockup_image_watermark(db, image_id, user_id, watermark)
+
+@router.put('/{mockup_id}/update-watermark', response_model=model.MockupsResponse)
+async def update_mockup_watermark(
+    mockup_id: UUID,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    watermark: UploadFile = File(...)
+):
+    """Update the watermark for all images in a mockup."""
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+    return await service.update_mockup_watermark(db, mockup_id, user_id, watermark)
 
 
 

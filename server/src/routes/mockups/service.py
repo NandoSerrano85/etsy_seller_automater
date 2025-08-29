@@ -246,10 +246,11 @@ def create_mockup(db: Session, user_id: UUID, mockup_data: model.MockupFullCreat
         target_dir = os.path.join(root_path, f"Mockups/BaseMockups/{template_name}/")
         os.makedirs(target_dir, exist_ok=True)
         # 5. Check if design file exists
-        design_file_path = mockup_data.design_file_path
-        if not os.path.exists(design_file_path):
-            logging.warning(f"Design file not found: {design_file_path}")
-            raise MockupCreateError()
+        design_file_paths = mockup_data.design_file_path
+        for design_file_path in design_file_paths:
+            if not os.path.exists(design_file_path):
+                logging.warning(f"Design file not found: {design_file_path}")
+                raise MockupCreateError()
         # 6. Get mask data for this template
         try:
             mask_points_list, points_list, _, is_cropped, alignment = _get_mask_data_for_user_and_template(db, int(user_id), str(template_name))
@@ -266,12 +267,13 @@ def create_mockup(db: Session, user_id: UUID, mockup_data: model.MockupFullCreat
         # 7. Generate and save mockup images
         try:
             generated_mockups = create_mockup_images(
-                design_file_path=design_file_path,
+                design_file_paths=design_file_paths,
                 template_name=str(template_name),
                 mockup_id=str(mockup.id),
                 root_path=root_path,
                 starting_name=starting_name,
-                mask_data=mask_data
+                mask_data=mask_data,
+                watermark_path=mockup_data.watermark_path
             )
         except Exception as e:
             logging.error(f"Failed to generate mockup images: {e}")
@@ -810,7 +812,7 @@ def delete_mockup_mask_data(db: Session, mask_data_id: UUID, user_id: UUID) -> N
         raise MockupMaskDataDeleteError(mask_data_id)
 
 
-def upload_mockup_image_watermark(db: Session, image_id: UUID, user_id: UUID, watermark: UploadFile) -> model.MockupImageResponse:
+async def upload_mockup_image_watermark(db: Session, image_id: UUID, user_id: UUID, watermark: UploadFile) -> model.MockupImageResponse:
     """
     Save the uploaded watermark file and update the watermark_path for the MockupImage.
     """
@@ -822,6 +824,7 @@ def upload_mockup_image_watermark(db: Session, image_id: UUID, user_id: UUID, wa
         if not mockup_image:
             logging.warning(f"Mockup image not found with ID: {image_id} for user: {user_id}")
             raise MockupImageNotFoundError(image_id)
+        
         # Determine save directory (e.g., alongside the mockup image or in a Watermarks/ subfolder)
         base_file_path = str(mockup_image.file_path) if getattr(mockup_image, 'file_path', None) is not None else ''
         base_dir = os.path.dirname(base_file_path)
@@ -829,22 +832,87 @@ def upload_mockup_image_watermark(db: Session, image_id: UUID, user_id: UUID, wa
         ext = os.path.splitext(watermark_filename_str)[1] or ".png"
         watermark_dir = os.path.join(base_dir, "Watermarks")
         os.makedirs(watermark_dir, exist_ok=True)
+        
         # Save the uploaded file
         watermark_filename = f"watermark_{image_id}{ext}"
         watermark_path = os.path.join(watermark_dir, watermark_filename)
-        # The controller will read the file and pass the bytes here
-        # So this function should expect bytes, not UploadFile
-        # We'll handle the async read in the controller
+        
+        # Read and save the file content
+        file_content = await watermark.read()
+        with open(watermark_path, "wb") as f:
+            f.write(file_content)
+        
         # Update DB
         setattr(mockup_image, "watermark_path", watermark_path)
         db.commit()
         db.refresh(mockup_image)
-        logging.info(f"Uploaded and set watermark for mockup image {image_id}")
+        logging.info(f"Uploaded and set watermark for mockup image {image_id} at path: {watermark_path}")
         return model.MockupImageResponse.model_validate(mockup_image)
     except Exception as e:
         logging.error(f"Error uploading watermark for mockup image {image_id}: {e}")
         db.rollback()
         raise MockupImageUpdateError(image_id)
+
+
+async def update_mockup_watermark(db: Session, mockup_id: UUID, user_id: UUID, watermark: UploadFile) -> model.MockupsResponse:
+    """
+    Update the watermark for all images in a mockup.
+    """
+    try:
+        # Validate user owns the mockup
+        mockup = db.query(Mockups).filter(
+            Mockups.id == mockup_id,
+            Mockups.user_id == user_id
+        ).first()
+        
+        if not mockup:
+            logging.warning(f"Mockup not found with ID: {mockup_id} for user: {user_id}")
+            raise MockupNotFoundError(mockup_id)
+        
+        # Get all mockup images for this mockup
+        mockup_images = db.query(MockupImage).filter(
+            MockupImage.mockups_id == mockup_id
+        ).all()
+        
+        if not mockup_images:
+            logging.warning(f"No mockup images found for mockup {mockup_id}")
+            return model.MockupsResponse.model_validate(mockup)
+        
+        # Determine save directory from first image
+        base_file_path = str(mockup_images[0].file_path) if getattr(mockup_images[0], 'file_path', None) is not None else ''
+        base_dir = os.path.dirname(base_file_path)
+        watermark_filename_str = str(watermark.filename) if watermark.filename else 'watermark.png'
+        ext = os.path.splitext(watermark_filename_str)[1] or ".png"
+        watermark_dir = os.path.join(base_dir, "Watermarks")
+        os.makedirs(watermark_dir, exist_ok=True)
+        
+        # Save the uploaded file with a unique name for the mockup
+        watermark_filename = f"watermark_mockup_{mockup_id}{ext}"
+        watermark_path = os.path.join(watermark_dir, watermark_filename)
+        
+        # Read and save the file content
+        file_content = await watermark.read()
+        with open(watermark_path, "wb") as f:
+            f.write(file_content)
+        
+        # Update all mockup images to use the new watermark
+        for image in mockup_images:
+            setattr(image, "watermark_path", watermark_path)
+        
+        db.commit()
+        
+        # Refresh the mockup with related data
+        updated_mockup = get_mockup_by_id(db, mockup_id, user_id)
+        
+        logging.info(f"Updated watermark for mockup {mockup_id} with {len(mockup_images)} images")
+        return updated_mockup
+        
+    except Exception as e:
+        if isinstance(e, MockupNotFoundError):
+            raise e
+        logging.error(f"Error updating watermark for mockup {mockup_id}: {e}")
+        db.rollback()
+        raise MockupUpdateError(mockup_id)
 
 
 async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile], mockup_id: UUID, watermark_file: UploadFile):
@@ -1075,6 +1143,13 @@ async def upload_mockup_files_to_etsy(
                 materials=materials,
                 is_digital=is_digital,
                 when_made=template.when_made,
+                item_weight=template.item_weight,
+                item_length=template.item_length,
+                item_width=template.item_width,
+                item_height=template.item_height,
+                item_weight_unit=template.item_weight_unit,
+                item_dimensions_unit=template.item_dimensions_unit,
+                return_policy_id=template.return_policy_id,
             )
             listing_id = listing_response["listing_id"]
             logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")

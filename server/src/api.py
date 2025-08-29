@@ -9,6 +9,7 @@ from server.src.routes.size_config.controller import router as size_config_route
 from server.src.routes.orders.controller import router as order_router
 from server.src.routes.designs.controller import router as design_router
 from server.src.routes.mockups.controller import router as mockup_router
+from server.src.routes.third_party_listings.controller import router as third_party_listings_router
 
 def register_routes(app: FastAPI):
     app.include_router(auth_router)
@@ -21,3 +22,4 @@ def register_routes(app: FastAPI):
     app.include_router(order_router)
     app.include_router(design_router)
     app.include_router(mockup_router)
+    app.include_router(third_party_listings_router)

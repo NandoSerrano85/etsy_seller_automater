@@ -3,7 +3,7 @@ Mockup processing utilities for creating mockup images from design files.
 """
 import os, cv2, re, logging, json
 import numpy as np
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from server.src.utils.cropping import crop_transparent
 from server.src.utils.resizing import resize_image_by_inches
 from server.src.entities.designs import DesignImages
@@ -326,12 +326,13 @@ def process_design_image(design_file_path: str, template_name: str) -> Tuple[np.
 
 
 def create_mockup_images(
-    design_file_paths: str,
+    design_file_paths: List[str],
     template_name: str,
     mockup_id: str,
     root_path: str,
     starting_name: int,
-    mask_data: Dict[str, Any]
+    mask_data: Dict[str, Any],
+    watermark_path: Optional[str] = None
 ) -> List[dict]:
     """
     Create mockup images from a design file.
@@ -343,13 +344,15 @@ def create_mockup_images(
         root_path: Root path for file operations
         starting_name: Starting name for file numbering
         mask_data: Dictionary containing 'masks', 'points', 'is_cropped', and 'alignment'
+        watermark_path: Path to the watermark file (if not provided, uses default)
     
     Returns:
         List of dictionaries with mockup image information
     """
     # Set up paths
     mockup_path = f"{root_path}Mockups/BaseMockups/{template_name}/"
-    watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
+    if watermark_path is None:
+        watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
     temp_design_path_list = []
     temp_deisgn_filename_list = []
     

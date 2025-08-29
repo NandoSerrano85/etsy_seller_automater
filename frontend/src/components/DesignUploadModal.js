@@ -179,11 +179,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         
         mockupFormData.append('product_data', JSON.stringify(productData));
         
-        const result = await api.postFormData('/mockups/upload-mockup', mockupFormData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          }
-        });
+        const result = await api.postFormData('/mockups/upload-mockup', mockupFormData);
         
         let successMessage = 'Design saved and files uploaded successfully!';
         if (result.result?.digital_message) {

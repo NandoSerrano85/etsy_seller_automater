@@ -71,6 +71,10 @@ export const useApi = () => {
     method: 'PUT', 
     body: JSON.stringify(data) 
   });
+  const putFormData = (url, formData) => authenticatedApiCall(url, {
+    method: 'PUT',
+    body: formData
+  });
   const del = (url) => authenticatedApiCall(url, { method: 'DELETE' });
 
   return {
@@ -78,6 +82,7 @@ export const useApi = () => {
     post,
     postFormData,
     put,
+    putFormData,
     delete: del,
   };
 }; 
