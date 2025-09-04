@@ -31,9 +31,7 @@ class ErrorBoundary extends Component {
 }
 
 const EditMockupModal = ({ isOpen, onClose, mockup, onUpdate }) => {
-  // Early return before any hooks to avoid Rules of Hooks violations
-  if (!isOpen || !mockup) return null;
-  
+  // All hooks must be called before any early returns
   const api = useApi();
   const fileInputRef = useRef(null);
   const [formData, setFormData] = useState({
@@ -45,6 +43,9 @@ const EditMockupModal = ({ isOpen, onClose, mockup, onUpdate }) => {
   const [currentWatermarkPath, setCurrentWatermarkPath] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  
+  // Early return after all hooks are defined
+  if (!isOpen || !mockup) return null;
 
   useEffect(() => {
     if (mockup) {
