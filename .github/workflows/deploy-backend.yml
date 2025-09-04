@@ -1,0 +1,107 @@
+name: Deploy Backend to QNAP
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'server/**', 'requirements.txt', 'Dockerfile', '.github/workflows/deploy-backend.yml' ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: |
+          ${{ secrets.DOCKER_USERNAME }}/printer-automater:latest
+          ${{ secrets.DOCKER_USERNAME }}/printer-automater:${{ github.sha }}
+        platforms: linux/amd64,linux/arm64
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Deploy to QNAP
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.QNAP_HOST }}
+        username: ${{ secrets.QNAP_USERNAME }}
+        password: ${{ secrets.QNAP_PASSWORD }}
+        port: ${{ secrets.QNAP_SSH_PORT }}
+        script: |
+          # Stop existing container
+          sudo docker stop printer-automater-backend || true
+          sudo docker rm printer-automater-backend || true
+          
+          # Pull latest image
+          sudo docker pull ${{ secrets.DOCKER_USERNAME }}/printer-automater:latest
+          
+          # Run new container
+          sudo docker run -d \
+            --name printer-automater-backend \
+            --restart unless-stopped \
+            -p ${{ secrets.BACKEND_PORT }}:3003 \
+            -e CLIENT_ID="${{ secrets.CLIENT_ID }}" \
+            -e CLIENT_SECRET="${{ secrets.CLIENT_SECRET }}" \
+            -e SHOP_ID="${{ secrets.SHOP_ID }}" \
+            -e CLIENT_VERIFIER="${{ secrets.CLIENT_VERIFIER }}" \
+            -e CODE_CHALLENGE="${{ secrets.CODE_CHALLENGE }}" \
+            -e STATE_ID="${{ secrets.STATE_ID }}" \
+            -e ETSY_OAUTH_TOKEN="${{ secrets.ETSY_OAUTH_TOKEN }}" \
+            -e ETSY_OAUTH_TOKEN_EXPIRY="${{ secrets.ETSY_OAUTH_TOKEN_EXPIRY }}" \
+            -e REMOTE_ROOT_PATH="${{ secrets.REMOTE_ROOT_PATH }}" \
+            -e REMOTE_ROOT_HOST="${{ secrets.REMOTE_ROOT_HOST }}" \
+            -e REMOTE_HOST_USERNAME="${{ secrets.REMOTE_HOST_USERNAME }}" \
+            -e REMOTE_HOST_PASSWORD="${{ secrets.REMOTE_HOST_PASSWORD }}" \
+            -e LOCAL_ROOT_PATH="${{ secrets.LOCAL_ROOT_PATH }}" \
+            -e ETSY_REFRESH_TOKEN="${{ secrets.ETSY_REFRESH_TOKEN }}" \
+            -e SHOP_NAME="${{ secrets.SHOP_NAME }}" \
+            -e SHOP_URL="${{ secrets.SHOP_URL }}" \
+            -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            -e JWT_ALGORITHM="${{ secrets.JWT_ALGORITHM }}" \
+            -e USER_LOGIN_ACCESS_TOKEN_EXPIRE_MINUTES="${{ secrets.USER_LOGIN_ACCESS_TOKEN_EXPIRE_MINUTES }}" \
+            -e DISABLE_REGISTRATION=true \
+            -v /share/CACHEDEV1_DATA/Container/printer-automater-uploads:/app/uploads \
+            -v /share/CACHEDEV1_DATA/Container/printer-automater-temp:/app/temp \
+            ${{ secrets.DOCKER_USERNAME }}/printer-automater:latest
+          
+          # Wait for container to start
+          sleep 10
+          
+          # Check if container is running
+          sudo docker ps | grep printer-automater-backend || exit 1
+          
+          # Test health endpoint
+          curl -f http://localhost:${{ secrets.BACKEND_PORT }}/health || exit 1
+          
+          echo "Backend deployed successfully!"
+          
+    - name: Cleanup old Docker images
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.QNAP_HOST }}
+        username: ${{ secrets.QNAP_USERNAME }}
+        password: ${{ secrets.QNAP_PASSWORD }}
+        port: ${{ secrets.QNAP_SSH_PORT }}
+        script: |
+          # Remove old images (keep latest 3)
+          sudo docker images ${{ secrets.DOCKER_USERNAME }}/printer-automater --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}" | tail -n +4 | awk '{print $3}' | head -n -2 | xargs -r sudo docker rmi || true
+          
+          # Clean up dangling images
+          sudo docker image prune -f || true

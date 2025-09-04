@@ -1,6 +1,7 @@
 import logging
+import os
 from typing import Annotated
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Request, status, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -18,9 +19,16 @@ router = APIRouter(
 @router.post("/register", response_model=model.AuthResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
 async def register_user(request: Request, register_user_request: model.RegisterUserRequest, db: Session = Depends(get_db)):
+    # Check if registration is disabled in production
+    disable_registration = os.getenv("DISABLE_REGISTRATION", "false").lower() == "true"
+    if disable_registration:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="User registration is disabled in production environment"
+        )
+    
     user = service.register_user(register_user_request, db)
     if not user:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="Registration failed")
     access_token_expires = timedelta(minutes=service.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = service.create_access_token(user.email, user.id, access_token_expires)

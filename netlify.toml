@@ -1,0 +1,35 @@
+[build]
+  command = "cd frontend && npm install && npm run build"
+  publish = "frontend/build"
+
+[build.environment]
+  NODE_VERSION = "18.x"
+  NPM_VERSION = "9.x"
+
+# Redirect all routes to index.html for React Router
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://openapi.etsy.com https://printmadenas.myqnapcloud.com:8080"
+
+# Cache static assets for 1 year
+[[headers]]
+  for = "/static/*"
+  [headers.values]
+    Cache-Control = "max-age=31536000, immutable"
+
+# Cache index.html for 5 minutes only
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "max-age=300"

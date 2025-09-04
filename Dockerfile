@@ -1,35 +1,19 @@
-# Use Node.js image for building frontend
-FROM node:18-alpine AS frontend-builder
-
-# Set work directory for frontend
-WORKDIR /app/frontend
-
-# Copy frontend package files
-COPY frontend/package*.json ./
-
-# Install frontend dependencies
-RUN npm ci --only=production
-
-# Copy frontend source code
-COPY frontend/ .
-
-# Build the React app
-RUN npm run build
-
-# Use Python 3.11 slim image for the final stage
+# Use official Python runtime as base image
 FROM python:3.11-slim
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV DOCKER_ENV=true
-
-# Set work directory
+# Set working directory in container
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for OpenCV and PostgreSQL
 RUN apt-get update && apt-get install -y \
-    gcc \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgcc-s1 \
+    build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -39,23 +23,27 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire project
-COPY . .
+# Copy the entire server directory
+COPY server/ ./server/
 
-# Copy built frontend from the frontend-builder stage
-COPY --from=frontend-builder /app/frontend/build ./frontend/build
+# Create uploads and temp directories
+RUN mkdir -p /app/uploads /app/temp
 
-# Create a non-root user
+# Create a non-root user and set permissions
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app
 
-# Expose the port
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+
+# Expose port
 EXPOSE 3003
 
 # Health check
-# HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-#     CMD curl -f http://localhost:3003/api/ping || exit 1
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3003/health || exit 1
 
-# Run the application using the new main.py entry point
-CMD ["python", "-m", "server.main"] 
+# Run the application
+CMD ["uvicorn", "server.src.main:app", "--host", "0.0.0.0", "--port", "3003"] 
