@@ -4,8 +4,8 @@
   publish = "build"
 
 [build.environment]
-  NODE_VERSION = "18.x"
-  NPM_VERSION = "9.x"
+  NODE_VERSION = "22.x"
+  NPM_VERSION = "10.x"
 
 # Redirect all routes to index.html for React Router
 [[redirects]]

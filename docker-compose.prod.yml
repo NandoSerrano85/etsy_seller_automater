@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    container_name: etsy-seller-automaker-backend-prod
+    container_name: printer-automater-backend-prod
     ports:
       - "3003:3003"
     environment:
