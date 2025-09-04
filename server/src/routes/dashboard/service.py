@@ -2,6 +2,8 @@ import os
 import time
 import logging
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from typing import Optional
 from fastapi import HTTPException
 from . import model
@@ -16,55 +18,138 @@ def get_oauth_variables():
         'clientSecret': os.getenv('CLIENT_SECRET'),
     }
 
+def create_robust_session():
+    """Create a requests session with retry logic and timeouts."""
+    session = requests.Session()
+    
+    # Configure retry strategy
+    retry_strategy = Retry(
+        total=3,  # Total number of retries
+        status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry on
+        backoff_factor=1,  # Wait time between retries (1, 2, 4 seconds)
+        raise_on_status=False  # Don't raise exception on final failure
+    )
+    
+    # Configure adapter with retry strategy
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    
+    return session
+
+def make_robust_request(session, method, url, headers=None, params=None, timeout=30, **kwargs):
+    """Make a robust HTTP request with proper error handling."""
+    try:
+        response = session.request(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            timeout=timeout,
+            **kwargs
+        )
+        
+        # Log the request for debugging
+        logging.debug(f"{method} {url} - Status: {response.status_code}")
+        
+        if not response.ok:
+            logging.error(f"API request failed: {method} {url} - Status: {response.status_code}, Response: {response.text[:200]}...")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Etsy API error: {response.status_code} - {response.text[:200]}..."
+            )
+        
+        return response.json()
+        
+    except requests.exceptions.Timeout:
+        logging.error(f"Request timeout: {method} {url}")
+        raise HTTPException(status_code=504, detail="Request timeout - Etsy API took too long to respond")
+    
+    except requests.exceptions.ConnectionError as e:
+        logging.error(f"Connection error: {method} {url} - {str(e)}")
+        raise HTTPException(status_code=503, detail="Connection error - Unable to connect to Etsy API")
+    
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Request error: {method} {url} - {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Network error: {str(e)}")
+    
+    except Exception as e:
+        logging.error(f"Unexpected error: {method} {url} - {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
 def get_monthly_analytics(access_token: str, year: Optional[int], current_user) -> model.MonthlyAnalyticsResponse:
     """Get monthly analytics for the year."""
     oauth_vars = get_oauth_variables()
     if year is None:
         year = time.localtime().tm_year
+    
     logging.info(f"Monthly analytics request - Year: {year}, Access token: {access_token[:8]}...")
+    
     headers = {
         'x-api-key': oauth_vars['clientID'],
         'Authorization': f'Bearer {access_token}',
     }
+    
+    # Create robust session with retry logic
+    session = create_robust_session()
+    
     try:
+        # Get shop ID
         shop_id = os.getenv('SHOP_ID')
         shop_name = os.getenv('SHOP_NAME')
+        
         if not shop_id and not shop_name:
             logging.error("Shop ID or Shop Name not configured in .env file")
             raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
+        
         if shop_id:
             final_shop_id = shop_id
         else:
             shop_url = f"{API_CONFIG['base_url']}/application/shops/{shop_name}"
-            shop_response = requests.get(shop_url, headers=headers)
-            if not shop_response.ok:
-                logging.error(f"Failed to fetch shop data: {shop_response.status_code} {shop_response.text}")
-                raise HTTPException(status_code=400, detail=f"Failed to fetch shop data: {shop_response.text}")
-            shop_data = shop_response.json()
+            shop_data = make_robust_request(session, 'GET', shop_url, headers=headers, timeout=15)
             final_shop_id = shop_data['results'][0]['shop_id']
+        
+        # Fetch receipts with robust pagination
         transactions_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/receipts"
         start_timestamp = int(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")))
         end_timestamp = int(time.mktime(time.strptime(f"{year}-12-31 23:59:59", "%Y-%m-%d %H:%M:%S")))
+        
         all_receipts = []
         offset = 0
         limit = 100
-        while True:
+        max_pages = 50  # Prevent infinite loops - max 5000 receipts
+        page_count = 0
+        
+        logging.info(f"Fetching receipts from {year}-01-01 to {year}-12-31...")
+        
+        while page_count < max_pages:
             params = {
                 'limit': limit,
                 'offset': offset,
                 'min_created': start_timestamp,
                 'max_created': end_timestamp
             }
-            transactions_response = requests.get(transactions_url, headers=headers, params=params)
-            if not transactions_response.ok:
-                logging.error(f"Failed to fetch transaction data: {transactions_response.status_code} {transactions_response.text}")
-                raise HTTPException(status_code=400, detail=f"Failed to fetch transaction data: {transactions_response.text}")
-            transactions_data = transactions_response.json()
+            
+            logging.debug(f"Fetching receipts page {page_count + 1}, offset: {offset}")
+            
+            transactions_data = make_robust_request(
+                session, 'GET', transactions_url, 
+                headers=headers, params=params, timeout=30
+            )
+            
             current_receipts = transactions_data.get('results', [])
             all_receipts.extend(current_receipts)
+            
+            logging.debug(f"Retrieved {len(current_receipts)} receipts on page {page_count + 1}")
+            
+            # Break if we got fewer results than limit (last page)
             if len(current_receipts) < limit:
                 break
+                
             offset += limit
+            page_count += 1
+        
+        logging.info(f"Successfully retrieved {len(all_receipts)} total receipts")
         monthly_data = {month: {
             'total_sales': 0.0,
             'total_quantity': 0,
@@ -179,60 +264,78 @@ def get_monthly_analytics(access_token: str, year: Optional[int], current_user) 
             monthly_breakdown=monthly_breakdown,
             year_top_sellers=year_top_sellers
         )
+        
     except HTTPException:
         raise
     except Exception as e:
         logging.error(f"Error fetching monthly analytics: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch monthly analytics: {str(e)}")
+    finally:
+        # Clean up the session
+        try:
+            session.close()
+        except:
+            pass
 
 def get_top_sellers(access_token: str, year: Optional[int], current_user) -> model.TopSellersResponse:
     """Get top sellers for the year."""
     oauth_vars = get_oauth_variables()
     if year is None:
         year = time.localtime().tm_year
+        
     headers = {
         'x-api-key': oauth_vars['clientID'],
         'Authorization': f'Bearer {access_token}',
     }
+    
+    # Create robust session
+    session = create_robust_session()
+    
     try:
         shop_id = os.getenv('SHOP_ID')
         shop_name = os.getenv('SHOP_NAME')
+        
         if not shop_id and not shop_name:
             logging.error("Shop ID or Shop Name not configured in .env file")
             raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
+        
         if shop_id:
             final_shop_id = shop_id
         else:
             shop_url = f"{API_CONFIG['base_url']}/application/shops/{shop_name}"
-            shop_response = requests.get(shop_url, headers=headers)
-            if not shop_response.ok:
-                logging.error(f"Failed to fetch shop data: {shop_response.status_code} {shop_response.text}")
-                raise HTTPException(status_code=400, detail=f"Failed to fetch shop data: {shop_response.text}")
-            shop_data = shop_response.json()
+            shop_data = make_robust_request(session, 'GET', shop_url, headers=headers, timeout=15)
             final_shop_id = shop_data['results'][0]['shop_id']
         transactions_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/receipts"
         start_timestamp = int(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")))
         end_timestamp = int(time.mktime(time.strptime(f"{year}-12-31 23:59:59", "%Y-%m-%d %H:%M:%S")))
+        
         all_receipts = []
         offset = 0
         limit = 100
-        while True:
+        max_pages = 50  # Prevent infinite loops
+        page_count = 0
+        
+        while page_count < max_pages:
             params = {
                 'limit': limit,
                 'offset': offset,
                 'min_created': start_timestamp,
                 'max_created': end_timestamp
             }
-            transactions_response = requests.get(transactions_url, headers=headers, params=params)
-            if not transactions_response.ok:
-                logging.error(f"Failed to fetch transaction data: {transactions_response.status_code} {transactions_response.text}")
-                raise HTTPException(status_code=400, detail=f"Failed to fetch transaction data: {transactions_response.text}")
-            transactions_data = transactions_response.json()
+            
+            transactions_data = make_robust_request(
+                session, 'GET', transactions_url,
+                headers=headers, params=params, timeout=30
+            )
+            
             current_receipts = transactions_data.get('results', [])
             all_receipts.extend(current_receipts)
+            
             if len(current_receipts) < limit:
                 break
+                
             offset += limit
+            page_count += 1
         item_sales = {}
         for receipt in all_receipts:
             total_qty = sum(transaction.get('quantity', 1) for transaction in receipt.get('transactions', []))
@@ -274,6 +377,12 @@ def get_top_sellers(access_token: str, year: Optional[int], current_user) -> mod
     except Exception as e:
         logging.error(f"Error fetching top sellers: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch top sellers: {str(e)}")
+    finally:
+        # Clean up the session
+        try:
+            session.close()
+        except:
+            pass
 
 def get_shop_listings(access_token: str, limit: int, offset: int, current_user) -> model.ShopListingsResponse:
     """Get shop listings/designs."""
@@ -282,33 +391,36 @@ def get_shop_listings(access_token: str, limit: int, offset: int, current_user) 
         'x-api-key': oauth_vars['clientID'],
         'Authorization': f'Bearer {access_token}',
     }
+    
+    # Create robust session
+    session = create_robust_session()
+    
     try:
         shop_id = os.getenv('SHOP_ID')
         shop_name = getattr(current_user, 'shop_name', None)
+        
         if not shop_id and not shop_name:
             logging.error("Shop ID or Shop Name not configured in .env file")
             raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
+        
         if shop_id:
             final_shop_id = shop_id
         else:
             shop_url = f"{API_CONFIG['base_url']}/application/shops/{shop_name}"
-            shop_response = requests.get(shop_url, headers=headers)
-            if not shop_response.ok:
-                logging.error(f"Failed to fetch shop data: {shop_response.status_code} {shop_response.text}")
-                raise HTTPException(status_code=400, detail=f"Failed to fetch shop data: {shop_response.text}")
-            shop_data = shop_response.json()
+            shop_data = make_robust_request(session, 'GET', shop_url, headers=headers, timeout=15)
             final_shop_id = shop_data['results'][0]['shop_id']
+        
         listings_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/listings/active"
         params = {
             'limit': limit,
             'offset': offset,
             'includes': 'Images'
         }
-        response = requests.get(listings_url, headers=headers, params=params)
-        if not response.ok:
-            logging.error(f"Failed to fetch shop listings: {response.status_code} {response.text}")
-            raise HTTPException(status_code=400, detail=f"Failed to fetch shop listings: {response.text}")
-        listings_data = response.json()
+        
+        listings_data = make_robust_request(
+            session, 'GET', listings_url,
+            headers=headers, params=params, timeout=20
+        )
         # Local images logic placeholder (customize as needed)
         local_images = []
         designs = []
@@ -347,3 +459,9 @@ def get_shop_listings(access_token: str, limit: int, offset: int, current_user) 
     except Exception as e:
         logging.error(f"Error fetching shop listings: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch shop listings: {str(e)}")
+    finally:
+        # Clean up the session
+        try:
+            session.close()
+        except:
+            pass

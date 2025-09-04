@@ -8,6 +8,7 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
   const navigate = useNavigate();
   const [expandedSections, setExpandedSections] = useState({});
 
+  console.log('user', user);
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -273,10 +274,10 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sage-900 font-medium text-sm truncate">
-                  {user?.name || 'User'}
+                  {user?.shop_name || 'User'}
                 </p>
                 <p className="text-sage-600 text-xs truncate">
-                  {user?.email || 'user@example.com'}
+                  {user.email || 'user@example.com'}
                 </p>
               </div>
               <button

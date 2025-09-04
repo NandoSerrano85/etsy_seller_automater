@@ -303,13 +303,13 @@ const Home = () => {
       )}
 
       {/* Connection Status */}
-      {isEtsyConnected && etsyUserInfo && (
+      {isEtsyConnected && (etsyUserInfo || etsyShopInfo) && (
         <div className="bg-gradient-to-r from-mint-100 to-mint-200 border border-mint-300 rounded-xl p-4 mb-6">
           <div className="flex items-center space-x-3">
             <div className="w-3 h-3 bg-mint-500 rounded-full animate-pulse"></div>
             <div>
               <p className="text-mint-800 font-medium">
-                Connected to Etsy as {etsyUserInfo.first_name || 'User'}
+                Connected to Etsy as {etsyUserInfo?.first_name || etsyShopInfo?.shop_name || 'User'}
               </p>
               {etsyShopInfo && (
                 <p className="text-mint-700 text-sm">

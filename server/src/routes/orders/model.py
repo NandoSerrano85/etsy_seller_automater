@@ -19,3 +19,9 @@ class OrdersResponse(BaseModel):
     orders: List[Order]
     count: int
     total: int
+
+class PrintFilesResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None
+    sheets_created: Optional[int] = None

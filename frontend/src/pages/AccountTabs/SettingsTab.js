@@ -4,7 +4,7 @@ import { useApi } from '../../hooks/useApi';
 
 // Settings Tab Component
 const SettingsTab = () => {
-    const { user } = useAuth();
+    const { user, etsyUserInfo, etsyShopInfo } = useAuth();
     const api = useApi();
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -131,8 +131,28 @@ const SettingsTab = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Email Address
                   </label>
-                  <p className="text-gray-900 font-medium">{user?.email}</p>
+                  <p className="text-gray-900 font-medium">{user?.email || 'Not available'}</p>
                 </div>
+                
+                {etsyShopInfo && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Shop Name
+                    </label>
+                    <p className="text-gray-900 font-medium">{etsyShopInfo.shop_name}</p>
+                  </div>
+                )}
+                
+                {etsyUserInfo && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Etsy Name
+                    </label>
+                    <p className="text-gray-900 font-medium">
+                      {etsyUserInfo.first_name} {etsyUserInfo.last_name}
+                    </p>
+                  </div>
+                )}
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -145,11 +165,18 @@ const SettingsTab = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Account Status
+                    Connection Status
                   </label>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Active
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Account Active
+                    </span>
+                    {etsyShopInfo && (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        Etsy Connected
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

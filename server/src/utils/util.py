@@ -53,24 +53,75 @@ def get_width_and_height(image, image_path, target_dpi=None):
     return width_px / dpi_x, height_px / dpi_y
 
 def save_single_image(image, folder_path, filename, target_dpi=(STD_DPI,STD_DPI)):
-
+    import logging
     output_path = os.path.join(folder_path, filename)
-
-    cv2.imwrite(output_path, image)
-
-    retval, buffer = cv2.imencode(".png", image)
-    s = buffer.tostring()
-
-    # Find start of IDAT chunk
-    IDAToffset = s.find(b'IDAT') - 4
-
-    pHYs = b'pHYs' + struct.pack('!IIc',int(target_dpi[0]/0.0254),int(target_dpi[1]/0.0254),b"\x01" ) 
-    pHYs = struct.pack('!I',9) + pHYs + struct.pack('!I',zlib.crc32(pHYs))
-
-    with open(output_path, "wb") as out:
-        out.write(buffer[0:IDAToffset])
-        out.write(pHYs)
-        out.write(buffer[IDAToffset:])
+    
+    try:
+        # Ensure output directory exists
+        os.makedirs(folder_path, exist_ok=True)
+        
+        # Validate image
+        if image is None or not isinstance(image, np.ndarray):
+            raise ValueError("Invalid image data")
+        
+        if image.size == 0:
+            raise ValueError("Empty image array")
+        
+        # Log image info for debugging large images
+        height, width = image.shape[:2]
+        channels = image.shape[2] if len(image.shape) > 2 else 1
+        size_mb = (height * width * channels) / (1024 * 1024)
+        logging.info(f"Saving image: {width}x{height}x{channels} ({size_mb:.1f}MB) -> {filename}")
+        
+        # For very large images, use simpler saving method to avoid memory issues
+        if size_mb > 500:  # > 500MB images
+            logging.info(f"Large image detected, using simplified save method")
+            success = cv2.imwrite(output_path, image)
+            if not success:
+                raise RuntimeError("cv2.imwrite failed for large image")
+            logging.info(f"Successfully saved large image: {filename}")
+            return
+        
+        # Use the original DPI method for smaller images
+        retval, buffer = cv2.imencode(".png", image)
+        if not retval:
+            raise RuntimeError("Failed to encode image to PNG")
+        
+        s = buffer.tobytes()
+        
+        # Find start of IDAT chunk
+        IDAToffset = s.find(b'IDAT') - 4
+        if IDAToffset < 0:
+            logging.warning(f"Could not find IDAT chunk in {filename}, using simple save")
+            success = cv2.imwrite(output_path, image)
+            if not success:
+                raise RuntimeError("cv2.imwrite failed")
+            return
+        
+        # Create pHYs chunk for DPI
+        pHYs = b'pHYs' + struct.pack('!IIc',int(target_dpi[0]/0.0254),int(target_dpi[1]/0.0254),b"\x01")
+        pHYs = struct.pack('!I',9) + pHYs + struct.pack('!I',zlib.crc32(pHYs))
+        
+        # Write file with DPI information
+        with open(output_path, "wb") as out:
+            out.write(buffer[0:IDAToffset])
+            out.write(pHYs)
+            out.write(buffer[IDAToffset:])
+            
+        logging.info(f"Successfully saved image with DPI: {filename}")
+        
+    except Exception as e:
+        logging.error(f"Error saving image {filename}: {e}")
+        # Try fallback simple save
+        try:
+            logging.info(f"Attempting fallback save for {filename}")
+            success = cv2.imwrite(output_path, image)
+            if not success:
+                raise RuntimeError("Fallback cv2.imwrite also failed")
+            logging.info(f"Fallback save successful: {filename}")
+        except Exception as fallback_error:
+            logging.error(f"Fallback save also failed for {filename}: {fallback_error}")
+            raise RuntimeError(f"Failed to save image {filename}: {e}, fallback also failed: {fallback_error}")
 
 def get_dpi_from_image(image_path):
     # Default DPI for PNG images if not specified
@@ -84,7 +135,7 @@ def find_png_files(folder_path: str) -> Tuple[List[str], List[str]]:
     png_filepath = []
     png_filenames = []
     
-    for root, dirs, files in os.walk(folder_path):
+    for root, _, files in os.walk(folder_path):
         png_filepath.extend([os.path.join(root, file) for file in files if file.lower().endswith('.png')])
         png_filenames.extend([file for file in files if file.lower().endswith('.png')])
     

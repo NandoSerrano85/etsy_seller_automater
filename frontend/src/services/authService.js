@@ -27,17 +27,23 @@ class AuthService {
       
       const data = await response.json();
       
-      // Verify the token by getting user info
-      const userResponse = await fetch(`${API_BASE_URL}/auth/verify-token`, {
-        headers: { 'Authorization': `Bearer ${data.access_token}` }
-      });
-      
-      if (!userResponse.ok) {
-        throw new Error('Token verification failed');
+      // Check if the response includes user data (new format)
+      if (data.user) {
+        // New format includes user data in the auth response
+        setUserAuth(data.user, data.access_token);
+      } else {
+        // Fallback: get user info from /users/me endpoint
+        const userResponse = await fetch(`${API_BASE_URL}/users/me`, {
+          headers: { 'Authorization': `Bearer ${data.access_token}` }
+        });
+        
+        if (!userResponse.ok) {
+          throw new Error('Failed to get user information');
+        }
+        
+        const userData = await userResponse.json();
+        setUserAuth(userData, data.access_token);
       }
-      
-      const userData = await userResponse.json();
-      setUserAuth(userData, data.access_token);
       
       return { success: true };
     } catch (error) {
@@ -70,8 +76,18 @@ class AuthService {
         throw new Error(errorData.detail || 'Registration failed');
       }
       
-      // After successful registration, log them in
-      return await this.loginUser(email, password);
+      const data = await response.json();
+      
+      // Check if the response includes user data (new format)
+      if (data.user && data.access_token) {
+        // New format includes user data in the registration response
+        const { setUserAuth } = useAuthStore.getState();
+        setUserAuth(data.user, data.access_token);
+        return { success: true };
+      } else {
+        // Fallback: log them in to get user data
+        return await this.loginUser(email, password);
+      }
     } catch (error) {
       setUserError(error.message);
       return { success: false, error: error.message };
@@ -80,6 +96,32 @@ class AuthService {
     }
   }
   
+  async refreshUserData() {
+    const { userToken, setUserAuth, setUserError } = useAuthStore.getState();
+    
+    if (!userToken) {
+      return { success: false, error: 'No token available' };
+    }
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: { 'Authorization': `Bearer ${userToken}` }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to refresh user data');
+      }
+      
+      const userData = await response.json();
+      setUserAuth(userData, userToken);
+      
+      return { success: true, user: userData };
+    } catch (error) {
+      setUserError(error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   logoutUser() {
     const { clearUserAuth, clearEtsyAuth } = useAuthStore.getState();
     clearUserAuth();

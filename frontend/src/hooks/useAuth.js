@@ -42,6 +42,7 @@ export const useAuth = () => {
     login: authService.loginUser.bind(authService),
     register: authService.registerUser.bind(authService),
     logout: authService.logoutUser.bind(authService),
+    refreshUserData: authService.refreshUserData.bind(authService),
     
     // Etsy authentication
     etsyUserInfo,

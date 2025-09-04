@@ -102,7 +102,8 @@ export const useCachedApi = () => {
   
   const fetchDesigns = useCallback(async (forceRefresh = false) => {
     return makeCachedApiCall('designs', async () => {
-      const response = await makeAuthenticatedRequest('/designs/list');
+      // Set limit to 1000 to get all designs (backend max is 1000)
+      const response = await makeAuthenticatedRequest('/designs/list?limit=1000');
       return response?.designs || response?.data?.designs || [];
     }, forceRefresh);
   }, [makeAuthenticatedRequest, makeCachedApiCall]);

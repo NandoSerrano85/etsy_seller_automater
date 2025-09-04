@@ -26,7 +26,7 @@ async def create_gang_sheets_from_mockups(
 ):
     return service.create_gang_sheets_from_mockups(template_name, current_user, db)
 
-@router.get('/create-print-files')
+@router.get('/create-print-files', response_model=model.PrintFilesResponse)
 async def create_print_files(
     current_user: CurrentUser,
     db: Session = Depends(get_db)

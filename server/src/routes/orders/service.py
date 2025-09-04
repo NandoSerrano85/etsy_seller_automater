@@ -83,16 +83,37 @@ def create_print_files(current_user, db):
     item_summary = etsy_api.fetch_open_orders_items(f"{local_root}{shop_name}/", template_name) if etsy_api else None
     try:
         if item_summary and isinstance(item_summary, dict):
-            create_gang_sheets(
+            result = create_gang_sheets(
                 item_summary[template_name] if template_name in item_summary else item_summary.get("UVDTF 16oz", {}),
                 template_name,
                 f"{local_root}{shop_name}/Printfiles/",
                 item_summary["Total QTY"] if "Total QTY" in item_summary else 0
             )
+            
+            if result is None:
+                return {
+                    "success": False,
+                    "error": "Failed to create gang sheets - check logs for details"
+                }
+            elif isinstance(result, dict) and result.get("success"):
+                return {
+                    "success": True,
+                    "message": f"Print files created successfully - {result.get('sheets_created', 0)} sheets generated",
+                    "sheets_created": result.get('sheets_created', 0)
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "Gang sheet creation returned unexpected result"
+                }
+        else:
+            return {
+                "success": False,
+                "error": "No valid item summary data available"
+            }
     except Exception as e:
         logging.error(f"Error creating gang sheets: {str(e)}")
         return {
             "success": False,
             "error": f"Failed to create gang sheets: {str(e)}"
         }
-    return {"success": True, "message": "Print files created successfully"}

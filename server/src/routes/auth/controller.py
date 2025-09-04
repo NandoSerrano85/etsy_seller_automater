@@ -15,7 +15,7 @@ router = APIRouter(
     tags=['Auth']
 )
 
-@router.post("/register", response_model=model.UserToken, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=model.AuthResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
 async def register_user(request: Request, register_user_request: model.RegisterUserRequest, db: Session = Depends(get_db)):
     user = service.register_user(register_user_request, db)
@@ -24,13 +24,14 @@ async def register_user(request: Request, register_user_request: model.RegisterU
         raise HTTPException(status_code=400, detail="Registration failed")
     access_token_expires = timedelta(minutes=service.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = service.create_access_token(user.email, user.id, access_token_expires)
-    return model.UserToken(
+    return model.AuthResponse(
         access_token=access_token,
         token_type="bearer",
-        expires_in=int(access_token_expires.total_seconds())
+        expires_in=int(access_token_expires.total_seconds()),
+        user=service.create_user_profile(user)
     )
 
-@router.post("/token", response_model=model.UserToken)
+@router.post("/token", response_model=model.AuthResponse)
 async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     # logging.info(form_data)
     return service.login_for_access_token(form_data, db)
