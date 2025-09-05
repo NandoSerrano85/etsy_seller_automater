@@ -50,39 +50,76 @@ show_usage() {
     echo "Usage: $0 [OPTION]"
     echo ""
     echo "Options:"
-    echo "  dev     - Run in development mode (separate frontend and backend containers)"
-    echo "  prod    - Run in production mode (single container with built frontend)"
-    echo "  local   - Run backend locally (not Docker Compose)"
-    echo "  test    - Run tests in the backend container"
-    echo "  stop    - Stop all containers"
-    echo "  clean   - Stop and remove all containers and images"
-    echo "  logs    - Show logs from running containers"
-    echo "  help    - Show this help message"
+    echo "  dev        - Run in development mode (separate frontend and backend containers)"
+    echo "  prod       - Run in production mode (single container with built frontend)"
+    echo "  frontend   - Build and run only the frontend container"
+    echo "  local      - Run backend locally (not Docker Compose)"
+    echo "  test       - Run tests in the backend container"
+    echo "  status     - Check status of running containers"
+    echo "  stop       - Stop all containers"
+    echo "  clean      - Stop and remove all containers and images"
+    echo "  logs       - Show logs from running containers"
+    echo "  help       - Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 dev     # Start development environment"
-    echo "  $0 prod    # Start production environment"
-    echo "  $0 local   # Run backend locally"
-    echo "  $0 test    # Run tests"
-    echo "  $0 stop    # Stop all containers"
+    echo "  $0 dev        # Start development environment"
+    echo "  $0 prod       # Start production environment"
+    echo "  $0 frontend   # Start only frontend container"
+    echo "  $0 status     # Check container status"
+    echo "  $0 local      # Run backend locally"
+    echo "  $0 test       # Run tests"
+    echo "  $0 stop       # Stop all containers"
 }
 
 # Function to run development environment
 run_dev() {
-    print_status "Starting development environment..."
+    print_status "Starting development environment (Frontend + Backend + Database)..."
     check_docker
     check_env
     
     print_status "Building and starting containers..."
-    docker-compose up --build -d
-    
-    print_success "Development environment started!"
-    print_status "Frontend: http://localhost:3000"
-    print_status "Backend:  http://localhost:3003"
-    print_status "API Docs: http://localhost:3003/docs"
-    echo ""
-    print_status "To view logs: $0 logs"
-    print_status "To stop: $0 stop"
+    if docker-compose up --build -d; then
+        print_success "Development environment started!"
+        
+        print_status "Waiting for services to be ready..."
+        sleep 5
+        
+        # Check if services are running
+        print_status "Service Status:"
+        if docker-compose ps | grep -q "db.*Up"; then
+            print_success "✓ Database: Running on port 5432"
+        else
+            print_warning "✗ Database: Not running"
+        fi
+        
+        if docker-compose ps | grep -q "backend.*Up"; then
+            print_success "✓ Backend: Running on port 3003"
+        else
+            print_warning "✗ Backend: Not running"
+        fi
+        
+        if docker-compose ps | grep -q "frontend.*Up"; then
+            print_success "✓ Frontend: Running on port 3000"
+        else
+            print_warning "✗ Frontend: Not running"
+        fi
+        
+        echo ""
+        print_success "Access your application:"
+        print_status "Frontend:  http://localhost:3000"
+        print_status "Backend:   http://localhost:3003"
+        print_status "API Docs:  http://localhost:3003/docs"
+        print_status "Database:  localhost:5432"
+        echo ""
+        print_status "Useful commands:"
+        print_status "  View logs:     $0 logs"
+        print_status "  Stop all:      $0 stop"
+        print_status "  View status:   docker-compose ps"
+    else
+        print_error "Failed to start development environment!"
+        print_status "Check logs with: docker-compose logs"
+        exit 1
+    fi
 }
 
 # Function to run production environment
@@ -100,6 +137,46 @@ run_prod() {
     echo ""
     print_status "To view logs: $0 logs"
     print_status "To stop: $0 stop"
+}
+
+# Function to run frontend only
+run_frontend() {
+    print_status "Building and starting frontend container only..."
+    check_docker
+    
+    # Stop any existing frontend container
+    docker stop printer-automater-frontend 2>/dev/null || true
+    docker rm printer-automater-frontend 2>/dev/null || true
+    
+    print_status "Building frontend image..."
+    if docker build -f Dockerfile.frontend -t printer-automater-frontend .; then
+        print_success "Frontend image built successfully!"
+    else
+        print_error "Failed to build frontend image!"
+        exit 1
+    fi
+    
+    print_status "Starting frontend container..."
+    if docker run -d \
+        --name printer-automater-frontend \
+        -p 3000:3000 \
+        --env-file frontend/.env.local \
+        printer-automater-frontend; then
+        print_success "Frontend container started successfully!"
+    else
+        print_warning "Container started without .env.local file (this is normal if file doesn't exist)"
+        docker run -d \
+            --name printer-automater-frontend \
+            -p 3000:3000 \
+            printer-automater-frontend
+    fi
+    
+    print_success "Frontend started!"
+    print_status "Frontend: http://localhost:3000"
+    echo ""
+    print_status "To view logs: docker logs -f printer-automater-frontend"
+    print_status "To stop: docker stop printer-automater-frontend"
+    print_status "Or use: $0 stop"
 }
 
 # Function to run backend locally (not Docker Compose)
@@ -140,6 +217,11 @@ stop_containers() {
     print_status "Stopping containers..."
     docker-compose down 2>/dev/null || true
     docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
+    
+    # Stop standalone frontend container if running
+    docker stop printer-automater-frontend 2>/dev/null || true
+    docker rm printer-automater-frontend 2>/dev/null || true
+    
     print_success "Containers stopped!"
 }
 
@@ -148,6 +230,11 @@ clean_all() {
     print_status "Stopping and removing containers..."
     docker-compose down --rmi all --volumes --remove-orphans 2>/dev/null || true
     docker-compose -f docker-compose.prod.yml down --rmi all --volumes --remove-orphans 2>/dev/null || true
+    
+    # Clean standalone frontend container and image
+    docker stop printer-automater-frontend 2>/dev/null || true
+    docker rm printer-automater-frontend 2>/dev/null || true
+    docker rmi printer-automater-frontend 2>/dev/null || true
     
     print_status "Removing unused Docker resources..."
     docker system prune -f
@@ -166,10 +253,73 @@ show_logs() {
     elif docker-compose -f docker-compose.prod.yml ps | grep -q "Up"; then
         print_status "Production container logs:"
         docker-compose -f docker-compose.prod.yml logs -f
+    elif docker ps | grep -q "printer-automater-frontend"; then
+        print_status "Frontend container logs:"
+        docker logs -f printer-automater-frontend
     else
         print_warning "No containers are currently running."
-        print_status "Start containers first with: $0 dev or $0 prod"
+        print_status "Start containers first with: $0 dev, $0 prod, or $0 frontend"
     fi
+}
+
+# Function to show container status
+show_status() {
+    print_status "Checking container status..."
+    echo ""
+    
+    # Check development environment
+    if docker-compose ps | grep -q "Up"; then
+        print_success "Development Environment (docker-compose):"
+        docker-compose ps
+        echo ""
+        
+        # Test connections
+        print_status "Connection Tests:"
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 | grep -q "200"; then
+            print_success "✓ Frontend responding at http://localhost:3000"
+        else
+            print_warning "✗ Frontend not responding at http://localhost:3000"
+        fi
+        
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:3003/health | grep -q "200"; then
+            print_success "✓ Backend responding at http://localhost:3003"
+        else
+            print_warning "✗ Backend not responding at http://localhost:3003"
+        fi
+        
+    elif docker-compose -f docker-compose.prod.yml ps | grep -q "Up"; then
+        print_success "Production Environment (docker-compose.prod.yml):"
+        docker-compose -f docker-compose.prod.yml ps
+        echo ""
+        
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:3003 | grep -q "200"; then
+            print_success "✓ Application responding at http://localhost:3003"
+        else
+            print_warning "✗ Application not responding at http://localhost:3003"
+        fi
+        
+    elif docker ps | grep -q "printer-automater-frontend"; then
+        print_success "Standalone Frontend Container:"
+        docker ps --filter "name=printer-automater-frontend" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        echo ""
+        
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 | grep -q "200"; then
+            print_success "✓ Frontend responding at http://localhost:3000"
+        else
+            print_warning "✗ Frontend not responding at http://localhost:3000"
+        fi
+        
+    else
+        print_warning "No containers are currently running."
+        print_status "Start containers with:"
+        print_status "  $0 dev        # Full development environment"
+        print_status "  $0 prod       # Production environment" 
+        print_status "  $0 frontend   # Frontend only"
+    fi
+    
+    echo ""
+    print_status "Docker resource usage:"
+    docker system df
 }
 
 # Main script logic
@@ -180,11 +330,17 @@ case "${1:-help}" in
     prod)
         run_prod
         ;;
+    frontend)
+        run_frontend
+        ;;
     local)
         run_local
         ;;
     test)
         run_tests
+        ;;
+    status)
+        show_status
         ;;
     stop)
         stop_containers

@@ -11,9 +11,9 @@ export const pastelColors = {
     600: '#7c5ce8',
     700: '#6442c4',
     800: '#523b99',
-    900: '#43357a'
+    900: '#43357a',
   },
-  
+
   mint: {
     50: '#f0fdf9',
     100: '#ccfdf0',
@@ -24,9 +24,9 @@ export const pastelColors = {
     600: '#0d9488',
     700: '#0f766e',
     800: '#115e59',
-    900: '#134e4a'
+    900: '#134e4a',
   },
-  
+
   peach: {
     50: '#fff7ed',
     100: '#ffedd5',
@@ -37,9 +37,9 @@ export const pastelColors = {
     600: '#ea580c',
     700: '#c2410c',
     800: '#9a3412',
-    900: '#7c2d12'
+    900: '#7c2d12',
   },
-  
+
   rose: {
     50: '#fff1f2',
     100: '#ffe4e6',
@@ -50,9 +50,9 @@ export const pastelColors = {
     600: '#e11d48',
     700: '#be123c',
     800: '#9f1239',
-    900: '#881337'
+    900: '#881337',
   },
-  
+
   sky: {
     50: '#f0f9ff',
     100: '#e0f2fe',
@@ -63,9 +63,9 @@ export const pastelColors = {
     600: '#0284c7',
     700: '#0369a1',
     800: '#075985',
-    900: '#0c4a6e'
+    900: '#0c4a6e',
   },
-  
+
   sage: {
     50: '#f6f7f6',
     100: '#e8f0e8',
@@ -76,8 +76,8 @@ export const pastelColors = {
     600: '#4a6f4a',
     700: '#3d583d',
     800: '#344834',
-    900: '#2d3c2d'
-  }
+    900: '#2d3c2d',
+  },
 };
 
 // Semantic color mapping
@@ -89,40 +89,40 @@ export const semanticColors = {
   warning: pastelColors.peach,
   error: pastelColors.rose,
   info: pastelColors.sky,
-  neutral: pastelColors.sage
+  neutral: pastelColors.sage,
 };
 
 // Component-specific color utilities
 export const getComponentColors = (color = 'primary', variant = 'default') => {
   const colorPalette = semanticColors[color] || semanticColors.primary;
-  
+
   const variants = {
     default: {
       bg: colorPalette[100],
       text: colorPalette[800],
       border: colorPalette[200],
-      hover: colorPalette[200]
+      hover: colorPalette[200],
     },
     subtle: {
       bg: colorPalette[50],
       text: colorPalette[700],
       border: colorPalette[100],
-      hover: colorPalette[100]
+      hover: colorPalette[100],
     },
     solid: {
       bg: colorPalette[500],
       text: 'white',
       border: colorPalette[500],
-      hover: colorPalette[600]
+      hover: colorPalette[600],
     },
     outline: {
       bg: 'transparent',
       text: colorPalette[600],
       border: colorPalette[300],
-      hover: colorPalette[50]
-    }
+      hover: colorPalette[50],
+    },
   };
-  
+
   return variants[variant] || variants.default;
 };
 

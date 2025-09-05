@@ -14,12 +14,12 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
 
     try {
       await api.delete(`/mockups/delete/${mockup.id}`);
-      
+
       setMessage('Mockup deleted successfully!');
       if (onDelete) {
         onDelete();
       }
-      
+
       // Close modal after a short delay
       setTimeout(() => {
         onClose();
@@ -40,7 +40,12 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
           <div className="flex items-center">
             <div className="flex-shrink-0">
               <svg className="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                />
               </svg>
             </div>
             <div className="ml-3">
@@ -61,11 +66,19 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <h4 className="font-medium text-red-800 mb-2">Mockup to be deleted:</h4>
             <div className="space-y-1 text-sm text-red-700">
-              <div><strong>Name:</strong> {mockup.name || `Mockup #${mockup.id.slice(0, 8)}`}</div>
-              <div><strong>Template:</strong> {mockup.template_name || `Template ${mockup.product_template_id}` || 'N/A'}</div>
-              <div><strong>Images:</strong> {mockup.mockup_images?.length || 0}</div>
-              <div><strong>Total Masks:</strong> {mockup.mockup_images?.reduce((total, image) => 
-                total + (image.mask_data?.length || 0), 0) || 0}</div>
+              <div>
+                <strong>Name:</strong> {mockup.name || `Mockup #${mockup.id.slice(0, 8)}`}
+              </div>
+              <div>
+                <strong>Template:</strong> {mockup.template_name || `Template ${mockup.product_template_id}` || 'N/A'}
+              </div>
+              <div>
+                <strong>Images:</strong> {mockup.mockup_images?.length || 0}
+              </div>
+              <div>
+                <strong>Total Masks:</strong>{' '}
+                {mockup.mockup_images?.reduce((total, image) => total + (image.mask_data?.length || 0), 0) || 0}
+              </div>
             </div>
           </div>
 
@@ -74,7 +87,12 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+                  />
                 </svg>
               </div>
               <div className="ml-3">
@@ -93,11 +111,11 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
 
           {/* Message */}
           {message && (
-            <div className={`p-4 rounded-lg mb-4 ${
-              message.includes('successfully') 
-                ? 'bg-green-100 text-green-700' 
-                : 'bg-red-100 text-red-700'
-            }`}>
+            <div
+              className={`p-4 rounded-lg mb-4 ${
+                message.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}
+            >
               {message}
             </div>
           )}
@@ -117,9 +135,7 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
               onClick={handleDelete}
               disabled={loading}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                loading
-                  ? 'bg-gray-400 text-white cursor-not-allowed'
-                  : 'bg-red-600 text-white hover:bg-red-700'
+                loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-700'
               }`}
             >
               {loading ? 'Deleting...' : 'Delete Mockup'}
@@ -131,4 +147,4 @@ const DeleteMockupModal = ({ isOpen, onClose, mockup, onDelete }) => {
   );
 };
 
-export default DeleteMockupModal; 
+export default DeleteMockupModal;

@@ -2,18 +2,11 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 
-const OrdersTab = ({
-  isConnected,
-  authUrl,
-  orders,
-  loading,
-  error,
-  onRefresh
-}) => {
+const OrdersTab = ({ isConnected, authUrl, orders, loading, error, onRefresh }) => {
   const [searchParams] = useSearchParams();
   const activeSubTab = searchParams.get('subtab') || 'all';
   const [expandedOrders, setExpandedOrders] = useState([]);
-  const [selectedOrders, setSelectedOrders] = useState([]);
+  // const [selectedOrders, setSelectedOrders] = useState([]);
   const [printLoading, setPrintLoading] = useState(false);
   const [printError, setPrintError] = useState(null);
   const [printMsg, setPrintMsg] = useState(null);
@@ -49,13 +42,9 @@ const OrdersTab = ({
   };
 
   // Add order selection handler
-  const handleOrderSelect = (orderId) => {
-    setSelectedOrders(prev => 
-      prev.includes(orderId)
-        ? prev.filter(id => id !== orderId)
-        : [...prev, orderId]
-    );
-  };
+  // const handleOrderSelect = orderId => {
+  //   setSelectedOrders(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
+  // };
 
   // Add print tab content
   const renderPrintTab = () => {
@@ -69,9 +58,11 @@ const OrdersTab = ({
               disabled={orders.length === 0 || printLoading}
               className={`
                 px-4 py-2 rounded-lg font-medium flex items-center space-x-2
-                ${orders.length === 0 || printLoading
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-lavender-500 text-white hover:bg-lavender-600'}
+                ${
+                  orders.length === 0 || printLoading
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-lavender-500 text-white hover:bg-lavender-600'
+                }
               `}
             >
               {printLoading ? (
@@ -116,13 +107,15 @@ const OrdersTab = ({
                       <input
                         type="checkbox"
                         checked={selectedOrders.includes(order.order_id)}
-                        onChange={() => handleOrderSelect(order.order_id)}
+                        // onChange={() => handleOrderSelect(order.order_id)}
                         className="rounded border-gray-300 text-lavender-600 focus:ring-lavender-500"
                       />
                     </td> */}
                     <td className="px-4 py-2">{order.order_id}</td>
                     <td className="px-4 py-2">{order.customer_name || 'N/A'}</td>
-                    <td className="px-4 py-2">{order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0}</td>
+                    <td className="px-4 py-2">
+                      {order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -132,18 +125,14 @@ const OrdersTab = ({
       </div>
     );
   };
-  
-  const toggleOrderExpand = (orderId) => {
-    setExpandedOrders(prev => 
-      prev.includes(orderId) 
-        ? prev.filter(id => id !== orderId)
-        : [...prev, orderId]
-    );
+
+  const toggleOrderExpand = orderId => {
+    setExpandedOrders(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
   };
   const formatCurrency = (amount, divisor = 100) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'USD',
     }).format(amount / divisor);
   };
 
@@ -151,7 +140,9 @@ const OrdersTab = ({
     return (
       <div className="card p-8 text-center">
         <p className="text-lg text-gray-600 mb-6">Please connect your Etsy shop to view orders</p>
-        <a href={authUrl} className="btn-primary">Connect Shop</a>
+        <a href={authUrl} className="btn-primary">
+          Connect Shop
+        </a>
       </div>
     );
   }
@@ -169,10 +160,7 @@ const OrdersTab = ({
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
         <p className="text-rose-700">{error}</p>
-        <button 
-          onClick={onRefresh}
-          className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
-        >
+        <button onClick={onRefresh} className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline">
           Try again
         </button>
       </div>
@@ -193,9 +181,10 @@ const OrdersTab = ({
           </div>
           <div className="text-center">
             <h3 className="text-2xl font-bold text-gray-900">
-              {(orders || []).reduce((sum, order) => 
-                sum + (order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0)
-              , 0)}
+              {(orders || []).reduce(
+                (sum, order) => sum + (order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0),
+                0
+              )}
             </h3>
             <p className="text-gray-600">Total Items</p>
           </div>
@@ -217,7 +206,7 @@ const OrdersTab = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {(orders || []).map((order) => (
+              {(orders || []).map(order => (
                 <React.Fragment key={order.order_id}>
                   <tr className="hover:bg-gray-50">
                     <td className="px-2 py-4 text-center">
@@ -226,18 +215,16 @@ const OrdersTab = ({
                         className="focus:outline-none"
                         aria-label={expandedOrders.includes(order.order_id) ? 'Collapse' : 'Expand'}
                       >
-                        {expandedOrders.includes(order.order_id) ? (
-                          <span>&#9660;</span>
-                        ) : (
-                          <span>&#9654;</span>
-                        )}
+                        {expandedOrders.includes(order.order_id) ? <span>&#9660;</span> : <span>&#9654;</span>}
                       </button>
                     </td>
                     <td className="px-6 py-4 font-medium text-gray-900">{order.order_id}</td>
                     <td className="px-6 py-4 text-gray-700">{order.customer_name || 'N/A'}</td>
                     <td className="px-6 py-4 text-gray-700">{order.shipping_method || 'N/A'}</td>
                     <td className="px-6 py-4 text-gray-700">{formatCurrency(order.shipping_cost || 0)}</td>
-                    <td className="px-6 py-4 text-gray-700">{new Date(order.order_date * 1000).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 text-gray-700">
+                      {new Date(order.order_date * 1000).toLocaleDateString()}
+                    </td>
                   </tr>
                   {/* Transactions Dropdown */}
                   {expandedOrders.includes(order.order_id) && (
@@ -270,15 +257,11 @@ const OrdersTab = ({
               ))}
             </tbody>
           </table>
-          {(orders || []).length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No active orders found
-            </div>
-          )}
+          {(orders || []).length === 0 && <div className="text-center py-8 text-gray-500">No active orders found</div>}
         </div>
       </div>
     </div>
   );
 };
 
-export default OrdersTab; 
+export default OrdersTab;

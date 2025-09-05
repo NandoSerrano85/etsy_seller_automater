@@ -56,19 +56,20 @@ services:
   # Frontend Service
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: printer-automater-frontend
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://backend:3003 # TODO: Must match backend service name
+      - REACT_APP_API_BASE_URL=http://localhost:3003
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:
       # Mount source code for development (hot reload)
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
+      - ./frontend/package.json:/app/package.json
       - /app/node_modules
     restart: unless-stopped
     depends_on:

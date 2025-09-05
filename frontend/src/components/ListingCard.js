@@ -1,15 +1,15 @@
 import React from 'react';
 
 const ListingCard = ({ listing, isSelected, onSelect, onEdit }) => {
-  const formatPrice = (price) => {
+  const formatPrice = price => {
     if (!price) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'USD',
     }).format(price);
   };
 
-  const getStateColor = (state) => {
+  const getStateColor = state => {
     switch (state) {
       case 'active':
         return 'bg-green-100 text-green-800';
@@ -30,25 +30,27 @@ const ListingCard = ({ listing, isSelected, onSelect, onEdit }) => {
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border-2 transition-all duration-200 hover:shadow-md ${
-      isSelected ? 'border-lavender-500 bg-lavender-50' : 'border-gray-200 hover:border-gray-300'
-    }`}>
+    <div
+      className={`bg-white rounded-lg shadow-sm border-2 transition-all duration-200 hover:shadow-md ${
+        isSelected ? 'border-lavender-500 bg-lavender-50' : 'border-gray-200 hover:border-gray-300'
+      }`}
+    >
       {/* Image Section */}
       <div className="relative">
         {listing.default_image_url ? (
-          <img 
-            src={listing.default_image_url} 
+          <img
+            src={listing.default_image_url}
             alt={listing.title || 'Listing image'}
             className="w-full h-48 object-cover rounded-t-lg"
-            onError={(e) => {
+            onError={e => {
               e.target.style.display = 'none';
               e.target.nextSibling.style.display = 'flex';
             }}
           />
         ) : null}
-        
+
         {/* Fallback when no image or image fails to load */}
-        <div 
+        <div
           className={`w-full h-48 bg-gray-100 rounded-t-lg flex items-center justify-center ${
             listing.default_image_url ? 'hidden' : 'flex'
           }`}
@@ -80,16 +82,10 @@ const ListingCard = ({ listing, isSelected, onSelect, onEdit }) => {
       {/* Content Section */}
       <div className="p-4">
         <div className="mb-3">
-          <h3 className="font-semibold text-gray-900 text-sm leading-tight mb-1">
-            {truncateTitle(listing.title)}
-          </h3>
+          <h3 className="font-semibold text-gray-900 text-sm leading-tight mb-1">{truncateTitle(listing.title)}</h3>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-lg font-bold text-gray-900">
-              {formatPrice(listing.price)}
-            </span>
-            <span className="text-gray-500">
-              Qty: {listing.quantity || 0}
-            </span>
+            <span className="text-lg font-bold text-gray-900">{formatPrice(listing.price)}</span>
+            <span className="text-gray-500">Qty: {listing.quantity || 0}</span>
           </div>
         </div>
 

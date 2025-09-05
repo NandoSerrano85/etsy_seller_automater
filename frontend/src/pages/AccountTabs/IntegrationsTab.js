@@ -6,17 +6,17 @@ import IntegrationCard from '../../components/IntegrationCard';
 
 const IntegrationsTab = () => {
   const navigate = useNavigate();
-  const { 
-    user, 
-    isEtsyConnected, 
-    etsyUserInfo, 
-    etsyShopInfo, 
-    etsyLoading, 
+  const {
+    user,
+    isEtsyConnected,
+    etsyUserInfo,
+    etsyShopInfo,
+    etsyLoading,
     etsyError,
     checkEtsyConnection,
-    disconnectEtsy 
+    disconnectEtsy,
   } = useAuth();
-  
+
   const api = useApi();
   const [oauthData, setOauthData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -25,7 +25,7 @@ const IntegrationsTab = () => {
   // Fetch OAuth configuration only when needed
   const fetchOAuthData = useCallback(async () => {
     if (oauthData) return;
-    
+
     try {
       setLoading(true);
       const response = await api.get('/third-party/oauth-data');
@@ -40,23 +40,25 @@ const IntegrationsTab = () => {
 
   const handleEtsyConnect = async () => {
     await fetchOAuthData();
-    
+
     if (!oauthData) {
       setError('OAuth configuration not loaded');
       return;
     }
 
     // Build and redirect to OAuth URL
-    const authUrl = `${oauthData.oauthConnectUrl}?` + new URLSearchParams({
-      response_type: oauthData.responseType,
-      redirect_uri: oauthData.redirectUri,
-      scope: oauthData.scopes,
-      client_id: oauthData.clientId,
-      state: oauthData.state,
-      code_challenge: oauthData.codeChallenge,
-      code_challenge_method: oauthData.codeChallengeMethod
-    });
-    
+    const authUrl =
+      `${oauthData.oauthConnectUrl}?` +
+      new URLSearchParams({
+        response_type: oauthData.responseType,
+        redirect_uri: oauthData.redirectUri,
+        scope: oauthData.scopes,
+        client_id: oauthData.clientId,
+        state: oauthData.state,
+        code_challenge: oauthData.codeChallenge,
+        code_challenge_method: oauthData.codeChallengeMethod,
+      });
+
     window.location.href = authUrl;
   };
 
@@ -85,8 +87,8 @@ const IntegrationsTab = () => {
         { icon: '📊', label: 'Sales Analytics' },
         { icon: '📦', label: 'Order Management' },
         { icon: '🎨', label: 'Design Automation' },
-        { icon: '🔄', label: 'Auto-sync Data' }
-      ]
+        { icon: '🔄', label: 'Auto-sync Data' },
+      ],
     },
     // Add more integrations here as they become available
     {
@@ -95,8 +97,8 @@ const IntegrationsTab = () => {
       description: 'Coming soon - Connect your Shopify store for seamless integration.',
       isConnected: false,
       isComingSoon: true,
-      features: []
-    }
+      features: [],
+    },
   ];
 
   return (

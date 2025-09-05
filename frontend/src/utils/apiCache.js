@@ -3,12 +3,12 @@ class ApiCache {
     this.cache = new Map();
     this.timestamps = new Map();
     this.defaultTTL = 5 * 60 * 1000; // 5 minutes default
-    
+
     // Configure different TTL for different endpoints
     this.endpointTTLs = {
       '/third-party/oauth-data': 30 * 60 * 1000, // 30 minutes - rarely changes
       '/settings/product-template': 10 * 60 * 1000, // 10 minutes
-      '/settings/canvas-config': 10 * 60 * 1000, // 10 minutes  
+      '/settings/canvas-config': 10 * 60 * 1000, // 10 minutes
       '/settings/size-config': 10 * 60 * 1000, // 10 minutes
       '/mockups/': 2 * 60 * 1000, // 2 minutes - changes more frequently
       '/designs/': 2 * 60 * 1000, // 2 minutes
@@ -25,7 +25,7 @@ class ApiCache {
         acc[key] = params[key];
         return acc;
       }, {});
-    
+
     return `${url}?${JSON.stringify(sortedParams)}`;
   }
 
@@ -48,19 +48,19 @@ class ApiCache {
 
     const timestamp = this.timestamps.get(key);
     const ttl = this.getTTL(key);
-    
+
     return Date.now() - timestamp < ttl;
   }
 
   // Get cached data if valid
   get(url, params = {}) {
     const key = this.generateKey(url, params);
-    
+
     if (this.isValid(key)) {
       console.log(`Cache hit for ${url}`);
       return this.cache.get(key);
     }
-    
+
     // Clean up expired entry
     this.delete(key);
     return null;
@@ -69,12 +69,12 @@ class ApiCache {
   // Set cached data
   set(url, params = {}, data) {
     const key = this.generateKey(url, params);
-    
+
     this.cache.set(key, data);
     this.timestamps.set(key, Date.now());
-    
+
     console.log(`Cached data for ${url}`);
-    
+
     // Cleanup old entries periodically
     if (this.cache.size > 100) {
       this.cleanup();
@@ -90,17 +90,17 @@ class ApiCache {
   // Clear all cache for a specific endpoint pattern
   clearEndpoint(endpointPattern) {
     const keysToDelete = [];
-    
+
     for (const key of this.cache.keys()) {
       if (key.includes(endpointPattern)) {
         keysToDelete.push(key);
       }
     }
-    
+
     keysToDelete.forEach(key => {
       this.delete(key);
     });
-    
+
     console.log(`Cleared cache for ${endpointPattern}`);
   }
 
@@ -115,18 +115,18 @@ class ApiCache {
   cleanup() {
     const now = Date.now();
     const keysToDelete = [];
-    
+
     for (const [key, timestamp] of this.timestamps.entries()) {
       const ttl = this.getTTL(key);
       if (now - timestamp > ttl) {
         keysToDelete.push(key);
       }
     }
-    
+
     keysToDelete.forEach(key => {
       this.delete(key);
     });
-    
+
     if (keysToDelete.length > 0) {
       console.log(`Cleaned up ${keysToDelete.length} expired cache entries`);
     }
@@ -136,7 +136,7 @@ class ApiCache {
   getStats() {
     return {
       size: this.cache.size,
-      entries: Array.from(this.cache.keys())
+      entries: Array.from(this.cache.keys()),
     };
   }
 }
@@ -145,8 +145,11 @@ class ApiCache {
 const apiCache = new ApiCache();
 
 // Clean up expired entries every 5 minutes
-setInterval(() => {
-  apiCache.cleanup();
-}, 5 * 60 * 1000);
+setInterval(
+  () => {
+    apiCache.cleanup();
+  },
+  5 * 60 * 1000
+);
 
 export default apiCache;

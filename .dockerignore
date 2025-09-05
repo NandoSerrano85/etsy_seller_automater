@@ -65,10 +65,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Frontend build artifacts (since we're using separate Netlify deployment)
-frontend/
-frontend/build/
-frontend/node_modules/
+# Frontend build artifacts (now handled by frontend/.dockerignore)
+# frontend/ - removed to allow docker-compose builds
 
 # Docker files (not needed in container)
 Dockerfile*

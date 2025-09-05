@@ -1,24 +1,24 @@
 import React from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
-const TopNavigation = ({ 
-  sectionTitle, 
-  breadcrumbs = [], 
-  actions = [], 
-  tabs = [], 
+const TopNavigation = ({
+  sectionTitle,
+  breadcrumbs = [],
+  actions = [],
+  tabs = [],
   activeTab,
   onTabChange,
-  onMenuToggle 
+  onMenuToggle,
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const handleTabChange = (tabId) => {
+  const handleTabChange = tabId => {
     // Update search params with both tab and subtab
     const currentTab = searchParams.get('tab');
     const newParams = new URLSearchParams(searchParams);
-    
+
     if (currentTab === 'orders') {
       // For orders section, update subtab
       newParams.set('subtab', tabId);
@@ -26,7 +26,7 @@ const TopNavigation = ({
       // For other sections, update main tab
       newParams.set('tab', tabId);
     }
-    
+
     // Update URL and trigger callback if provided
     setSearchParams(newParams);
     if (onTabChange) {
@@ -47,8 +47,8 @@ const TopNavigation = ({
         breadcrumbs: [{ label: 'Dashboard', active: true }],
         tabs: [
           { id: 'overview', label: 'Overview', icon: '📊' },
-          { id: 'quick-actions', label: 'Quick Actions', icon: '⚡' }
-        ]
+          { id: 'quick-actions', label: 'Quick Actions', icon: '⚡' },
+        ],
       };
     }
 
@@ -59,14 +59,14 @@ const TopNavigation = ({
         subtitle: 'Track your shop performance and trends',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Analytics', active: true }
+          { label: 'Analytics', active: true },
         ],
         tabs: [
           { id: 'overview', label: 'Overview', icon: '📈' },
           { id: 'sales', label: 'Sales', icon: '💰' },
           { id: 'products', label: 'Products', icon: '📦' },
-          { id: 'customers', label: 'Customers', icon: '👥' }
-        ]
+          { id: 'customers', label: 'Customers', icon: '👥' },
+        ],
       };
     }
 
@@ -76,14 +76,14 @@ const TopNavigation = ({
         subtitle: 'Manage your creative assets and templates',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Design Studio', active: true }
+          { label: 'Design Studio', active: true },
         ],
         tabs: [
           { id: 'gallery', label: 'Gallery', icon: '🎨' },
           { id: 'upload', label: 'Upload', icon: '⬆️' },
           { id: 'templates', label: 'Templates', icon: '📋' },
-          { id: 'mockups', label: 'Mockups', icon: '🖼️' }
-        ]
+          { id: 'mockups', label: 'Mockups', icon: '🖼️' },
+        ],
       };
     }
 
@@ -93,15 +93,15 @@ const TopNavigation = ({
         subtitle: 'Process and track your Etsy orders',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Orders', active: true }
+          { label: 'Orders', active: true },
         ],
         tabs: [
           { id: 'pending', label: 'Pending', icon: '⏳', badge: 5 },
           { id: 'processing', label: 'Processing', icon: '🔄', badge: 12 },
           { id: 'completed', label: 'Completed', icon: '✅' },
           { id: 'all', label: 'All Orders', icon: '📋' },
-          { id: 'print', label: 'Send to Print', icon: '🖨️' }
-        ]
+          { id: 'print', label: 'Send to Print', icon: '🖨️' },
+        ],
       };
     }
 
@@ -111,13 +111,13 @@ const TopNavigation = ({
         subtitle: 'Streamline your workflow with powerful automation',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Tools', active: true }
+          { label: 'Tools', active: true },
         ],
         tabs: [
           { id: 'batch', label: 'Batch Operations', icon: '📦' },
           { id: 'scheduling', label: 'Scheduling', icon: '📅' },
-          { id: 'integrations', label: 'Integrations', icon: '🔗' }
-        ]
+          { id: 'integrations', label: 'Integrations', icon: '🔗' },
+        ],
       };
     }
 
@@ -127,13 +127,13 @@ const TopNavigation = ({
         subtitle: 'Create professional product mockups',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Mockup Creator', active: true }
+          { label: 'Mockup Creator', active: true },
         ],
         tabs: [
           { id: 'create', label: 'Create New', icon: '➕' },
           { id: 'library', label: 'My Mockups', icon: '📁' },
-          { id: 'templates', label: 'Templates', icon: '🎭' }
-        ]
+          { id: 'templates', label: 'Templates', icon: '🎭' },
+        ],
       };
     }
 
@@ -143,14 +143,14 @@ const TopNavigation = ({
         subtitle: 'Manage your profile and preferences',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Settings', active: true }
+          { label: 'Settings', active: true },
         ],
         tabs: [
           { id: 'profile', label: 'Profile', icon: '👤' },
           { id: 'templates', label: 'Template', icon: '📋' },
           { id: 'integrations', label: 'Integrations', icon: '🔌' },
-          { id: 'preferences', label: 'Preferences', icon: '⚙️' }
-        ]
+          { id: 'preferences', label: 'Preferences', icon: '⚙️' },
+        ],
       };
     }
 
@@ -159,7 +159,7 @@ const TopNavigation = ({
       title: sectionTitle || 'Dashboard',
       subtitle: 'Manage your Etsy business',
       breadcrumbs: breadcrumbs.length ? breadcrumbs : [{ label: 'Dashboard', active: true }],
-      tabs: tabs
+      tabs: tabs,
     };
   };
 
@@ -195,8 +195,8 @@ const TopNavigation = ({
                         </svg>
                       )}
                       {crumb.href ? (
-                        <a 
-                          href={crumb.href} 
+                        <a
+                          href={crumb.href}
                           className="text-sage-600 hover:text-lavender-600 transition-colors duration-200"
                         >
                           {crumb.label}
@@ -212,12 +212,8 @@ const TopNavigation = ({
               )}
 
               {/* Title & Subtitle */}
-              <h1 className="text-xl lg:text-2xl font-bold text-sage-900">
-                {sectionTitle || config.title}
-              </h1>
-              {config.subtitle && (
-                <p className="text-sage-600 text-sm mt-1">{config.subtitle}</p>
-              )}
+              <h1 className="text-xl lg:text-2xl font-bold text-sage-900">{sectionTitle || config.title}</h1>
+              {config.subtitle && <p className="text-sage-600 text-sm mt-1">{config.subtitle}</p>}
             </div>
           </div>
 
@@ -231,11 +227,12 @@ const TopNavigation = ({
                   disabled={action.disabled}
                   className={`
                     px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2
-                    ${action.variant === 'primary' 
-                      ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white hover:from-lavender-600 hover:to-lavender-700 shadow-sm' 
-                      : action.variant === 'secondary'
-                      ? 'bg-gradient-to-r from-mint-100 to-mint-200 text-mint-800 hover:from-mint-200 hover:to-mint-300'
-                      : 'bg-sage-100 text-sage-700 hover:bg-sage-200'
+                    ${
+                      action.variant === 'primary'
+                        ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white hover:from-lavender-600 hover:to-lavender-700 shadow-sm'
+                        : action.variant === 'secondary'
+                          ? 'bg-gradient-to-r from-mint-100 to-mint-200 text-mint-800 hover:from-mint-200 hover:to-mint-300'
+                          : 'bg-sage-100 text-sage-700 hover:bg-sage-200'
                     }
                     ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md active:scale-95'}
                   `}
@@ -253,7 +250,7 @@ const TopNavigation = ({
       {currentTabs && currentTabs.length > 0 && (
         <div className="px-4 lg:px-8">
           <nav className="flex space-x-1 overflow-x-auto pb-px">
-            {currentTabs.map((tab) => {
+            {currentTabs.map(tab => {
               const isActive = tab.id === (searchParams.get('subtab') || activeTab);
               return (
                 <button
@@ -261,24 +258,22 @@ const TopNavigation = ({
                   onClick={() => handleTabChange(tab.id)}
                   className={`
                     flex items-center space-x-2 px-4 py-3 font-medium text-sm whitespace-nowrap transition-all duration-200 border-b-2
-                    ${isActive 
-                      ? 'border-lavender-500 text-lavender-700 bg-gradient-to-t from-lavender-50 to-transparent' 
-                      : 'border-transparent text-sage-600 hover:text-sage-900 hover:border-sage-300'
+                    ${
+                      isActive
+                        ? 'border-lavender-500 text-lavender-700 bg-gradient-to-t from-lavender-50 to-transparent'
+                        : 'border-transparent text-sage-600 hover:text-sage-900 hover:border-sage-300'
                     }
                   `}
                 >
-                  {tab.icon && (
-                    <span className="text-base">{tab.icon}</span>
-                  )}
+                  {tab.icon && <span className="text-base">{tab.icon}</span>}
                   <span>{tab.label}</span>
                   {tab.badge && (
-                    <span className={`
+                    <span
+                      className={`
                       px-2 py-0.5 rounded-full text-xs font-semibold
-                      ${isActive 
-                        ? 'bg-lavender-500 text-white' 
-                        : 'bg-sage-200 text-sage-700'
-                      }
-                    `}>
+                      ${isActive ? 'bg-lavender-500 text-white' : 'bg-sage-200 text-sage-700'}
+                    `}
+                    >
                       {tab.badge}
                     </span>
                   )}

@@ -23,14 +23,14 @@ const ApiTest = () => {
     }
   };
 
-  const handleRegister = async (e) => {
+  const handleRegister = async e => {
     e.preventDefault();
     setLoading(true);
     setTestResult('Registering...');
     try {
       const result = await apiCall('/auth', {
         method: 'POST',
-        body: JSON.stringify({ email: regEmail, password: regPassword })
+        body: JSON.stringify({ email: regEmail, password: regPassword }),
       });
       setTestResult(`✅ Registration successful! Result: ${JSON.stringify(result)}`);
     } catch (error) {
@@ -40,14 +40,14 @@ const ApiTest = () => {
     }
   };
 
-  const handleLogin = async (e) => {
+  const handleLogin = async e => {
     e.preventDefault();
     setLoading(true);
     setTestResult('Logging in...');
     try {
       const result = await apiCall('/auth/token', {
         method: 'POST',
-        body: JSON.stringify({ email: loginEmail, password: loginPassword })
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
       setTestResult(`✅ Login successful! Result: ${JSON.stringify(result)}`);
     } catch (error) {
@@ -69,17 +69,64 @@ const ApiTest = () => {
       </button>
       <form onSubmit={handleRegister} className="mb-4">
         <h3 className="font-semibold mb-2">Register</h3>
-        <input type="email" placeholder="Email" value={regEmail} onChange={e => setRegEmail(e.target.value)} className="w-full mb-2 p-2 border rounded" required />
-        <input type="password" placeholder="Password" value={regPassword} onChange={e => setRegPassword(e.target.value)} className="w-full mb-2 p-2 border rounded" required />
-        <input type="password" placeholder="Confirm Password" value={regConfirm} onChange={e => setRegConfirm(e.target.value)} className="w-full mb-2 p-2 border rounded" required />
-        <button type="submit" disabled={loading || regPassword !== regConfirm} className="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Register</button>
+        <input
+          type="email"
+          placeholder="Email"
+          value={regEmail}
+          onChange={e => setRegEmail(e.target.value)}
+          className="w-full mb-2 p-2 border rounded"
+          required
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={regPassword}
+          onChange={e => setRegPassword(e.target.value)}
+          className="w-full mb-2 p-2 border rounded"
+          required
+        />
+        <input
+          type="password"
+          placeholder="Confirm Password"
+          value={regConfirm}
+          onChange={e => setRegConfirm(e.target.value)}
+          className="w-full mb-2 p-2 border rounded"
+          required
+        />
+        <button
+          type="submit"
+          disabled={loading || regPassword !== regConfirm}
+          className="w-full bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+        >
+          Register
+        </button>
         {regPassword !== regConfirm && <div className="text-red-500 text-xs mt-1">Passwords do not match</div>}
       </form>
       <form onSubmit={handleLogin} className="mb-4">
         <h3 className="font-semibold mb-2">Login</h3>
-        <input type="email" placeholder="Email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="w-full mb-2 p-2 border rounded" required />
-        <input type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} className="w-full mb-2 p-2 border rounded" required />
-        <button type="submit" disabled={loading} className="w-full bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">Login</button>
+        <input
+          type="email"
+          placeholder="Email"
+          value={loginEmail}
+          onChange={e => setLoginEmail(e.target.value)}
+          className="w-full mb-2 p-2 border rounded"
+          required
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={loginPassword}
+          onChange={e => setLoginPassword(e.target.value)}
+          className="w-full mb-2 p-2 border rounded"
+          required
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+        >
+          Login
+        </button>
       </form>
       <div className="mt-4 p-3 bg-gray-100 rounded">
         <h3 className="font-semibold mb-2">Result:</h3>
@@ -93,4 +140,4 @@ const ApiTest = () => {
   );
 };
 
-export default ApiTest; 
+export default ApiTest;

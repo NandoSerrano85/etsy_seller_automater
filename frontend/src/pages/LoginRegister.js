@@ -11,8 +11,8 @@ const LoginRegister = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [shopName, setShopName] = useState('');
-  const [registerError, setRegisterError] = useState('');
-  
+  // const [registerError, setRegisterError] = useState('');
+
   const { login, register, isUserAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,12 +46,12 @@ const LoginRegister = () => {
     return true;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
     if (!validate()) return;
     setLoading(true);
     setError('');
-    
+
     try {
       if (tab === 'login') {
         const result = await login(email, password);
@@ -80,13 +80,19 @@ const LoginRegister = () => {
         <div className="flex mb-6">
           <button
             className={`flex-1 py-2 sm:py-3 font-semibold rounded-l-lg transition-colors text-sm sm:text-base ${tab === 'login' ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white' : 'bg-sage-100 text-sage-700'}`}
-            onClick={() => { setTab('login'); setError(''); }}
+            onClick={() => {
+              setTab('login');
+              setError('');
+            }}
           >
             Login
           </button>
           <button
             className={`flex-1 py-2 sm:py-3 font-semibold rounded-r-lg transition-colors text-sm sm:text-base ${tab === 'register' ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white' : 'bg-sage-100 text-sage-700'}`}
-            onClick={() => { setTab('register'); setError(''); }}
+            onClick={() => {
+              setTab('register');
+              setError('');
+            }}
           >
             Register
           </button>
@@ -121,9 +127,23 @@ const LoginRegister = () => {
                 tabIndex={-1}
               >
                 {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.403-3.221 1.125-4.575M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13.875 18.825A10.05 10.05 0 0112 19c-5.523 0-10-4.477-10-10 0-1.657.403-3.221 1.125-4.575M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
                 ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm2.121 2.121A9.969 9.969 0 0021 12c0-5.523-4.477-10-10-10S1 6.477 1 12c0 1.657.403 3.221 1.125 4.575M4.222 4.222l15.556 15.556" /></svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm2.121 2.121A9.969 9.969 0 0021 12c0-5.523-4.477-10-10-10S1 6.477 1 12c0 1.657.403 3.221 1.125 4.575M4.222 4.222l15.556 15.556"
+                    />
+                  </svg>
                 )}
               </button>
             </div>
@@ -142,7 +162,9 @@ const LoginRegister = () => {
                 />
               </div>
               <div className="mb-4">
-                <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700">Shop Name</label>
+                <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700">
+                  Shop Name
+                </label>
                 <input
                   id="shop-name"
                   type="text"
@@ -154,18 +176,20 @@ const LoginRegister = () => {
               </div>
             </div>
           )}
-          {error && (
-            <div className="bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>
-          )}
+          {error && <div className="bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
           <button
             type="submit"
             className="w-full py-2 sm:py-3 bg-gradient-to-r from-lavender-500 to-lavender-600 text-white font-semibold rounded-lg hover:from-lavender-600 hover:to-lavender-700 transition-all duration-200 flex items-center justify-center text-sm sm:text-base shadow-sm hover:shadow-md"
             disabled={loading}
           >
             {loading ? (
-              <span className="flex items-center"><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>Loading...</span>
+              <span className="flex items-center">
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>Loading...
+              </span>
+            ) : tab === 'login' ? (
+              'Login'
             ) : (
-              tab === 'login' ? 'Login' : 'Register'
+              'Register'
             )}
           </button>
         </form>
@@ -174,4 +198,4 @@ const LoginRegister = () => {
   );
 };
 
-export default LoginRegister; 
+export default LoginRegister;

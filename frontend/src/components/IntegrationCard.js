@@ -1,19 +1,19 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const IntegrationCard = ({ 
-  name, 
-  icon, 
-  description, 
-  isConnected, 
-  userInfo, 
-  shopInfo, 
-  features, 
-  onConnect, 
-  onDisconnect, 
-  isLoading 
+const IntegrationCard = ({
+  name,
+  icon,
+  description,
+  isConnected,
+  userInfo,
+  shopInfo,
+  features,
+  onConnect,
+  onDisconnect,
+  isLoading,
 }) => {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
   return (
     <div className="bg-white rounded-xl shadow-sm border border-sage-200 overflow-hidden">
       <div className="p-6">
@@ -24,12 +24,12 @@ const IntegrationCard = ({
               <span className="text-white font-bold text-lg">{icon}</span>
             </div>
           </div>
-          
+
           {/* Integration Info */}
           <div className="flex-1">
             <h3 className="text-xl font-semibold text-sage-900 mb-2">{name} Integration</h3>
             <p className="text-sage-600 mb-4">{description}</p>
-            
+
             {/* Connection Status */}
             <div className="mb-4">
               {isConnected ? (
@@ -40,14 +40,19 @@ const IntegrationCard = ({
                   </div>
                   {userInfo && (
                     <div className="text-sm text-sage-600">
-                      <p>Connected as: <span className="font-medium">
-                        {userInfo.first_name} {userInfo.last_name}
-                      </span></p>
+                      <p>
+                        Connected as:{' '}
+                        <span className="font-medium">
+                          {userInfo.first_name} {userInfo.last_name}
+                        </span>
+                      </p>
                     </div>
                   )}
                   {shopInfo && (
                     <div className="text-sm text-sage-600">
-                      <p>Shop: <span className="font-medium">{shopInfo.shop_name}</span></p>
+                      <p>
+                        Shop: <span className="font-medium">{shopInfo.shop_name}</span>
+                      </p>
                     </div>
                   )}
                 </div>

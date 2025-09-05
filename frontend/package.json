@@ -21,13 +21,30 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "lint": "react-scripts build --dry-run",
+    "lint:fix": "npx eslint src/ --fix --ext .js,.jsx",
+    "format": "prettier --write src/**/*.{js,jsx,json,css,scss,md}",
+    "format:check": "prettier --check src/**/*.{js,jsx,json,css,scss,md}"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
-      "react-app/jest"
-    ]
+      "react-app/jest",
+      "prettier"
+    ],
+    "plugins": [
+      "prettier"
+    ],
+    "rules": {
+      "prettier/prettier": "error",
+      "no-unused-vars": "warn",
+      "react-hooks/exhaustive-deps": "warn",
+      "jsx-a11y/alt-text": "warn",
+      "jsx-a11y/img-redundant-alt": "warn",
+      "import/no-anonymous-default-export": "warn",
+      "default-case": "warn"
+    }
   },
   "browserslist": {
     "production": [
@@ -44,7 +61,10 @@
   "proxy": "http://backend:3003",
   "devDependencies": {
     "autoprefixer": "^10.4.21",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
     "postcss": "^8.5.6",
+    "prettier": "^3.6.2",
     "react-scripts": "^5.0.1",
     "tailwindcss": "^3.4.17"
   },

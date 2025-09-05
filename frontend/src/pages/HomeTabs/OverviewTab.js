@@ -1,18 +1,10 @@
 import React from 'react';
 
-const OverviewTab = ({ 
-  user,
-  isConnected,
-  designs,
-  topSellers,
-  authUrl 
-}) => {
+const OverviewTab = ({ user, isConnected, designs, topSellers, authUrl }) => {
   return (
     <div className="space-y-6 sm:space-y-8">
       <div className="card p-6 sm:p-8 text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
-          Welcome to Your Dashboard
-        </h2>
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">Welcome to Your Dashboard</h2>
         {user && (
           <p className="text-base sm:text-lg text-gray-600 mb-4">
             Hello, <span className="font-semibold text-blue-600">{user.email}</span>!
@@ -47,4 +39,4 @@ const OverviewTab = ({
   );
 };
 
-export default OverviewTab; 
+export default OverviewTab;

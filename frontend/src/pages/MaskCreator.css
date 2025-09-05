@@ -52,7 +52,7 @@
   letter-spacing: 0.5px;
 }
 
-.control-group input[type="file"],
+.control-group input[type='file'],
 .control-group select {
   padding: 10px;
   border: 2px solid #e1e5e9;
@@ -61,7 +61,7 @@
   transition: border-color 0.3s ease;
 }
 
-.control-group input[type="file"]:focus,
+.control-group input[type='file']:focus,
 .control-group select:focus {
   outline: none;
   border-color: #667eea;
@@ -199,21 +199,21 @@
   .mask-creator {
     padding: 10px;
   }
-  
+
   .mask-creator-header h1 {
     font-size: 2rem;
   }
-  
+
   .mask-creator-controls {
     grid-template-columns: 1fr;
     gap: 15px;
   }
-  
+
   .mode-buttons,
   .action-buttons {
     flex-direction: column;
   }
-  
+
   .mask-creator-canvas {
     padding: 10px;
   }
@@ -236,4 +236,4 @@
   background: #f8d7da;
   border-color: #f5c6cb;
   color: #721c24;
-} 
+}

@@ -6,130 +6,148 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:300
 
 export const useEnhancedApi = () => {
   const { userToken: userJwtToken } = useAuth(); // Get user JWT token for backend auth
-  
-  const makeRequest = useCallback(async (endpoint, options = {}) => {
-    const {
-      method = 'GET',
-      headers = {},
-      body = null,
-      useCache = true,
-      cacheTTL = null,
-      requireAuth = false,
-      params = {}
-    } = options;
 
-    const url = `${API_BASE_URL}${endpoint}`;
-    
-    // Check cache for GET requests
-    if (method === 'GET' && useCache) {
-      const cachedData = apiCache.get(endpoint, params);
-      if (cachedData) {
-        return cachedData;
-      }
-    }
+  const makeRequest = useCallback(
+    async (endpoint, options = {}) => {
+      const {
+        method = 'GET',
+        headers = {},
+        body = null,
+        useCache = true,
+        cacheTTL = null,
+        requireAuth = false,
+        params = {},
+      } = options;
 
-    // Prepare headers
-    const requestHeaders = {
-      'Content-Type': 'application/json',
-      ...headers
-    };
+      const url = `${API_BASE_URL}${endpoint}`;
 
-    // Add authentication if required
-    if (requireAuth) {
-      if (userJwtToken) {
-        requestHeaders.Authorization = `Bearer ${userJwtToken}`;
-      } else {
-        throw new Error('Authentication required but no valid user token available');
-      }
-    }
-
-    // Prepare request options
-    const requestOptions = {
-      method,
-      headers: requestHeaders
-    };
-
-    if (body) {
-      if (body instanceof FormData) {
-        // Remove Content-Type for FormData (browser sets it automatically)
-        delete requestHeaders['Content-Type'];
-        requestOptions.body = body;
-      } else {
-        requestOptions.body = JSON.stringify(body);
-      }
-    }
-
-    try {
-      const response = await fetch(url, requestOptions);
-      
-      // Handle authentication errors
-      if (response.status === 401 && requireAuth) {
-        throw new Error('Authentication failed. Please log in again.');
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Cache successful GET responses
+      // Check cache for GET requests
       if (method === 'GET' && useCache) {
-        apiCache.set(endpoint, params, data);
-      }
-      
-      // Clear related cache for mutating operations
-      if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-        // Clear cache for related endpoints
-        const endpointBase = endpoint.split('/')[1];
-        apiCache.clearEndpoint(`/${endpointBase}/`);
+        const cachedData = apiCache.get(endpoint, params);
+        if (cachedData) {
+          return cachedData;
+        }
       }
 
-      return data;
-    } catch (error) {
-      console.error(`API request failed: ${method} ${endpoint}`, error);
-      throw error;
-    }
-  }, [userJwtToken]);
+      // Prepare headers
+      const requestHeaders = {
+        'Content-Type': 'application/json',
+        ...headers,
+      };
 
-  const get = useCallback(async (endpoint, options = {}) => {
-    return makeRequest(endpoint, { ...options, method: 'GET' });
-  }, [makeRequest]);
+      // Add authentication if required
+      if (requireAuth) {
+        if (userJwtToken) {
+          requestHeaders.Authorization = `Bearer ${userJwtToken}`;
+        } else {
+          throw new Error('Authentication required but no valid user token available');
+        }
+      }
 
-  const post = useCallback(async (endpoint, data, options = {}) => {
-    return makeRequest(endpoint, { 
-      ...options, 
-      method: 'POST', 
-      body: data,
-      useCache: false 
-    });
-  }, [makeRequest]);
+      // Prepare request options
+      const requestOptions = {
+        method,
+        headers: requestHeaders,
+      };
 
-  const put = useCallback(async (endpoint, data, options = {}) => {
-    return makeRequest(endpoint, { 
-      ...options, 
-      method: 'PUT', 
-      body: data,
-      useCache: false 
-    });
-  }, [makeRequest]);
+      if (body) {
+        if (body instanceof FormData) {
+          // Remove Content-Type for FormData (browser sets it automatically)
+          delete requestHeaders['Content-Type'];
+          requestOptions.body = body;
+        } else {
+          requestOptions.body = JSON.stringify(body);
+        }
+      }
 
-  const del = useCallback(async (endpoint, options = {}) => {
-    return makeRequest(endpoint, { 
-      ...options, 
-      method: 'DELETE',
-      useCache: false 
-    });
-  }, [makeRequest]);
+      try {
+        const response = await fetch(url, requestOptions);
 
-  const postFormData = useCallback(async (endpoint, formData, options = {}) => {
-    return makeRequest(endpoint, {
-      ...options,
-      method: 'POST',
-      body: formData,
-      useCache: false
-    });
-  }, [makeRequest]);
+        // Handle authentication errors
+        if (response.status === 401 && requireAuth) {
+          throw new Error('Authentication failed. Please log in again.');
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Cache successful GET responses
+        if (method === 'GET' && useCache) {
+          apiCache.set(endpoint, params, data);
+        }
+
+        // Clear related cache for mutating operations
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+          // Clear cache for related endpoints
+          const endpointBase = endpoint.split('/')[1];
+          apiCache.clearEndpoint(`/${endpointBase}/`);
+        }
+
+        return data;
+      } catch (error) {
+        console.error(`API request failed: ${method} ${endpoint}`, error);
+        throw error;
+      }
+    },
+    [userJwtToken]
+  );
+
+  const get = useCallback(
+    async (endpoint, options = {}) => {
+      return makeRequest(endpoint, { ...options, method: 'GET' });
+    },
+    [makeRequest]
+  );
+
+  const post = useCallback(
+    async (endpoint, data, options = {}) => {
+      return makeRequest(endpoint, {
+        ...options,
+        method: 'POST',
+        body: data,
+        useCache: false,
+      });
+    },
+    [makeRequest]
+  );
+
+  const put = useCallback(
+    async (endpoint, data, options = {}) => {
+      return makeRequest(endpoint, {
+        ...options,
+        method: 'PUT',
+        body: data,
+        useCache: false,
+      });
+    },
+    [makeRequest]
+  );
+
+  const del = useCallback(
+    async (endpoint, options = {}) => {
+      return makeRequest(endpoint, {
+        ...options,
+        method: 'DELETE',
+        useCache: false,
+      });
+    },
+    [makeRequest]
+  );
+
+  const postFormData = useCallback(
+    async (endpoint, formData, options = {}) => {
+      return makeRequest(endpoint, {
+        ...options,
+        method: 'POST',
+        body: formData,
+        useCache: false,
+      });
+    },
+    [makeRequest]
+  );
 
   // Utility methods
   const clearCache = useCallback((endpointPattern = null) => {
@@ -151,7 +169,7 @@ export const useEnhancedApi = () => {
     delete: del,
     postFormData,
     clearCache,
-    getCacheStats
+    getCacheStats,
   };
 };
 

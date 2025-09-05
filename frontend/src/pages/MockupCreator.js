@@ -7,28 +7,28 @@ import DeleteMockupModal from '../components/DeleteMockupModal';
 const MockupCreator = () => {
   const api = useApi();
   const canvasRef = useRef(null);
-  
+
   // Workflow state
   const [currentStep, setCurrentStep] = useState(1); // 1: Template, 2: Images, 3: Masks, 4: Final
   const [showModal, setShowModal] = useState(false);
-  
+
   // Step 1: Template Selection
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  
+
   // Step 2: Image Selection
   const [selectedImages, setSelectedImages] = useState([]);
   const [imageFiles, setImageFiles] = useState([]);
 
   const [watermarkFile, setWatermarkFile] = useState(null);
   const [imageWatermarkFile, setImageWatermarkFile] = useState([]);
-  
+
   // Step 3: Mask Creation
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentMaskIndex, setCurrentMaskIndex] = useState(0);
   const [masksPerImage, setMasksPerImage] = useState({}); // {imageIndex: numMasks}
   const [allMasks, setAllMasks] = useState({}); // {imageIndex: {maskIndex: {points, isPolygon, isCropped, alignment}}}
-  
+
   // Canvas state
   const [points, setPoints] = useState([]);
   const [rectStart, setRectStart] = useState(null);
@@ -38,15 +38,15 @@ const MockupCreator = () => {
   const [currentImage, setCurrentImage] = useState(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [scaleFactor, setScaleFactor] = useState(1.0);
-  
+
   // Step 4: Final Details
   const [mockupName, setMockupName] = useState('');
   const [startingNumber, setStartingNumber] = useState(100);
-  
+
   // UI state
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
-  
+
   // Existing mockups
   const [existingMockups, setExistingMockups] = useState([]);
   const [loadingMockups, setLoadingMockups] = useState(true);
@@ -57,14 +57,12 @@ const MockupCreator = () => {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedMockup, setSelectedMockup] = useState(null);
 
-  
-
   useEffect(() => {
     loadTemplates();
     loadExistingMockups();
   }, []);
 
-  const setMode = (mode) => {
+  const setMode = mode => {
     setDrawingMode(mode);
     setPoints([]);
     setRectStart(null);
@@ -95,17 +93,17 @@ const MockupCreator = () => {
   };
 
   // Modal handlers
-  const handleViewMockup = (mockup) => {
+  const handleViewMockup = mockup => {
     setSelectedMockup(mockup);
     setViewModalOpen(true);
   };
 
-  const handleEditMockup = (mockup) => {
+  const handleEditMockup = mockup => {
     setSelectedMockup(mockup);
     setEditModalOpen(true);
   };
 
-  const handleDeleteMockup = (mockup) => {
+  const handleDeleteMockup = mockup => {
     setSelectedMockup(mockup);
     setDeleteModalOpen(true);
   };
@@ -125,15 +123,15 @@ const MockupCreator = () => {
     loadExistingMockups();
   };
 
-  const handleImageUpload = (event) => {
+  const handleImageUpload = event => {
     const files = Array.from(event.target.files);
     setImageFiles(files);
     setSelectedImages(files.map(file => URL.createObjectURL(file)));
   };
 
-  const handleImageWatermarkUpload = (event) => {
+  const handleImageWatermarkUpload = event => {
     const file = event.target.files[0];
-    const files = Array(file)
+    const files = Array(file);
     setWatermarkFile(file || null);
     setImageWatermarkFile(files.map(f => URL.createObjectURL(f)));
     console.log('Watermark file set:', file);
@@ -220,21 +218,21 @@ const MockupCreator = () => {
     }
   };
 
-  const getMousePos = (event) => {
+  const getMousePos = event => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
     return {
       x: (event.clientX - rect.left) * (canvas.width / rect.width),
-      y: (event.clientY - rect.top) * (canvas.height / rect.height)
+      y: (event.clientY - rect.top) * (canvas.height / rect.height),
     };
   };
 
-  const handleCanvasClick = (event) => {
+  const handleCanvasClick = event => {
     if (!currentImage) return;
     const mousePos = getMousePos(event);
     if (!mousePos) return;
-    console.log(rectStart)
+    console.log(rectStart);
     if (drawingMode === 'point') {
       setPoints([...points, mousePos]);
     } else if (drawingMode === 'rectangle') {
@@ -242,21 +240,16 @@ const MockupCreator = () => {
         setRectStart(mousePos);
         setPoints([mousePos]);
       } else {
-        console.log(mousePos)
+        console.log(mousePos);
         // Create rectangle points
-        const rectPoints = [
-          rectStart,
-          { x: mousePos.x, y: rectStart.y },
-          mousePos,
-          { x: rectStart.x, y: mousePos.y }
-        ];
+        const rectPoints = [rectStart, { x: mousePos.x, y: rectStart.y }, mousePos, { x: rectStart.x, y: mousePos.y }];
         setPoints(rectPoints);
         setRectStart(null);
       }
     }
   };
 
-  const handleCanvasMouseMove = (event) => {
+  const handleCanvasMouseMove = event => {
     if (drawingMode === 'rectangle' && rectStart) {
       const mousePos = getMousePos(event);
       if (mousePos) {
@@ -283,22 +276,22 @@ const MockupCreator = () => {
 
     const scaledPoints = points.map(point => ({
       x: point.x / scaleFactor,
-      y: point.y / scaleFactor
+      y: point.y / scaleFactor,
     }));
 
     const maskData = {
       points: scaledPoints,
       displayPoints: [...points],
       isCropped: isCropped,
-      alignment: alignment
+      alignment: alignment,
     };
 
     setAllMasks(prev => ({
       ...prev,
       [currentImageIndex]: {
         ...prev[currentImageIndex],
-        [currentMaskIndex]: maskData
-      }
+        [currentMaskIndex]: maskData,
+      },
     }));
 
     // Move to next mask or next image
@@ -340,7 +333,7 @@ const MockupCreator = () => {
       setMessage('Please select at least one image');
       return;
     }
-    
+
     setCurrentStep(prev => prev + 1);
     setMessage('');
   };
@@ -379,7 +372,7 @@ const MockupCreator = () => {
       const mockupGroup = await api.post('/mockups/group', {
         name: mockupName,
         product_template_id: selectedTemplate.id,
-        starting_name: startingNumber
+        starting_name: startingNumber,
       });
 
       // Upload all images at once
@@ -389,7 +382,7 @@ const MockupCreator = () => {
       });
       formData.append('mockup_id', mockupGroup.id);
       formData.append('watermark_file', watermarkFile);
-      
+
       const uploadResponse = await api.postFormData('/mockups/upload', formData);
       const uploadedImages = uploadResponse.uploaded_images || uploadResponse;
 
@@ -404,20 +397,19 @@ const MockupCreator = () => {
       for (let imageIndex = 0; imageIndex < selectedImages.length; imageIndex++) {
         const imageMasks = allMasks[imageIndex] || {};
         const uploadedImage = uploadedImages[imageIndex];
-        
+
         if (!uploadedImage) {
           console.error(`No uploaded image found for image index ${imageIndex}`);
           continue;
         }
-        
+
         // Get all masks for this image
         const maskKeys = Object.keys(imageMasks);
         if (maskKeys.length > 0) {
-          
           // Prepare all masks for this image
           const allMasksForImage = [];
           const allPointsForImage = [];
-          
+
           maskKeys.forEach(maskIndex => {
             const maskData = imageMasks[maskIndex];
             if (maskData && maskData.points) {
@@ -430,21 +422,21 @@ const MockupCreator = () => {
 
           // Use the first mask's properties for the entire image (or you might want to handle this differently)
           const firstMask = imageMasks[Object.keys(imageMasks)[0]];
-          
+
           console.log('Sending mask data for image', imageIndex, 'with image ID', uploadedImage.id, ':', {
             masks: allMasksForImage,
             points: allPointsForImage,
             is_cropped: firstMask?.isCropped || false,
-            alignment: firstMask?.alignment || 'center'
+            alignment: firstMask?.alignment || 'center',
           });
-          
+
           // Create mask data using the actual image ID
           await api.post(`/mockups/images/${uploadedImage.id}/mask-data`, {
             mockup_image_id: uploadedImage.id,
             masks: allMasksForImage,
             points: allPointsForImage,
             is_cropped: firstMask?.isCropped || false,
-            alignment: firstMask?.alignment || 'center'
+            alignment: firstMask?.alignment || 'center',
           });
         } else {
           console.warn(`No mask data found for image index ${imageIndex}`);
@@ -479,14 +471,13 @@ const MockupCreator = () => {
     drawPoints();
   }, [points]);
 
-
   const renderStep1 = () => (
     <div className="space-y-6">
       <h3 className="text-xl font-semibold text-gray-900">Step 1: Select Template</h3>
       <p className="text-gray-600">Choose the template that will be associated with your mockups.</p>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map((template) => (
+        {templates.map(template => (
           <div
             key={template.id}
             onClick={() => setSelectedTemplate(template)}
@@ -497,9 +488,7 @@ const MockupCreator = () => {
             }`}
           >
             <h4 className="font-semibold text-gray-900">{template.name}</h4>
-            {template.template_title && (
-              <p className="text-sm text-gray-600">{template.template_title}</p>
-            )}
+            {template.template_title && <p className="text-sm text-gray-600">{template.template_title}</p>}
             <div className="text-xs text-gray-500 mt-2">
               <div>Price: ${template.price || 0}</div>
               <div>Type: {template.type || 'N/A'}</div>
@@ -514,7 +503,7 @@ const MockupCreator = () => {
     <div className="space-y-6">
       <h3 className="text-xl font-semibold text-gray-900">Step 2: Select Images</h3>
       <p className="text-gray-600">Choose one or more images to create mockups from.</p>
-      
+
       <div className="space-y-4">
         <input
           type="file"
@@ -523,7 +512,7 @@ const MockupCreator = () => {
           onChange={handleImageUpload}
           className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
         />
-        
+
         {selectedImages.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {selectedImages.map((url, index) => (
@@ -548,7 +537,7 @@ const MockupCreator = () => {
     <div className="space-y-6">
       <h3 className="text-xl font-semibold text-gray-900">Step 2.5: Select Watermark Image</h3>
       <p className="text-gray-600">Choose one image to create mockups from.</p>
-      
+
       <div className="space-y-4">
         <input
           type="file"
@@ -556,19 +545,17 @@ const MockupCreator = () => {
           onChange={handleImageWatermarkUpload}
           className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
         />
-        
+
         {watermarkFile !== null && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              <div key={1} className="relative">
-                <img
-                  src={watermarkFile.url}
-                  alt={`Selected Watermark Image`}
-                  className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
-                />
-                <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
-                  {1}
-                </div>
-              </div>
+            <div key={1} className="relative">
+              <img
+                src={watermarkFile.url}
+                alt={`Selected Watermark Image`}
+                className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
+              />
+              <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">{1}</div>
+            </div>
           </div>
         )}
       </div>
@@ -581,7 +568,7 @@ const MockupCreator = () => {
       <p className="text-gray-600">
         Creating masks for image {currentImageIndex + 1} of {selectedImages.length}
       </p>
-      
+
       {/* Image Progress */}
       <div className="flex items-center space-x-4">
         <div className="flex-1 bg-gray-200 rounded-full h-2">
@@ -607,18 +594,18 @@ const MockupCreator = () => {
       {/* Mask Configuration */}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Number of masks for this image:
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Number of masks for this image:</label>
           <input
             type="number"
             min="1"
             max="10"
             value={masksPerImage[currentImageIndex] || 1}
-            onChange={(e) => setMasksPerImage(prev => ({
-              ...prev,
-              [currentImageIndex]: parseInt(e.target.value) || 1
-            }))}
+            onChange={e =>
+              setMasksPerImage(prev => ({
+                ...prev,
+                [currentImageIndex]: parseInt(e.target.value) || 1,
+              }))
+            }
             className="w-20 px-3 py-2 border border-gray-300 rounded-lg"
           />
         </div>
@@ -627,13 +614,13 @@ const MockupCreator = () => {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Mask {currentMaskIndex + 1} of {masksPerImage[currentImageIndex] || 1}
           </label>
-          
+
           {/* Mode Selection */}
           <div className="flex space-x-4 mb-4">
             <label className="flex items-center">
               <input
                 type="radio"
-                checked={drawingMode === 'point' }
+                checked={drawingMode === 'point'}
                 onChange={() => setMode('point')}
                 className="mr-2"
               />
@@ -642,25 +629,20 @@ const MockupCreator = () => {
             <label className="flex items-center">
               <input
                 type="radio"
-                checked={drawingMode === 'rectangle' }
+                checked={drawingMode === 'rectangle'}
                 onChange={() => setMode('rectangle')}
                 className="mr-2"
               />
               <span className="text-sm">Rectangle Mode</span>
             </label>
             <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={isCropped}
-                onChange={() => setIsCropped(!isCropped)}
-                className="mr-2"
-              />
+              <input type="checkbox" checked={isCropped} onChange={() => setIsCropped(!isCropped)} className="mr-2" />
               <span className="text-sm">Crop Image</span>
             </label>
             <label className="flex items-center">
               <select
                 value={alignment || 'center'}
-                onChange={(e) => setAlignment(e.target.value)}
+                onChange={e => setAlignment(e.target.value)}
                 className="mr-2 px-2 py-1 border border-gray-300 rounded text-sm"
               >
                 <option value="left">Left</option>
@@ -671,34 +653,34 @@ const MockupCreator = () => {
             </label>
           </div>
 
-                     {/* Canvas */}
-           <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
-             <canvas
-               ref={canvasRef}
-               onClick={handleCanvasClick}
-               onMouseMove={handleCanvasMouseMove}
-               className="cursor-crosshair block mx-auto"
-               style={{ 
-                 maxWidth: '900px', 
-                 maxHeight: '700px',
-                 width: imageSize.width ? Math.min(imageSize.width, 900) : 900,
-                 height: imageSize.height ? Math.min(imageSize.height, 700) : 700,
-                 display: 'block'
-               }}
-             />
-           </div>
+          {/* Canvas */}
+          <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+            <canvas
+              ref={canvasRef}
+              onClick={handleCanvasClick}
+              onMouseMove={handleCanvasMouseMove}
+              className="cursor-crosshair block mx-auto"
+              style={{
+                maxWidth: '900px',
+                maxHeight: '700px',
+                width: imageSize.width ? Math.min(imageSize.width, 900) : 900,
+                height: imageSize.height ? Math.min(imageSize.height, 700) : 700,
+                display: 'block',
+              }}
+            />
+          </div>
 
-                     {/* Instructions */}
-           <div className="mt-4 text-sm text-gray-600">
-             {drawingMode === 'points' ? (
-               <p>Click to add points. You need at least 3 points to create a mask.</p>
-             ) : (
-               <p>Click and drag to create a rectangle mask.</p>
-             )}
-             <p className="mt-2 text-xs text-gray-500">
-               Canvas size: {imageSize.width} x {imageSize.height} | Points: {points.length}
-             </p>
-           </div>
+          {/* Instructions */}
+          <div className="mt-4 text-sm text-gray-600">
+            {drawingMode === 'points' ? (
+              <p>Click to add points. You need at least 3 points to create a mask.</p>
+            ) : (
+              <p>Click and drag to create a rectangle mask.</p>
+            )}
+            <p className="mt-2 text-xs text-gray-500">
+              Canvas size: {imageSize.width} x {imageSize.height} | Points: {points.length}
+            </p>
+          </div>
 
           {/* Actions */}
           <div className="flex space-x-4 mt-4">
@@ -729,30 +711,26 @@ const MockupCreator = () => {
     <div className="space-y-6">
       <h3 className="text-xl font-semibold text-gray-900">Step 4: Final Details</h3>
       <p className="text-gray-600">Enter the final details for your mockup.</p>
-      
+
       <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Mockup Name:
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Mockup Name:</label>
           <input
             type="text"
             value={mockupName}
-            onChange={(e) => setMockupName(e.target.value)}
+            onChange={e => setMockupName(e.target.value)}
             placeholder="Enter a name for your mockup"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Starting Number:
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Starting Number:</label>
           <input
             type="number"
             min="1"
             value={startingNumber}
-            onChange={(e) => setStartingNumber(parseInt(e.target.value) || 100)}
+            onChange={e => setStartingNumber(parseInt(e.target.value) || 100)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -794,9 +772,7 @@ const MockupCreator = () => {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">Mockup Creator</h1>
-          <p className="text-gray-600 mb-6">
-            Create professional mockups with custom masks and templates
-          </p>
+          <p className="text-gray-600 mb-6">Create professional mockups with custom masks and templates</p>
           <button
             onClick={startWorkflow}
             className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
@@ -827,7 +803,12 @@ const MockupCreator = () => {
             <div className="text-center py-8 bg-gray-50 rounded-lg">
               <div className="text-gray-400 mb-4">
                 <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No mockups yet</h3>
@@ -865,23 +846,22 @@ const MockupCreator = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {existingMockups.map((mockup) => (
+                  {existingMockups.map(mockup => (
                     <tr key={mockup.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {mockup.name || `Mockup #${mockup.id.slice(0, 8)}`}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {mockup.template_name || mockup.product_template_id ? `Template ${mockup.product_template_id}` : 'N/A'}
+                        {mockup.template_name || mockup.product_template_id
+                          ? `Template ${mockup.product_template_id}`
+                          : 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {mockup.starting_name}
-                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{mockup.starting_name}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {mockup.mockup_images?.length || 0}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {mockup.mockup_images?.reduce((total, image) => 
-                          total + (image.mask_data?.length || 0), 0) || 0}
+                        {mockup.mockup_images?.reduce((total, image) => total + (image.mask_data?.length || 0), 0) || 0}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
@@ -914,11 +894,11 @@ const MockupCreator = () => {
         </div>
 
         {message && (
-          <div className={`p-4 rounded-lg mb-6 ${
-            message.includes('successfully') 
-              ? 'bg-green-100 text-green-700' 
-              : 'bg-red-100 text-red-700'
-          }`}>
+          <div
+            className={`p-4 rounded-lg mb-6 ${
+              message.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}
+          >
             {message}
           </div>
         )}
@@ -932,31 +912,26 @@ const MockupCreator = () => {
             <div className="p-6 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-900">Create Mockups</h2>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
+                <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-              
+
               {/* Progress Steps */}
               <div className="flex items-center mt-6 space-x-4">
-                {[1, 2, 3, 4, 5].map((step) => (
+                {[1, 2, 3, 4, 5].map(step => (
                   <div key={step} className="flex items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      step <= currentStep
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-200 text-gray-600'
-                    }`}>
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                        step <= currentStep ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
                       {step}
                     </div>
                     {step < 5 && (
-                      <div className={`w-12 h-1 mx-2 ${
-                        step < currentStep ? 'bg-blue-500' : 'bg-gray-200'
-                      }`} />
+                      <div className={`w-12 h-1 mx-2 ${step < currentStep ? 'bg-blue-500' : 'bg-gray-200'}`} />
                     )}
                   </div>
                 ))}
@@ -964,9 +939,7 @@ const MockupCreator = () => {
             </div>
 
             {/* Content */}
-            <div className="p-6">
-              {renderModalContent()}
-            </div>
+            <div className="p-6">{renderModalContent()}</div>
 
             {/* Footer */}
             <div className="p-6 border-t border-gray-200 flex justify-between">
@@ -1010,19 +983,15 @@ const MockupCreator = () => {
       )}
 
       {/* Action Modals */}
-      <ViewMockupModal
-        isOpen={viewModalOpen}
-        onClose={handleModalClose}
-        mockup={selectedMockup}
-      />
-      
+      <ViewMockupModal isOpen={viewModalOpen} onClose={handleModalClose} mockup={selectedMockup} />
+
       <EditMockupModal
         isOpen={editModalOpen}
         onClose={handleModalClose}
         mockup={selectedMockup}
         onUpdate={handleMockupUpdate}
       />
-      
+
       <DeleteMockupModal
         isOpen={deleteModalOpen}
         onClose={handleModalClose}
@@ -1033,4 +1002,4 @@ const MockupCreator = () => {
   );
 };
 
-export default MockupCreator; 
+export default MockupCreator;

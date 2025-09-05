@@ -5,13 +5,13 @@ import ProgressIndicator from './ProgressIndicator';
 const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
   const api = useApi();
   const canvasRef = useRef(null);
-  
+
   // Workflow state
   const [currentStep, setCurrentStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
+
   // Step data
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -19,18 +19,18 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
   const [mockupSettings, setMockupSettings] = useState({
     name: '',
     startingNumber: 100,
-    quality: 'high'
+    quality: 'high',
   });
-  
+
   // Data from API
   const [templates, setTemplates] = useState([]);
-  
+
   const steps = [
     { id: 1, title: 'Choose Template', description: 'Select a product template' },
     { id: 2, title: 'Upload Files', description: 'Add your design files' },
     { id: 3, title: 'Add Watermark', description: 'Optional branding watermark' },
     { id: 4, title: 'Configure', description: 'Set mockup preferences' },
-    { id: 5, title: 'Create', description: 'Generate your mockups' }
+    { id: 5, title: 'Create', description: 'Generate your mockups' },
   ];
 
   useEffect(() => {
@@ -55,28 +55,28 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
   const handleNext = async () => {
     try {
       setError('');
-      
+
       // Validation based on current step
       if (currentStep === 1 && !selectedTemplate) {
         setError('Please select a template');
         return;
       }
-      
+
       if (currentStep === 2 && uploadedFiles.length === 0) {
         setError('Please upload at least one design file');
         return;
       }
-      
+
       if (currentStep === 4 && !mockupSettings.name.trim()) {
         setError('Please enter a name for your mockup');
         return;
       }
-      
+
       if (currentStep === 5) {
         await createMockup();
         return;
       }
-      
+
       setCurrentStep(prev => Math.min(prev + 1, steps.length));
     } catch (err) {
       setError('An error occurred. Please try again.');
@@ -88,12 +88,12 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
-  const handleFileUpload = (event) => {
+  const handleFileUpload = event => {
     const files = Array.from(event.target.files);
     setUploadedFiles(files);
   };
 
-  const handleWatermarkUpload = (event) => {
+  const handleWatermarkUpload = event => {
     const file = event.target.files[0];
     setWatermarkFile(file);
   };
@@ -102,12 +102,12 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
     try {
       setIsLoading(true);
       setError('');
-      
+
       // Create mockup group
       const mockupGroup = await api.post('/mockups/group', {
         name: mockupSettings.name,
         product_template_id: selectedTemplate.id,
-        starting_name: mockupSettings.startingNumber
+        starting_name: mockupSettings.startingNumber,
       });
 
       // Upload files
@@ -119,15 +119,14 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
       if (watermarkFile) {
         formData.append('watermark_file', watermarkFile);
       }
-      
+
       await api.postFormData('/mockups/upload', formData);
-      
+
       setSuccess('Mockup created successfully!');
       setTimeout(() => {
         onComplete && onComplete();
         onClose && onClose();
       }, 2000);
-      
     } catch (err) {
       setError('Failed to create mockup. Please try again.');
       console.error('Mockup creation error:', err);
@@ -145,7 +144,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Choose Your Template</h3>
               <p className="text-gray-600">Select the product template for your mockups</p>
             </div>
-            
+
             {isLoading ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
@@ -153,7 +152,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
-                {templates.map((template) => (
+                {templates.map(template => (
                   <div
                     key={template.id}
                     onClick={() => setSelectedTemplate(template)}
@@ -168,7 +167,11 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
                       {selectedTemplate?.id === template.id && (
                         <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
                           <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
                           </svg>
                         </div>
                       )}
@@ -184,7 +187,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
             )}
           </div>
         );
-      
+
       case 2:
         return (
           <div className="space-y-6">
@@ -192,7 +195,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Upload Your Designs</h3>
               <p className="text-gray-600">Add the design files you want to create mockups for</p>
             </div>
-            
+
             <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-gray-400 transition-colors">
               <input
                 type="file"
@@ -212,7 +215,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
                 </div>
               </label>
             </div>
-            
+
             {uploadedFiles.length > 0 && (
               <div className="space-y-3">
                 <h4 className="font-medium text-gray-900">Selected Files ({uploadedFiles.length})</h4>
@@ -233,7 +236,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
             )}
           </div>
         );
-      
+
       case 3:
         return (
           <div className="space-y-6">
@@ -241,7 +244,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Add Watermark (Optional)</h3>
               <p className="text-gray-600">Add a watermark to brand your mockups</p>
             </div>
-            
+
             <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-gray-400 transition-colors">
               <input
                 type="file"
@@ -260,7 +263,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
                 </div>
               </label>
             </div>
-            
+
             {watermarkFile && (
               <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                 <div className="flex items-center space-x-3">
@@ -274,18 +277,15 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
                 </div>
               </div>
             )}
-            
+
             <div className="text-center">
-              <button
-                onClick={() => setCurrentStep(4)}
-                className="text-blue-600 hover:text-blue-700 text-sm"
-              >
+              <button onClick={() => setCurrentStep(4)} className="text-blue-600 hover:text-blue-700 text-sm">
                 Skip watermark →
               </button>
             </div>
           </div>
         );
-      
+
       case 4:
         return (
           <div className="space-y-6">
@@ -293,42 +293,38 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Configure Settings</h3>
               <p className="text-gray-600">Set your mockup preferences</p>
             </div>
-            
+
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Mockup Name
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Mockup Name</label>
                 <input
                   type="text"
                   value={mockupSettings.name}
-                  onChange={(e) => setMockupSettings(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={e => setMockupSettings(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g., Summer Collection Mockups"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Starting Number
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Starting Number</label>
                 <input
                   type="number"
                   min="1"
                   value={mockupSettings.startingNumber}
-                  onChange={(e) => setMockupSettings(prev => ({ ...prev, startingNumber: parseInt(e.target.value) || 100 }))}
+                  onChange={e =>
+                    setMockupSettings(prev => ({ ...prev, startingNumber: parseInt(e.target.value) || 100 }))
+                  }
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <p className="text-xs text-gray-500 mt-1">Files will be numbered starting from this value</p>
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Output Quality
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Output Quality</label>
                 <select
                   value={mockupSettings.quality}
-                  onChange={(e) => setMockupSettings(prev => ({ ...prev, quality: e.target.value }))}
+                  onChange={e => setMockupSettings(prev => ({ ...prev, quality: e.target.value }))}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="standard">Standard (Faster)</option>
@@ -337,7 +333,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
                 </select>
               </div>
             </div>
-            
+
             {/* Summary */}
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-medium text-gray-900 mb-3">Summary</h4>
@@ -362,24 +358,24 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
             </div>
           </div>
         );
-      
+
       case 5:
         return (
           <div className="space-y-6 text-center">
             <div className="text-6xl mb-4">🎨</div>
             <h3 className="text-xl font-semibold text-gray-900">Ready to Create!</h3>
             <p className="text-gray-600">
-              We're ready to generate {uploadedFiles.length} professional mockup{uploadedFiles.length !== 1 ? 's' : ''} 
+              We're ready to generate {uploadedFiles.length} professional mockup{uploadedFiles.length !== 1 ? 's' : ''}
               using your "{selectedTemplate?.name}" template.
             </p>
-            
+
             {isLoading && (
               <div className="space-y-4">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
                 <p className="text-gray-600">Creating your mockups...</p>
               </div>
             )}
-            
+
             {success && (
               <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                 <p className="text-green-700 font-medium">{success}</p>
@@ -387,7 +383,7 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
             )}
           </div>
         );
-      
+
       default:
         return null;
     }
@@ -402,28 +398,21 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
         <div className="p-6 border-b border-gray-200">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold text-gray-900">Create Mockups</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          
+
           {/* Progress Indicator */}
-          <ProgressIndicator 
-            steps={steps} 
-            currentStep={currentStep} 
-            variant="numbered"
-          />
+          <ProgressIndicator steps={steps} currentStep={currentStep} variant="numbered" />
         </div>
 
         {/* Content */}
         <div className="p-6">
           {renderStepContent()}
-          
+
           {/* Error Display */}
           {error && (
             <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -457,16 +446,11 @@ const ImprovedMockupCreator = ({ isOpen, onClose, onComplete }) => {
               isLoading
                 ? 'bg-gray-400 text-white cursor-not-allowed'
                 : currentStep === steps.length
-                ? 'bg-green-500 text-white hover:bg-green-600'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-blue-500 text-white hover:bg-blue-600'
             }`}
           >
-            {isLoading 
-              ? 'Creating...' 
-              : currentStep === steps.length 
-              ? 'Create Mockups' 
-              : 'Continue'
-            }
+            {isLoading ? 'Creating...' : currentStep === steps.length ? 'Create Mockups' : 'Continue'}
           </button>
         </div>
       </div>

@@ -1,19 +1,11 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Pie, Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
-const AnalyticsTab = ({
-  isConnected,
-  authUrl,
-  monthlyAnalytics,
-  topSellers,
-  loading,
-  error,
-  onRefresh
-}) => {
+const AnalyticsTab = ({ isConnected, authUrl, monthlyAnalytics, topSellers, loading, error, onRefresh }) => {
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   const [analyticsView, setAnalyticsView] = useState('revenue');
   const [topSellersLimit, setTopSellersLimit] = useState(10);
@@ -30,7 +22,7 @@ const AnalyticsTab = ({
   const formatCurrency = (amount, divisor = 100) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'USD',
     }).format(amount / divisor);
   };
 
@@ -38,31 +30,39 @@ const AnalyticsTab = ({
   const pieChartData = useMemo(() => {
     console.log('🟡 Pie Chart Data - topSellers:', topSellers);
     if (!topSellers || topSellers.length === 0) return null;
-    
+
     const colors = [
-      '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-      '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'
+      '#FF6384',
+      '#36A2EB',
+      '#FFCE56',
+      '#4BC0C0',
+      '#9966FF',
+      '#FF9F40',
+      '#FF6384',
+      '#C9CBCF',
+      '#4BC0C0',
+      '#FF6384',
     ];
-    
-    const filteredData = topSellers.slice(0, topSellersLimit).filter(item => 
-      (item.net_amount || 0) > 0
-    );
-    
+
+    const filteredData = topSellers.slice(0, topSellersLimit).filter(item => (item.net_amount || 0) > 0);
+
     if (filteredData.length === 0) return null;
-    
+
     const chartData = {
       labels: filteredData.map(item => {
         const title = item.title || item.name || 'Unknown';
         return title.length > 25 ? title.substring(0, 25) + '...' : title;
       }),
-      datasets: [{
-        data: filteredData.map(item => item.net_amount || 0),
-        backgroundColor: colors.slice(0, filteredData.length),
-        borderColor: colors.slice(0, filteredData.length).map(color => color + '80'),
-        borderWidth: 2,
-      }]
+      datasets: [
+        {
+          data: filteredData.map(item => item.net_amount || 0),
+          backgroundColor: colors.slice(0, filteredData.length),
+          borderColor: colors.slice(0, filteredData.length).map(color => color + '80'),
+          borderWidth: 2,
+        },
+      ],
     };
-    
+
     console.log('🟡 Generated pie chart data:', chartData);
     return chartData;
   }, [topSellers, topSellersLimit]);
@@ -75,12 +75,11 @@ const AnalyticsTab = ({
   const barChartData = useMemo(() => {
     console.log('🟠 Bar Chart Data - monthlyAnalytics:', monthlyAnalytics);
     if (!monthlyAnalytics) return null;
-    
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
+
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
     let monthlyData;
-    
+
     // Check if we have monthly_breakdown data structure
     if (monthlyAnalytics.monthly_breakdown && Array.isArray(monthlyAnalytics.monthly_breakdown)) {
       // Create array of 12 months with data from monthly_breakdown
@@ -93,22 +92,25 @@ const AnalyticsTab = ({
       });
     } else {
       // Fallback to direct monthly arrays
-      monthlyData = analyticsView === 'revenue' 
-        ? (monthlyAnalytics.monthly_revenue || monthlyAnalytics.monthly_net_sales || new Array(12).fill(0))
-        : (monthlyAnalytics.monthly_orders || new Array(12).fill(0));
+      monthlyData =
+        analyticsView === 'revenue'
+          ? monthlyAnalytics.monthly_revenue || monthlyAnalytics.monthly_net_sales || new Array(12).fill(0)
+          : monthlyAnalytics.monthly_orders || new Array(12).fill(0);
     }
-    
+
     const chartData = {
       labels: months,
-      datasets: [{
-        label: 'Net Sales ($)',
-        data: monthlyData,
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1
-      }]
+      datasets: [
+        {
+          label: 'Net Sales ($)',
+          data: monthlyData,
+          backgroundColor: 'rgba(54, 162, 235, 0.6)',
+          borderColor: 'rgba(54, 162, 235, 1)',
+          borderWidth: 1,
+        },
+      ],
     };
-    
+
     console.log('🟠 Generated bar chart data:', chartData);
     return chartData;
   }, [monthlyAnalytics, analyticsView]);
@@ -120,7 +122,9 @@ const AnalyticsTab = ({
     return (
       <div className="card p-8 text-center">
         <p className="text-lg text-gray-600 mb-6">Please connect your Etsy shop to view analytics</p>
-        <a href={authUrl} className="btn-primary">Connect Shop</a>
+        <a href={authUrl} className="btn-primary">
+          Connect Shop
+        </a>
       </div>
     );
   }
@@ -138,10 +142,7 @@ const AnalyticsTab = ({
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
         <p className="text-rose-700">{error}</p>
-        <button 
-          onClick={onRefresh}
-          className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
-        >
+        <button onClick={onRefresh} className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline">
           Try again
         </button>
       </div>
@@ -153,24 +154,30 @@ const AnalyticsTab = ({
       <div className="card p-6">
         <div className="flex flex-wrap items-center gap-4 mb-6">
           <div className="flex items-center gap-2">
-            <label htmlFor="year-select" className="font-semibold text-gray-700">Year:</label>
-            <select 
+            <label htmlFor="year-select" className="font-semibold text-gray-700">
+              Year:
+            </label>
+            <select
               id="year-select"
               value={currentYear}
-              onChange={(e) => setCurrentYear(parseInt(e.target.value))}
+              onChange={e => setCurrentYear(parseInt(e.target.value))}
               className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
             >
               {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
-                <option key={year} value={year}>{year}</option>
+                <option key={year} value={year}>
+                  {year}
+                </option>
               ))}
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label htmlFor="view-select" className="font-semibold text-gray-700">View:</label>
-            <select 
+            <label htmlFor="view-select" className="font-semibold text-gray-700">
+              View:
+            </label>
+            <select
               id="view-select"
               value={analyticsView}
-              onChange={(e) => setAnalyticsView(e.target.value)}
+              onChange={e => setAnalyticsView(e.target.value)}
               className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
             >
               <option value="yearly">Yearly Overview</option>
@@ -178,11 +185,13 @@ const AnalyticsTab = ({
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label htmlFor="limit-select" className="font-semibold text-gray-700">Show Top:</label>
-            <select 
+            <label htmlFor="limit-select" className="font-semibold text-gray-700">
+              Show Top:
+            </label>
+            <select
               id="limit-select"
               value={topSellersLimit}
-              onChange={(e) => setTopSellersLimit(parseInt(e.target.value))}
+              onChange={e => setTopSellersLimit(parseInt(e.target.value))}
               className="px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
             >
               <option value={10}>10</option>
@@ -196,9 +205,7 @@ const AnalyticsTab = ({
       {/* Yearly Summary */}
       {monthlyAnalytics && (
         <div className="card p-8">
-          <h2 className="text-3xl font-bold text-center text-gray-900 mb-8">
-            {currentYear} Sales Summary
-          </h2>
+          <h2 className="text-3xl font-bold text-center text-gray-900 mb-8">{currentYear} Sales Summary</h2>
           <div className="text-center mb-8">
             <div className="bg-gradient-to-r from-green-500 to-teal-600 text-white p-8 rounded-xl inline-block">
               <h3 className="text-2xl font-semibold mb-2">Total Net Sales</h3>
@@ -208,11 +215,15 @@ const AnalyticsTab = ({
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-blue-50 p-6 rounded-xl text-center">
               <h4 className="text-lg font-semibold text-blue-900 mb-2">Total Sales</h4>
-              <p className="text-2xl font-bold text-blue-600">{formatCurrency(monthlyAnalytics?.summary?.total_sales || 0)}</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {formatCurrency(monthlyAnalytics?.summary?.total_sales || 0)}
+              </p>
             </div>
             <div className="bg-red-50 p-6 rounded-xl text-center">
               <h4 className="text-lg font-semibold text-red-900 mb-2">Total Discounts</h4>
-              <p className="text-2xl font-bold text-red-600">{formatCurrency(monthlyAnalytics?.summary?.total_discounts || 0)}</p>
+              <p className="text-2xl font-bold text-red-600">
+                {formatCurrency(monthlyAnalytics?.summary?.total_discounts || 0)}
+              </p>
             </div>
             <div className="bg-purple-50 p-6 rounded-xl text-center">
               <h4 className="text-lg font-semibold text-purple-900 mb-2">Items Sold</h4>
@@ -231,9 +242,9 @@ const AnalyticsTab = ({
           <h3 className="text-xl font-bold text-gray-900 mb-4">Top Sellers Distribution</h3>
           {getPieChartData() && (
             <div className="relative">
-              <Pie 
+              <Pie
                 key="analytics-pie-chart"
-                data={getPieChartData()} 
+                data={getPieChartData()}
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
@@ -246,7 +257,7 @@ const AnalyticsTab = ({
                         font: { size: 11 },
                         boxWidth: 12,
                         maxWidth: 200,
-                        generateLabels: function(chart) {
+                        generateLabels: function (chart) {
                           const data = chart.data;
                           if (data.labels.length && data.datasets.length) {
                             return data.labels.map((label, i) => {
@@ -259,26 +270,26 @@ const AnalyticsTab = ({
                                 strokeStyle: data.datasets[0].borderColor[i],
                                 lineWidth: data.datasets[0].borderWidth,
                                 hidden: false,
-                                index: i
+                                index: i,
                               };
                             });
                           }
                           return [];
-                        }
-                      }
+                        },
+                      },
                     },
                     tooltip: {
                       callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                           const label = context.label || '';
                           const value = context.parsed;
                           const total = context.dataset.data.reduce((a, b) => a + b, 0);
                           const percentage = ((value / total) * 100).toFixed(1);
                           return `${label}: ${formatCurrency(value)} (${percentage}%)`;
-                        }
-                      }
-                    }
-                  }
+                        },
+                      },
+                    },
+                  },
                 }}
               />
             </div>
@@ -296,19 +307,27 @@ const AnalyticsTab = ({
             <div className="bg-green-50 p-4 rounded-lg text-center">
               <h4 className="text-sm font-semibold text-green-900 mb-1">Total Amount</h4>
               <p className="text-2xl font-bold text-green-600">
-                {formatCurrency((topSellers || []).slice(0, topSellersLimit).reduce((sum, item) => sum + (item.total_amount || 0), 0))}
+                {formatCurrency(
+                  (topSellers || []).slice(0, topSellersLimit).reduce((sum, item) => sum + (item.total_amount || 0), 0)
+                )}
               </p>
             </div>
             <div className="bg-red-50 p-4 rounded-lg text-center">
               <h4 className="text-sm font-semibold text-red-900 mb-1">Total Discounts</h4>
               <p className="text-2xl font-bold text-red-600">
-                {formatCurrency((topSellers || []).slice(0, topSellersLimit).reduce((sum, item) => sum + (item.total_discounts || 0), 0))}
+                {formatCurrency(
+                  (topSellers || [])
+                    .slice(0, topSellersLimit)
+                    .reduce((sum, item) => sum + (item.total_discounts || 0), 0)
+                )}
               </p>
             </div>
             <div className="bg-purple-50 p-4 rounded-lg text-center">
               <h4 className="text-sm font-semibold text-purple-900 mb-1">Total Net</h4>
               <p className="text-2xl font-bold text-purple-600">
-                {formatCurrency((topSellers || []).slice(0, topSellersLimit).reduce((sum, item) => sum + (item.net_amount || 0), 0))}
+                {formatCurrency(
+                  (topSellers || []).slice(0, topSellersLimit).reduce((sum, item) => sum + (item.net_amount || 0), 0)
+                )}
               </p>
             </div>
           </div>
@@ -319,31 +338,31 @@ const AnalyticsTab = ({
         <div className="card p-6">
           <h3 className="text-xl font-bold text-gray-900 mb-4">Monthly Sales Trend</h3>
           {getMonthlyBarChartData() && (
-            <Bar 
+            <Bar
               key="analytics-bar-chart"
-              data={getMonthlyBarChartData()} 
+              data={getMonthlyBarChartData()}
               options={{
                 responsive: true,
                 plugins: {
                   legend: { display: false },
                   tooltip: {
                     callbacks: {
-                      label: function(context) {
+                      label: function (context) {
                         return `Net Sales: ${formatCurrency(context.parsed.y)}`;
-                      }
-                    }
-                  }
+                      },
+                    },
+                  },
                 },
                 scales: {
                   y: {
                     beginAtZero: true,
                     ticks: {
-                      callback: function(value) {
+                      callback: function (value) {
                         return formatCurrency(value);
-                      }
-                    }
-                  }
-                }
+                      },
+                    },
+                  },
+                },
               }}
             />
           )}
@@ -386,7 +405,7 @@ const AnalyticsTab = ({
         <div className="card p-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Monthly Breakdown - {currentYear}</h2>
           <div className="space-y-6">
-            {(monthlyAnalytics?.monthly_breakdown || []).map((month) => (
+            {(monthlyAnalytics?.monthly_breakdown || []).map(month => (
               <div key={month.month} className="border rounded-lg p-6">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-xl font-semibold text-gray-900">{month.month_name}</h3>
@@ -419,7 +438,9 @@ const AnalyticsTab = ({
                     <div className="space-y-2">
                       {month.top_items.map((item, index) => (
                         <div key={item.listing_id} className="flex justify-between items-center text-sm">
-                          <span className="flex-1">{index + 1}. {item.title.substring(0, 50)}...</span>
+                          <span className="flex-1">
+                            {index + 1}. {item.title.substring(0, 50)}...
+                          </span>
                           <span className="font-semibold text-green-600">{formatCurrency(item.net_amount)}</span>
                         </div>
                       ))}
@@ -435,4 +456,4 @@ const AnalyticsTab = ({
   );
 };
 
-export default AnalyticsTab; 
+export default AnalyticsTab;

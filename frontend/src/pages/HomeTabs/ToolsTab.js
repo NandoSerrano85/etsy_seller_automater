@@ -8,7 +8,8 @@ const ToolsTab = () => (
       <div className="card p-6">
         <h3 className="text-xl font-semibold text-gray-900 mb-3">Mockup Creator</h3>
         <p className="text-gray-600 mb-4">
-          Create masks for mockup images by drawing polygons or rectangles. This tool helps you define areas where designs will be placed on mockup templates.
+          Create masks for mockup images by drawing polygons or rectangles. This tool helps you define areas where
+          designs will be placed on mockup templates.
         </p>
         <Link to="/mockup-creator" className="btn-primary">
           Open Mask Creator
@@ -18,4 +19,4 @@ const ToolsTab = () => (
   </div>
 );
 
-export default ToolsTab; 
+export default ToolsTab;

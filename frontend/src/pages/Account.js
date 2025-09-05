@@ -9,7 +9,7 @@ import IntegrationsTab from './AccountTabs/IntegrationsTab';
 const Account = () => {
   const { user, isUserAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
-  
+
   // Get active tab from URL params, default to 'profile'
   const activeTab = searchParams.get('tab') || 'profile';
 
@@ -40,11 +40,7 @@ const Account = () => {
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {renderTabContent()}
-    </div>
-  );
+  return <div className="space-y-6">{renderTabContent()}</div>;
 };
 
-export default Account; 
+export default Account;

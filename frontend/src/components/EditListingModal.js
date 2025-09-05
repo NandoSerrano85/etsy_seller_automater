@@ -22,14 +22,14 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
     when_made: 'made_to_order',
     processing_min: '',
     processing_max: '',
-    is_taxable: false
+    is_taxable: false,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dropdownOptions, setDropdownOptions] = useState({
     taxonomies: [],
     shippingProfiles: [],
-    shopSections: []
+    shopSections: [],
   });
   const [dropdownLoading, setDropdownLoading] = useState(true);
 
@@ -54,10 +54,10 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
         when_made: listing.when_made || 'made_to_order',
         processing_min: listing.processing_min || '',
         processing_max: listing.processing_max || '',
-        is_taxable: listing.is_taxable || false
+        is_taxable: listing.is_taxable || false,
       });
     }
-    
+
     // Fetch dropdown options
     fetchDropdownOptions();
   }, [listing]);
@@ -68,13 +68,13 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
       const [taxonomiesRes, shippingProfilesRes, shopSectionsRes] = await Promise.all([
         api.get('/third-party-listings/options/taxonomies'),
         api.get('/third-party-listings/options/shipping-profiles'),
-        api.get('/third-party-listings/options/shop-sections')
+        api.get('/third-party-listings/options/shop-sections'),
       ]);
 
       setDropdownOptions({
         taxonomies: taxonomiesRes.taxonomies || [],
         shippingProfiles: shippingProfilesRes.shipping_profiles || [],
-        shopSections: shopSectionsRes.shop_sections || []
+        shopSections: shopSectionsRes.shop_sections || [],
       });
     } catch (err) {
       console.error('Error fetching dropdown options:', err);
@@ -83,15 +83,15 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
     }
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = e => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -111,8 +111,18 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
         item_height: formData.item_height ? parseFloat(formData.item_height) : undefined,
         processing_min: formData.processing_min ? parseInt(formData.processing_min) : undefined,
         processing_max: formData.processing_max ? parseInt(formData.processing_max) : undefined,
-        tags: formData.tags ? formData.tags.split(',').map(tag => tag.trim()).filter(Boolean) : undefined,
-        materials: formData.materials ? formData.materials.split(',').map(material => material.trim()).filter(Boolean) : undefined
+        tags: formData.tags
+          ? formData.tags
+              .split(',')
+              .map(tag => tag.trim())
+              .filter(Boolean)
+          : undefined,
+        materials: formData.materials
+          ? formData.materials
+              .split(',')
+              .map(material => material.trim())
+              .filter(Boolean)
+          : undefined,
       };
 
       // Remove undefined values
@@ -147,10 +157,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
                 {listing.title} (ID: {listing.listing_id})
               </p>
             </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl"
-            >
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">
               ×
             </button>
           </div>
@@ -167,11 +174,9 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
           {/* Basic Info */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
-            
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
               <textarea
                 name="description"
                 value={formData.description}
@@ -184,9 +189,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Price ($)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Price ($)</label>
                 <input
                   type="number"
                   name="price"
@@ -200,9 +203,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Quantity
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Quantity</label>
                 <input
                   type="number"
                   name="quantity"
@@ -216,9 +217,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Tags (comma separated)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Tags (comma separated)</label>
               <input
                 type="text"
                 name="tags"
@@ -231,9 +230,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Materials (comma separated)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Materials (comma separated)</label>
               <input
                 type="text"
                 name="materials"
@@ -249,7 +246,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
           {/* Shop Settings */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Shop Settings</h3>
-            
+
             {dropdownLoading && (
               <div className="text-center py-4">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-lavender-500 mx-auto"></div>
@@ -260,9 +257,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
             {!dropdownLoading && (
               <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Category (Taxonomy)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Category (Taxonomy)</label>
                   <select
                     name="taxonomy_id"
                     value={formData.taxonomy_id}
@@ -279,9 +274,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Shop Section
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Shop Section</label>
                   <select
                     name="shop_section_id"
                     value={formData.shop_section_id}
@@ -298,9 +291,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Shipping Profile
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Shipping Profile</label>
                   <select
                     name="shipping_profile_id"
                     value={formData.shipping_profile_id}
@@ -322,12 +313,10 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
           {/* Physical Properties */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Physical Properties</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Weight
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Weight</label>
                 <input
                   type="number"
                   name="item_weight"
@@ -341,9 +330,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Weight Unit
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Weight Unit</label>
                 <select
                   name="item_weight_unit"
                   value={formData.item_weight_unit}
@@ -360,9 +347,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
 
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Length
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Length</label>
                 <input
                   type="number"
                   name="item_length"
@@ -376,9 +361,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Width
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Width</label>
                 <input
                   type="number"
                   name="item_width"
@@ -392,9 +375,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Height
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Height</label>
                 <input
                   type="number"
                   name="item_height"
@@ -409,9 +390,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Dimensions Unit
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Dimensions Unit</label>
               <select
                 name="item_dimensions_unit"
                 value={formData.item_dimensions_unit}
@@ -428,12 +407,10 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
           {/* Product Details */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Product Details</h3>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Who Made
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Who Made</label>
                 <select
                   name="who_made"
                   value={formData.who_made}
@@ -447,9 +424,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  When Made
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">When Made</label>
                 <select
                   name="when_made"
                   value={formData.when_made}
@@ -479,9 +454,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Processing Time Min (days)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Processing Time Min (days)</label>
                 <input
                   type="number"
                   name="processing_min"
@@ -494,9 +467,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Processing Time Max (days)
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Processing Time Max (days)</label>
                 <input
                   type="number"
                   name="processing_max"

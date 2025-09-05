@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, /* useCallback, */ useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useCachedApi } from '../hooks/useCachedApi';
@@ -14,93 +14,90 @@ import OrdersTab from './HomeTabs/OrdersTab';
 import ListingsTab from './HomeTabs/ListingsTab';
 
 const LoadingIndicator = () => (
-    <div className="flex items-center justify-center p-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
-        <span className="ml-2 text-sage-600">Loading...</span>
-    </div>
+  <div className="flex items-center justify-center p-4">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
+    <span className="ml-2 text-sage-600">Loading...</span>
+  </div>
 );
 
 const TabErrorBoundary = ({ error, onRetry, children }) => {
-    if (error) {
-        return (
-            <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
-                <p className="text-rose-700">{error}</p>
-                {onRetry && (
-                    <button 
-                        onClick={onRetry}
-                        className="mt-4 px-4 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200"
-                    >
-                        Try Again
-                    </button>
-                )}
-            </div>
-        );
-    }
-    return children;
+  if (error) {
+    return (
+      <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
+        <p className="text-rose-700">{error}</p>
+        {onRetry && (
+          <button onClick={onRetry} className="mt-4 px-4 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200">
+            Try Again
+          </button>
+        )}
+      </div>
+    );
+  }
+  return children;
 };
 
 const Home = () => {
-  const { 
+  const {
     // User auth
     user,
     isUserAuthenticated,
     userLoading,
-    
+
     // Etsy auth
     isEtsyConnected,
     etsyUserInfo,
-    etsyShopInfo, 
+    etsyShopInfo,
     etsyLoading,
     etsyError,
-    
+
     // Methods
-    getDebugInfo
+    getDebugInfo,
   } = useAuth();
-  
+
   // Cached API hook
   const {
     // Data fetchers
     fetchAllDashboardData,
     refreshAllData,
-    
+
     // Loading and error states
     loading,
     errors,
-    
+
     // Cache management
-    debugCache
+    debugCache,
   } = useCachedApi();
-  
+
   const [searchParams] = useSearchParams();
-  
+
   // Get active tab from URL params
   const activeTab = searchParams.get('tab') || 'overview';
-  
+
   // State
   const [showOnboarding, setShowOnboarding] = useState(false);
-  
+
   // Get cached data directly from store - this will be stable and reactive
   const { data: storeData } = useDataStore();
-  
+
   // Extract data with fallbacks
   const dashboardStats = storeData.dashboardStats || {
     totalSales: 0,
     totalOrders: 0,
     totalDesigns: 0,
-    totalMockups: 0
+    totalMockups: 0,
   };
   const topSellers = storeData.topSellers || [];
   const monthlyAnalytics = storeData.monthlyAnalytics;
   const designs = storeData.designs || [];
   const orders = storeData.orders || [];
-  const mockups = storeData.mockups || [];
-  
+  // const mockups = storeData.mockups || [];
+
   // Loading state - check if any data is loading
   const isLoading = useMemo(() => Object.values(loading).some(Boolean), [loading]);
-  
+
   // Error state - get first error if any
   const error = useMemo(() => Object.values(errors).find(Boolean) || null, [errors]);
-  
+
   // Debug helper - remove after debugging
   const debugTokens = () => {
     console.log('🔍 DEBUG: Auth State:', getDebugInfo());
@@ -113,13 +110,13 @@ const Home = () => {
       setShowOnboarding(true);
     }
   }, [isUserAuthenticated]);
-  
+
   // Simplified data fetching function
   const handleFetchData = async (forceRefresh = false) => {
     if (!isEtsyConnected) return;
-    
+
     console.log('🔄 Fetching dashboard data...', { forceRefresh });
-    
+
     try {
       await fetchAllDashboardData(forceRefresh);
       console.log('✅ Dashboard data fetch completed');
@@ -131,7 +128,7 @@ const Home = () => {
   const formatCurrency = (amount, divisor = 100) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: 'USD'
+      currency: 'USD',
     }).format(amount / divisor);
   };
 
@@ -169,128 +166,110 @@ const Home = () => {
 
   const renderTabContent = () => {
     switch (activeTab) {
-        case 'overview':
-            return (
-                <div className="space-y-6">
-                    <QuickActions />
-                    {isEtsyConnected && (
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                            <SalesCard 
-                                value={formatCurrency(dashboardStats.totalSales)} 
-                                loading={isLoading}
-                            />
-                            <OrdersCard 
-                                value={dashboardStats.totalOrders} 
-                                loading={isLoading}
-                            />
-                            <DesignsCard 
-                                value={dashboardStats.totalDesigns} 
-                                loading={isLoading}
-                            />
-                            <MockupsCard 
-                                value={dashboardStats.totalMockups} 
-                                loading={isLoading}
-                            />
-                        </div>
-                    )}
-                    <OverviewTab
-                        user={user}
-                        isConnected={isEtsyConnected}
-                        designs={designs}
-                        topSellers={topSellers}
-                        userInfo={etsyUserInfo}
-                        shopInfo={etsyShopInfo}
-                        authUrl="/connect-etsy"
-                        monthlyAnalytics={monthlyAnalytics}
-                        loading={isLoading}
-                        error={error}
-                        onRefresh={() => handleFetchData(true)}
-                    />
-                </div>
-            );
-        
-        case 'analytics':
-            return (
-                <AnalyticsTab
-                    isConnected={isEtsyConnected}
-                    authUrl="/connect-etsy"
-                    monthlyAnalytics={monthlyAnalytics}
-                    topSellers={topSellers}
-                    loading={isLoading}
-                    error={error}
-                    onRefresh={() => handleFetchData(true)}
-                />
-            );
-        
-        case 'designs':
-            return (
-                <DesignsTab
-                    isConnected={isEtsyConnected}
-                    authUrl="/connect-etsy"
-                    designs={designs}
-                    loading={isLoading}
-                    error={error}
-                    onRefresh={() => handleFetchData(true)}
-                />
-            );
-        
-        case 'tools':
-            return <ToolsTab />;
-        
-        case 'orders':
-            return (
-                <OrdersTab
-                    isConnected={isEtsyConnected}
-                    authUrl="/connect-etsy"
-                    orders={orders}
-                    loading={isLoading}
-                    error={error}
-                    onRefresh={() => handleFetchData(true)}
-                />
-            );
-        
-        case 'listings':
-            return (
-                <ListingsTab
-                    isConnected={isEtsyConnected}
-                    authUrl="/connect-etsy"
-                    loading={isLoading}
-                    error={error}
-                    onRefresh={() => handleFetchData(true)}
-                />
-            );
-        
-        default:
-            return (
-                <div className="text-center py-12">
-                    <p className="text-sage-600">Select a tab to view content</p>
-                </div>
-            );
+      case 'overview':
+        return (
+          <div className="space-y-6">
+            <QuickActions />
+            {isEtsyConnected && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <SalesCard value={formatCurrency(dashboardStats.totalSales)} loading={isLoading} />
+                <OrdersCard value={dashboardStats.totalOrders} loading={isLoading} />
+                <DesignsCard value={dashboardStats.totalDesigns} loading={isLoading} />
+                <MockupsCard value={dashboardStats.totalMockups} loading={isLoading} />
+              </div>
+            )}
+            <OverviewTab
+              user={user}
+              isConnected={isEtsyConnected}
+              designs={designs}
+              topSellers={topSellers}
+              userInfo={etsyUserInfo}
+              shopInfo={etsyShopInfo}
+              authUrl="/connect-etsy"
+              monthlyAnalytics={monthlyAnalytics}
+              loading={isLoading}
+              error={error}
+              onRefresh={() => handleFetchData(true)}
+            />
+          </div>
+        );
+
+      case 'analytics':
+        return (
+          <AnalyticsTab
+            isConnected={isEtsyConnected}
+            authUrl="/connect-etsy"
+            monthlyAnalytics={monthlyAnalytics}
+            topSellers={topSellers}
+            loading={isLoading}
+            error={error}
+            onRefresh={() => handleFetchData(true)}
+          />
+        );
+
+      case 'designs':
+        return (
+          <DesignsTab
+            isConnected={isEtsyConnected}
+            authUrl="/connect-etsy"
+            designs={designs}
+            loading={isLoading}
+            error={error}
+            onRefresh={() => handleFetchData(true)}
+          />
+        );
+
+      case 'tools':
+        return <ToolsTab />;
+
+      case 'orders':
+        return (
+          <OrdersTab
+            isConnected={isEtsyConnected}
+            authUrl="/connect-etsy"
+            orders={orders}
+            loading={isLoading}
+            error={error}
+            onRefresh={() => handleFetchData(true)}
+          />
+        );
+
+      case 'listings':
+        return (
+          <ListingsTab
+            isConnected={isEtsyConnected}
+            authUrl="/connect-etsy"
+            loading={isLoading}
+            error={error}
+            onRefresh={() => handleFetchData(true)}
+          />
+        );
+
+      default:
+        return (
+          <div className="text-center py-12">
+            <p className="text-sage-600">Select a tab to view content</p>
+          </div>
+        );
     }
-};
+  };
 
   return (
     <>
       {/* Onboarding Flow */}
-      {showOnboarding && (
-        <OnboardingFlow 
-          onComplete={() => setShowOnboarding(false)}
-        />
-      )}
-      
+      {showOnboarding && <OnboardingFlow onComplete={() => setShowOnboarding(false)} />}
+
       {/* Welcome Message */}
       {!isEtsyConnected && (
         <div className="bg-gradient-to-r from-lavender-100 to-mint-100 border border-lavender-200 rounded-xl p-6 mb-6">
           <div className="flex items-center space-x-4">
             <div className="text-4xl">👋</div>
             <div>
-              <h2 className="text-xl font-semibold text-sage-900 mb-2">
-                Welcome to your Etsy automation center!
-              </h2>
+              <h2 className="text-xl font-semibold text-sage-900 mb-2">Welcome to your Etsy automation center!</h2>
               <p className="text-sage-700 mb-4">
                 Get started by connecting your Etsy shop to unlock powerful automation features.
               </p>
-              <a 
+              <a
                 href="/connect-etsy"
                 className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-lavender-500 to-lavender-600 text-white rounded-lg hover:from-lavender-600 hover:to-lavender-700 transition-all duration-200 shadow-sm hover:shadow-md"
               >
@@ -311,46 +290,36 @@ const Home = () => {
               <p className="text-mint-800 font-medium">
                 Connected to Etsy as {etsyUserInfo?.first_name || etsyShopInfo?.shop_name || 'User'}
               </p>
-              {etsyShopInfo && (
-                <p className="text-mint-700 text-sm">
-                  Shop: {etsyShopInfo.shop_name}
-                </p>
-              )}
+              {etsyShopInfo && <p className="text-mint-700 text-sm">Shop: {etsyShopInfo.shop_name}</p>}
             </div>
           </div>
         </div>
       )}
-      
+
       {/* Error Display */}
       {error && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 mb-6">
           <p className="text-rose-700">{error}</p>
-          <button 
-              onClick={() => handleFetchData(true)}
-              className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
+          <button
+            onClick={() => handleFetchData(true)}
+            className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
           >
-              Try again
+            Try again
           </button>
         </div>
       )}
-      
+
       {/* Debug Panel - Remove after fixing */}
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
         <p className="text-gray-700 text-sm mb-2">🐛 Debug Panel:</p>
         <div className="flex gap-2 text-sm">
-          <button 
-            onClick={debugTokens}
-            className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-          >
+          <button onClick={debugTokens} className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
             Check Tokens
           </button>
-          <button 
-            onClick={debugCache}
-            className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200"
-          >
+          <button onClick={debugCache} className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">
             Check Cache
           </button>
-          <button 
+          <button
             onClick={refreshAllData}
             className="px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
           >

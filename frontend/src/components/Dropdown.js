@@ -1,21 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const Dropdown = ({ 
-  label, 
-  options, 
-  value, 
-  onChange, 
-  className = "",
-  buttonClassName = "",
-  menuClassName = "",
-  optionClassName = ""
+const Dropdown = ({
+  label,
+  options,
+  value,
+  onChange,
+  className = '',
+  buttonClassName = '',
+  menuClassName = '',
+  optionClassName = '',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = event => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false);
       }
@@ -27,7 +27,7 @@ const Dropdown = ({
     };
   }, []);
 
-  const handleOptionClick = (optionValue) => {
+  const handleOptionClick = optionValue => {
     onChange(optionValue);
     setIsOpen(false);
   };
@@ -50,18 +50,15 @@ const Dropdown = ({
               stroke="currentColor"
               viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-          
+
           {isOpen && (
-            <div className={`absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[80px] ${menuClassName}`}>
-              {options.map((option) => (
+            <div
+              className={`absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 min-w-[80px] ${menuClassName}`}
+            >
+              {options.map(option => (
                 <button
                   key={option.value}
                   onClick={() => handleOptionClick(option.value)}
@@ -80,4 +77,4 @@ const Dropdown = ({
   );
 };
 
-export default Dropdown; 
+export default Dropdown;

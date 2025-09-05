@@ -5,26 +5,20 @@ import DesignUploadModal from '../../components/DesignUploadModal';
 import BackToTop from '../../components/BackToTop';
 import { useSearchParams } from 'react-router-dom';
 
-const DesignsTab = ({
-  isConnected,
-  authUrl,
-  designs,
-  loading,
-  error,
-  onRefresh,
-  defaultTab = 'gallery'
-}) => {
+const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, defaultTab = 'gallery' }) => {
   const [showDesignUploadModal, setShowDesignUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [designsTab, setDesignsTab] = useState('mockups');
   const [searchParams] = useSearchParams();
-  const activeSubTab = searchParams.get('subtab') || defaultTab;
+  // const activeSubTab = searchParams.get('subtab') || defaultTab;
 
   if (!isConnected) {
     return (
       <div className="card p-6 sm:p-8 text-center">
         <p className="text-base sm:text-lg text-gray-600 mb-6">Please connect your Etsy shop to view designs</p>
-        <a href={authUrl} className="btn-primary">Connect Shop</a>
+        <a href={authUrl} className="btn-primary">
+          Connect Shop
+        </a>
       </div>
     );
   }
@@ -42,10 +36,7 @@ const DesignsTab = ({
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
         <p className="text-rose-700">{error}</p>
-        <button 
-          onClick={onRefresh}
-          className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
-        >
+        <button onClick={onRefresh} className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline">
           Try again
         </button>
       </div>
@@ -56,9 +47,7 @@ const DesignsTab = ({
       <div className="flex justify-end mb-4">
         <button
           className={`px-3 sm:px-4 py-2 rounded-lg font-medium transition-colors text-sm sm:text-base ${
-            uploading 
-              ? 'bg-gray-400 text-white cursor-not-allowed' 
-              : 'bg-green-500 text-white hover:bg-green-600'
+            uploading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-500 text-white hover:bg-green-600'
           }`}
           onClick={() => setShowDesignUploadModal(true)}
           disabled={uploading}
@@ -93,9 +82,7 @@ const DesignsTab = ({
         </button>
       </div>
       {/* Mockups Tab */}
-      {designsTab === 'mockups' && (
-        <MockupsGallery mockupImages={designs?.mockups || []} openImageModal={() => {}} />
-      )}
+      {designsTab === 'mockups' && <MockupsGallery mockupImages={designs?.mockups || []} openImageModal={() => {}} />}
       {/* Design Files Tab */}
       {designsTab === 'designFiles' && (
         <DesignFilesGallery designFiles={designs?.files || []} openImageModal={() => {}} />
@@ -105,12 +92,12 @@ const DesignsTab = ({
       <DesignUploadModal
         isOpen={showDesignUploadModal}
         onClose={() => setShowDesignUploadModal(false)}
-        onUpload={(data) => {
+        onUpload={data => {
           setUploading(false);
           onRefresh();
         }}
       />
-      
+
       {/* Back to Top Button */}
       <BackToTop />
     </div>

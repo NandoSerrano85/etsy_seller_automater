@@ -62,12 +62,12 @@
     flex-direction: column;
     gap: 16px;
   }
-  
+
   .logo h1 {
     font-size: 1.2rem;
   }
-  
+
   .nav {
     gap: 16px;
   }
-} 
+}

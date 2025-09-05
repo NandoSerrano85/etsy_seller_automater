@@ -7,7 +7,7 @@ export const apiCall = async (url, options = {}, token = null) => {
     url,
     method: options.method || 'GET',
     hasToken: !!token,
-    fullUrl: url.startsWith('http') ? url : `${window.location.origin}${url}`
+    fullUrl: url.startsWith('http') ? url : `${window.location.origin}${url}`,
   });
 
   const headers = {
@@ -15,11 +15,7 @@ export const apiCall = async (url, options = {}, token = null) => {
   };
 
   // Only set Content-Type to application/json if not already set, and not for FormData or URLSearchParams
-  if (
-    !(options.body instanceof FormData) &&
-    !(options.body instanceof URLSearchParams) &&
-    !headers['Content-Type']
-  ) {
+  if (!(options.body instanceof FormData) && !(options.body instanceof URLSearchParams) && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
 
@@ -35,7 +31,7 @@ export const apiCall = async (url, options = {}, token = null) => {
   console.log('📡 API Response:', {
     url,
     status: response.status,
-    ok: response.ok
+    ok: response.ok,
   });
 
   if (!response.ok) {
@@ -43,7 +39,7 @@ export const apiCall = async (url, options = {}, token = null) => {
     console.error('❌ API Error:', {
       url,
       status: response.status,
-      error: errorData.detail || `HTTP error! status: ${response.status}`
+      error: errorData.detail || `HTTP error! status: ${response.status}`,
     });
     throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
   }
@@ -58,24 +54,28 @@ export const useApi = () => {
     return apiCall(url, options, userToken);
   };
 
-  const get = (url) => authenticatedApiCall(url, { method: 'GET' });
-  const post = (url, data) => authenticatedApiCall(url, { 
-    method: 'POST', 
-    body: JSON.stringify(data) 
-  });
-  const postFormData = (url, formData) => authenticatedApiCall(url, {
-    method: 'POST',
-    body: formData
-  });
-  const put = (url, data) => authenticatedApiCall(url, { 
-    method: 'PUT', 
-    body: JSON.stringify(data) 
-  });
-  const putFormData = (url, formData) => authenticatedApiCall(url, {
-    method: 'PUT',
-    body: formData
-  });
-  const del = (url) => authenticatedApiCall(url, { method: 'DELETE' });
+  const get = url => authenticatedApiCall(url, { method: 'GET' });
+  const post = (url, data) =>
+    authenticatedApiCall(url, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  const postFormData = (url, formData) =>
+    authenticatedApiCall(url, {
+      method: 'POST',
+      body: formData,
+    });
+  const put = (url, data) =>
+    authenticatedApiCall(url, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  const putFormData = (url, formData) =>
+    authenticatedApiCall(url, {
+      method: 'PUT',
+      body: formData,
+    });
+  const del = url => authenticatedApiCall(url, { method: 'DELETE' });
 
   return {
     get,
@@ -85,4 +85,4 @@ export const useApi = () => {
     putFormData,
     delete: del,
   };
-}; 
+};

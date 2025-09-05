@@ -22,7 +22,7 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
     when_made: 'made_to_order',
     processing_min: '',
     processing_max: '',
-    is_taxable: false
+    is_taxable: false,
   });
   const [enabledFields, setEnabledFields] = useState({});
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
   const [dropdownOptions, setDropdownOptions] = useState({
     taxonomies: [],
     shippingProfiles: [],
-    shopSections: []
+    shopSections: [],
   });
   const [dropdownLoading, setDropdownLoading] = useState(true);
 
@@ -46,13 +46,13 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
       const [taxonomiesRes, shippingProfilesRes, shopSectionsRes] = await Promise.all([
         api.get('/third-party-listings/options/taxonomies'),
         api.get('/third-party-listings/options/shipping-profiles'),
-        api.get('/third-party-listings/options/shop-sections')
+        api.get('/third-party-listings/options/shop-sections'),
       ]);
 
       setDropdownOptions({
         taxonomies: taxonomiesRes.taxonomies || [],
         shippingProfiles: shippingProfilesRes.shipping_profiles || [],
-        shopSections: shopSectionsRes.shop_sections || []
+        shopSections: shopSectionsRes.shop_sections || [],
       });
     } catch (err) {
       console.error('Error fetching dropdown options:', err);
@@ -61,22 +61,22 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
     }
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = e => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
   };
 
-  const handleFieldToggle = (fieldName) => {
+  const handleFieldToggle = fieldName => {
     setEnabledFields(prev => ({
       ...prev,
-      [fieldName]: !prev[fieldName]
+      [fieldName]: !prev[fieldName],
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async e => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -85,20 +85,32 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
     try {
       // Prepare the data for submission - only include enabled fields
       const updateData = {};
-      
+
       Object.keys(enabledFields).forEach(fieldName => {
         if (enabledFields[fieldName] && formData[fieldName] !== '') {
           let value = formData[fieldName];
-          
+
           // Convert numeric fields
           if (['price', 'item_weight', 'item_length', 'item_width', 'item_height'].includes(fieldName)) {
             value = parseFloat(value) || undefined;
-          } else if (['quantity', 'processing_min', 'processing_max', 'taxonomy_id', 'shop_section_id', 'shipping_profile_id'].includes(fieldName)) {
+          } else if (
+            [
+              'quantity',
+              'processing_min',
+              'processing_max',
+              'taxonomy_id',
+              'shop_section_id',
+              'shipping_profile_id',
+            ].includes(fieldName)
+          ) {
             value = parseInt(value) || undefined;
           } else if (fieldName === 'tags' || fieldName === 'materials') {
-            value = value.split(',').map(item => item.trim()).filter(Boolean);
+            value = value
+              .split(',')
+              .map(item => item.trim())
+              .filter(Boolean);
           }
-          
+
           if (value !== undefined) {
             updateData[fieldName] = value;
           }
@@ -112,11 +124,11 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
 
       const response = await api.post('/third-party-listings/bulk-update', {
         listing_ids: selectedListingIds,
-        updates: updateData
+        updates: updateData,
       });
 
       setResults(response);
-      
+
       if (response.failure_count === 0) {
         setTimeout(() => {
           onSuccess();
@@ -139,79 +151,84 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
         { name: 'price', label: 'Price ($)', type: 'number', step: '0.01', min: '0', placeholder: '0.00' },
         { name: 'quantity', label: 'Quantity', type: 'number', min: '0', placeholder: '0' },
         { name: 'tags', label: 'Tags (comma separated)', type: 'text', placeholder: 'tag1, tag2, tag3' },
-        { name: 'materials', label: 'Materials (comma separated)', type: 'text', placeholder: 'material1, material2, material3' }
-      ]
+        {
+          name: 'materials',
+          label: 'Materials (comma separated)',
+          type: 'text',
+          placeholder: 'material1, material2, material3',
+        },
+      ],
     },
     {
       title: 'Shop Settings',
       fields: [
-        { 
-          name: 'taxonomy_id', 
-          label: 'Category (Taxonomy)', 
-          type: 'select', 
-          options: []  // Will be populated dynamically
+        {
+          name: 'taxonomy_id',
+          label: 'Category (Taxonomy)',
+          type: 'select',
+          options: [], // Will be populated dynamically
         },
-        { 
-          name: 'shop_section_id', 
-          label: 'Shop Section', 
-          type: 'select', 
-          options: []  // Will be populated dynamically
+        {
+          name: 'shop_section_id',
+          label: 'Shop Section',
+          type: 'select',
+          options: [], // Will be populated dynamically
         },
-        { 
-          name: 'shipping_profile_id', 
-          label: 'Shipping Profile', 
-          type: 'select', 
-          options: []  // Will be populated dynamically
-        }
-      ]
+        {
+          name: 'shipping_profile_id',
+          label: 'Shipping Profile',
+          type: 'select',
+          options: [], // Will be populated dynamically
+        },
+      ],
     },
     {
       title: 'Physical Properties',
       fields: [
         { name: 'item_weight', label: 'Weight', type: 'number', step: '0.01', min: '0', placeholder: '0.00' },
-        { 
-          name: 'item_weight_unit', 
-          label: 'Weight Unit', 
-          type: 'select', 
+        {
+          name: 'item_weight_unit',
+          label: 'Weight Unit',
+          type: 'select',
           options: [
             { value: 'oz', label: 'oz' },
             { value: 'lb', label: 'lb' },
             { value: 'g', label: 'g' },
-            { value: 'kg', label: 'kg' }
-          ]
+            { value: 'kg', label: 'kg' },
+          ],
         },
         { name: 'item_length', label: 'Length', type: 'number', step: '0.01', min: '0', placeholder: '0.00' },
         { name: 'item_width', label: 'Width', type: 'number', step: '0.01', min: '0', placeholder: '0.00' },
         { name: 'item_height', label: 'Height', type: 'number', step: '0.01', min: '0', placeholder: '0.00' },
-        { 
-          name: 'item_dimensions_unit', 
-          label: 'Dimensions Unit', 
-          type: 'select', 
+        {
+          name: 'item_dimensions_unit',
+          label: 'Dimensions Unit',
+          type: 'select',
           options: [
             { value: 'in', label: 'inches' },
             { value: 'cm', label: 'cm' },
-            { value: 'mm', label: 'mm' }
-          ]
-        }
-      ]
+            { value: 'mm', label: 'mm' },
+          ],
+        },
+      ],
     },
     {
       title: 'Product Details',
       fields: [
-        { 
-          name: 'who_made', 
-          label: 'Who Made', 
-          type: 'select', 
+        {
+          name: 'who_made',
+          label: 'Who Made',
+          type: 'select',
           options: [
             { value: 'i_did', label: 'I did' },
             { value: 'someone_else', label: 'Someone else' },
-            { value: 'collective', label: 'A member of my shop' }
-          ]
+            { value: 'collective', label: 'A member of my shop' },
+          ],
         },
-        { 
-          name: 'when_made', 
-          label: 'When Made', 
-          type: 'select', 
+        {
+          name: 'when_made',
+          label: 'When Made',
+          type: 'select',
           options: [
             { value: 'made_to_order', label: 'Made to order' },
             { value: '2020_2023', label: '2020-2023' },
@@ -221,17 +238,17 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
             { value: '1980s', label: '1980s' },
             { value: '1970s', label: '1970s' },
             { value: '1960s', label: '1960s' },
-            { value: 'before_1700', label: 'Before 1700' }
-          ]
+            { value: 'before_1700', label: 'Before 1700' },
+          ],
         },
         { name: 'processing_min', label: 'Processing Time Min (days)', type: 'number', min: '1', placeholder: '1' },
         { name: 'processing_max', label: 'Processing Time Max (days)', type: 'number', min: '1', placeholder: '7' },
-        { name: 'is_taxable', label: 'This item is taxable', type: 'checkbox' }
-      ]
-    }
+        { name: 'is_taxable', label: 'This item is taxable', type: 'checkbox' },
+      ],
+    },
   ];
 
-  const renderField = (field) => {
+  const renderField = field => {
     const isEnabled = enabledFields[field.name];
     const fieldProps = {
       name: field.name,
@@ -240,7 +257,7 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
       disabled: !isEnabled,
       className: `w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-lavender-500 ${
         !isEnabled ? 'bg-gray-100' : ''
-      }`
+      }`,
     };
 
     if (field.type === 'textarea') {
@@ -251,17 +268,17 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
       if (field.name === 'taxonomy_id') {
         options = [
           { value: '', label: 'Select a category...' },
-          ...dropdownOptions.taxonomies.map(tax => ({ value: tax.id, label: tax.name }))
+          ...dropdownOptions.taxonomies.map(tax => ({ value: tax.id, label: tax.name })),
         ];
       } else if (field.name === 'shop_section_id') {
         options = [
           { value: '', label: 'Select a section...' },
-          ...dropdownOptions.shopSections.map(section => ({ value: section.id, label: section.name }))
+          ...dropdownOptions.shopSections.map(section => ({ value: section.id, label: section.name })),
         ];
       } else if (field.name === 'shipping_profile_id') {
         options = [
           { value: '', label: 'Select a shipping profile...' },
-          ...dropdownOptions.shippingProfiles.map(profile => ({ value: profile.id, label: profile.name }))
+          ...dropdownOptions.shippingProfiles.map(profile => ({ value: profile.id, label: profile.name })),
         ];
       }
 
@@ -287,13 +304,7 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
       );
     } else {
       return (
-        <input
-          type={field.type}
-          step={field.step}
-          min={field.min}
-          placeholder={field.placeholder}
-          {...fieldProps}
-        />
+        <input type={field.type} step={field.step} min={field.min} placeholder={field.placeholder} {...fieldProps} />
       );
     }
   };
@@ -306,14 +317,9 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Bulk Edit Listings</h2>
-              <p className="text-gray-600 mt-1">
-                Editing {selectedListingIds.length} listings
-              </p>
+              <p className="text-gray-600 mt-1">Editing {selectedListingIds.length} listings</p>
             </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-2xl"
-            >
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">
               ×
             </button>
           </div>
@@ -322,17 +328,17 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
         {/* Results */}
         {results && (
           <div className="p-6 border-b border-gray-200">
-            <div className={`rounded-lg p-4 ${
-              results.failure_count === 0 ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
-            }`}>
-              <h3 className={`font-semibold ${
-                results.failure_count === 0 ? 'text-green-800' : 'text-yellow-800'
-              }`}>
+            <div
+              className={`rounded-lg p-4 ${
+                results.failure_count === 0
+                  ? 'bg-green-50 border border-green-200'
+                  : 'bg-yellow-50 border border-yellow-200'
+              }`}
+            >
+              <h3 className={`font-semibold ${results.failure_count === 0 ? 'text-green-800' : 'text-yellow-800'}`}>
                 Bulk Update Results
               </h3>
-              <p className={`mt-2 ${
-                results.failure_count === 0 ? 'text-green-700' : 'text-yellow-700'
-              }`}>
+              <p className={`mt-2 ${results.failure_count === 0 ? 'text-green-700' : 'text-yellow-700'}`}>
                 Successfully updated: {results.success_count} listings
                 {results.failure_count > 0 && (
                   <>
@@ -342,9 +348,7 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
                 )}
               </p>
               {results.failure_count === 0 && (
-                <p className="text-green-600 text-sm mt-2">
-                  This modal will close automatically in a moment...
-                </p>
+                <p className="text-green-600 text-sm mt-2">This modal will close automatically in a moment...</p>
               )}
             </div>
           </div>
@@ -369,17 +373,17 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-blue-800 text-sm">
-              <strong>Note:</strong> Only enabled fields will be updated across all selected listings. 
-              Enable a field by checking the box next to its label.
+              <strong>Note:</strong> Only enabled fields will be updated across all selected listings. Enable a field by
+              checking the box next to its label.
             </p>
           </div>
 
           {fieldGroups.map((group, groupIndex) => (
             <div key={groupIndex} className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">{group.title}</h3>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {group.fields.map((field) => (
+                {group.fields.map(field => (
                   <div key={field.name} className="space-y-2">
                     <div className="flex items-center gap-2">
                       <input
@@ -388,11 +392,9 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
                         onChange={() => handleFieldToggle(field.name)}
                         className="rounded border-gray-300 text-lavender-500 focus:ring-lavender-500"
                       />
-                      <label className="text-sm font-medium text-gray-700">
-                        {field.label}
-                      </label>
+                      <label className="text-sm font-medium text-gray-700">{field.label}</label>
                     </div>
-                    
+
                     {field.type === 'checkbox' ? (
                       <div className="flex items-center gap-2 ml-6">
                         {renderField(field)}
@@ -401,10 +403,8 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
                     ) : (
                       renderField(field)
                     )}
-                    
-                    {field.name === 'tags' && (
-                      <p className="text-xs text-gray-500">Maximum 13 tags allowed</p>
-                    )}
+
+                    {field.name === 'tags' && <p className="text-xs text-gray-500">Maximum 13 tags allowed</p>}
                     {field.name === 'materials' && (
                       <p className="text-xs text-gray-500">Maximum 13 materials allowed</p>
                     )}

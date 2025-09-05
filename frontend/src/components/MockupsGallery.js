@@ -7,7 +7,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(12);
@@ -17,12 +17,12 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   // Dropdown options
   const viewOptions = [
     { value: 'pagination', label: 'Pagination' },
-    { value: 'infinite', label: 'Infinite' }
+    { value: 'infinite', label: 'Infinite' },
   ];
 
   const sortOptions = [
     { value: 'a-z', label: 'A-Z' },
-    { value: 'z-a', label: 'Z-A' }
+    { value: 'z-a', label: 'Z-A' },
   ];
 
   // Filter and sort images
@@ -31,18 +31,14 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
     .sort((a, b) => {
       const nameA = a.filename.toLowerCase();
       const nameB = b.filename.toLowerCase();
-      return sortOrder === 'a-z' 
-        ? nameA.localeCompare(nameB)
-        : nameB.localeCompare(nameA);
+      return sortOrder === 'a-z' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
     });
 
   // Pagination logic
   const totalPages = Math.ceil(filteredImages.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentImages = viewMode === 'pagination' 
-    ? filteredImages.slice(startIndex, endIndex)
-    : filteredImages;
+  const currentImages = viewMode === 'pagination' ? filteredImages.slice(startIndex, endIndex) : filteredImages;
 
   // Reset to first page when search term or sort order changes
   useEffect(() => {
@@ -50,9 +46,9 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   }, [searchTerm, sortOrder]);
 
   // Infinite scroll handler
-  const handleScroll = (e) => {
+  const handleScroll = e => {
     if (viewMode !== 'infinite') return;
-    
+
     const { scrollTop, scrollHeight, clientHeight } = e.target;
     if (scrollTop + clientHeight >= scrollHeight - 5) {
       // Load more images (in this case, show all since we have all data)
@@ -97,9 +93,9 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
 
   // Keyboard navigation
   useEffect(() => {
-    const handleKeyPress = (e) => {
+    const handleKeyPress = e => {
       if (!selectedImage) return;
-      
+
       switch (e.key) {
         case 'Escape':
           closeZoomModal();
@@ -135,29 +131,19 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
           <div className="flex space-x-4 p-4">
             {/* View Mode Dropdown */}
-            <Dropdown
-              label="View"
-              options={viewOptions}
-              value={viewMode}
-              onChange={setViewMode}
-            />
-            
+            <Dropdown label="View" options={viewOptions} value={viewMode} onChange={setViewMode} />
+
             {/* Sort Order Dropdown */}
-            <Dropdown
-              label="Sort"
-              options={sortOptions}
-              value={sortOrder}
-              onChange={setSortOrder}
-            />
+            <Dropdown label="Sort" options={sortOptions} value={sortOrder} onChange={setSortOrder} />
           </div>
-          
+
           {/* Search Input */}
           <div className="relative w-full sm:w-auto">
             <input
               type="text"
               placeholder="Search mockups..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-auto text-sm sm:text-base"
             />
             <svg
@@ -186,7 +172,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
                 alt={image.filename}
                 onClick={() => openZoomModal(image, index)}
                 className="w-full h-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
-                onError={(e) => {
+                onError={e => {
                   console.error('Image failed to load:', image.path || image.url);
                   e.target.style.display = 'none';
                   e.target.nextSibling.style.display = 'flex';
@@ -195,7 +181,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
                   console.log('Image loaded successfully:', image.path || image.url);
                 }}
               />
-              <div 
+              <div
                 className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-500 text-sm hidden"
                 style={{ display: 'none' }}
               >
@@ -220,7 +206,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
           >
             Previous
           </button>
-          
+
           <div className="flex space-x-1">
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               let pageNum;
@@ -233,15 +219,13 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
               } else {
                 pageNum = currentPage - 2 + i;
               }
-              
+
               return (
                 <button
                   key={pageNum}
                   onClick={() => setCurrentPage(pageNum)}
                   className={`px-3 py-2 text-sm rounded-lg ${
-                    currentPage === pageNum
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    currentPage === pageNum ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 >
                   {pageNum}
@@ -249,7 +233,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
               );
             })}
           </div>
-          
+
           <button
             onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage === totalPages}
@@ -298,7 +282,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
               >
                 <svg className="w-4 h-4 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
+                </svg>
               </button>
             )}
 
@@ -333,7 +317,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
                 style={{
                   transform: `scale(${zoomLevel})`,
                   transformOrigin: 'center',
-                  transition: 'transform 0.2s ease-in-out'
+                  transition: 'transform 0.2s ease-in-out',
                 }}
                 className="max-w-full h-auto"
               />
@@ -351,11 +335,11 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
           </div>
         </div>
       )}
-      
+
       {/* Back to Top Button */}
       <BackToTop />
     </div>
   );
 };
 
-export default MockupsGallery; 
+export default MockupsGallery;

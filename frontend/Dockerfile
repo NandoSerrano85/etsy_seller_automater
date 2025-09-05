@@ -10,13 +10,13 @@ RUN apk add --no-cache \
     && rm -rf /var/cache/apk/*
 
 # Copy package files
-COPY frontend/package*.json ./
+COPY package*.json ./
 
 # Install dependencies
 RUN npm i
 
-# Copy frontend source code (excluding node_modules via .dockerignore)
-COPY frontend/ .
+# Copy frontend source code
+COPY . .
 
 # Create a non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -34,4 +34,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000 || exit 1
 
 # Start the development server
-CMD ["npm", "start"] 
+CMD ["npm", "start"]

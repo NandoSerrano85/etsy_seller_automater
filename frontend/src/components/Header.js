@@ -27,40 +27,40 @@ const Header = () => {
             <Link to="/" className="flex items-center space-x-2" onClick={closeMobileMenu}>
               <h1 className="text-lg sm:text-xl font-bold text-gray-900">Etsy Seller Automaker</h1>
             </Link>
-            
+
             {/* Desktop Navigation */}
             {isUserAuthenticated ? (
               <nav className="hidden md:flex items-center space-x-6 lg:space-x-8">
                 <Link to="/" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
                   Home
                 </Link>
-                <Link to="/mockup-creator" className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium">
+                <Link
+                  to="/mockup-creator"
+                  className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium"
+                >
                   Mockup Creator
                 </Link>
-                <a 
-                  href="http://localhost:3003/docs" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href="http://localhost:3003/docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium"
                 >
                   Documentation
                 </a>
                 <div className="relative">
-                  <button 
+                  <button
                     onClick={() => setShowAccountDropdown(!showAccountDropdown)}
                     className="flex items-center space-x-2 text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium"
                   >
                     <span>
-                      {etsyShopInfo?.shop_name || 
-                       etsyUserInfo?.first_name || 
-                       user?.email?.split('@')[0] || 
-                       'Account'}
+                      {etsyShopInfo?.shop_name || etsyUserInfo?.first_name || user?.email?.split('@')[0] || 'Account'}
                     </span>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
-                  
+
                   {showAccountDropdown && (
                     <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg py-2 z-50 border border-gray-200">
                       {/* User Info Section */}
@@ -68,16 +68,10 @@ const Header = () => {
                         <p className="text-sm font-medium text-gray-900">
                           {etsyShopInfo?.shop_name || etsyUserInfo?.first_name || 'User'}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {user?.email || 'user@example.com'}
-                        </p>
-                        {etsyShopInfo?.shop_name && (
-                          <p className="text-xs text-green-600 mt-1">
-                            ✓ Etsy Connected
-                          </p>
-                        )}
+                        <p className="text-xs text-gray-500">{user?.email || 'user@example.com'}</p>
+                        {etsyShopInfo?.shop_name && <p className="text-xs text-green-600 mt-1">✓ Etsy Connected</p>}
                       </div>
-                      
+
                       {/* Menu Items */}
                       <Link
                         to="/account"
@@ -87,8 +81,8 @@ const Header = () => {
                         Account Settings
                       </Link>
                       <hr className="my-1" />
-                      <button 
-                        onClick={handleLogout} 
+                      <button
+                        onClick={handleLogout}
                         className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                       >
                         Logout
@@ -99,8 +93,8 @@ const Header = () => {
               </nav>
             ) : (
               <nav className="hidden md:flex items-center space-x-4">
-                <Link 
-                  to="/login" 
+                <Link
+                  to="/login"
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 font-medium"
                 >
                   Login
@@ -133,24 +127,24 @@ const Header = () => {
           {showMobileMenu && isUserAuthenticated && (
             <div className="md:hidden fixed top-16 left-0 right-0 bg-white shadow-lg border-b border-gray-200 z-50 transform transition-transform duration-200 ease-in-out rounded-b-lg">
               <nav className="flex flex-col space-y-2 p-4">
-                <Link 
-                  to="/" 
+                <Link
+                  to="/"
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium px-4 py-3 block rounded-lg hover:bg-gray-50"
                   onClick={closeMobileMenu}
                 >
                   Home
                 </Link>
-                <Link 
-                  to="/mockup-creator" 
+                <Link
+                  to="/mockup-creator"
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium px-4 py-3 block rounded-lg hover:bg-gray-50"
                   onClick={closeMobileMenu}
                 >
                   Mockup Creator
                 </Link>
-                <a 
-                  href="http://localhost:3003/docs" 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href="http://localhost:3003/docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium px-4 py-3 block rounded-lg hover:bg-gray-50"
                   onClick={closeMobileMenu}
                 >
@@ -164,11 +158,11 @@ const Header = () => {
                   >
                     Account Settings
                   </Link>
-                  <button 
+                  <button
                     onClick={() => {
                       handleLogout();
                       closeMobileMenu();
-                    }} 
+                    }}
                     className="block w-full text-left px-4 py-3 text-red-600 hover:text-red-700 transition-colors duration-200 font-medium rounded-lg hover:bg-red-50"
                   >
                     Logout
@@ -182,8 +176,8 @@ const Header = () => {
           {showMobileMenu && !isUserAuthenticated && (
             <div className="md:hidden fixed top-16 left-0 right-0 bg-white shadow-lg border-b border-gray-200 z-50 transform transition-transform duration-200 ease-in-out rounded-b-lg">
               <div className="p-4">
-                <Link 
-                  to="/login" 
+                <Link
+                  to="/login"
                   className="block px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors duration-200 font-medium text-center"
                   onClick={closeMobileMenu}
                 >
@@ -197,8 +191,8 @@ const Header = () => {
 
       {/* Click outside to close dropdowns - only for account dropdown */}
       {showAccountDropdown && (
-        <div 
-          className="fixed inset-0 z-30 bg-black bg-opacity-25" 
+        <div
+          className="fixed inset-0 z-30 bg-black bg-opacity-25"
           onClick={() => {
             setShowAccountDropdown(false);
           }}
@@ -208,4 +202,4 @@ const Header = () => {
   );
 };
 
-export default Header; 
+export default Header;
