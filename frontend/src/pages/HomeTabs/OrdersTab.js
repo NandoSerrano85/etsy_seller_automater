@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 
-const OrdersTab = ({ isConnected, authUrl, orders, loading, error, onRefresh }) => {
+const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [searchParams] = useSearchParams();
   const activeSubTab = searchParams.get('subtab') || 'all';
   const [expandedOrders, setExpandedOrders] = useState([]);

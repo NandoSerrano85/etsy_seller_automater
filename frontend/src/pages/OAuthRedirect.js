@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../services/authService';
-import useAuthStore from '../stores/authStore';
+// import useAuthStore from '../stores/authStore';
 
 const OAuthRedirect = () => {
   const navigate = useNavigate();
@@ -37,7 +37,7 @@ const OAuthRedirect = () => {
     };
 
     processOAuth();
-  }, []);
+  }, [navigate]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">

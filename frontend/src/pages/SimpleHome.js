@@ -1,10 +1,10 @@
-import React, { useState, useEffect, /* useCallback, */ useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useCachedApi } from '../hooks/useCachedApi';
 import useDataStore from '../stores/dataStore';
 import OnboardingFlow from '../components/OnboardingFlow';
-import StatusCard, { SalesCard, OrdersCard, DesignsCard, MockupsCard } from '../components/StatusCard';
+import { SalesCard, OrdersCard, DesignsCard, MockupsCard } from '../components/StatusCard';
 import QuickActions from '../components/QuickActions';
 import OverviewTab from './HomeTabs/OverviewTab';
 import AnalyticsTab from './HomeTabs/AnalyticsTab';
@@ -13,41 +13,41 @@ import ToolsTab from './HomeTabs/ToolsTab';
 import OrdersTab from './HomeTabs/OrdersTab';
 import ListingsTab from './HomeTabs/ListingsTab';
 
-const LoadingIndicator = () => (
-  <div className="flex items-center justify-center p-4">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
-    <span className="ml-2 text-sage-600">Loading...</span>
-  </div>
-);
+// const LoadingIndicator = () => (
+//   <div className="flex items-center justify-center p-4">
+//     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
+//     <span className="ml-2 text-sage-600">Loading...</span>
+//   </div>
+// );
 
-const TabErrorBoundary = ({ error, onRetry, children }) => {
-  if (error) {
-    return (
-      <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
-        <p className="text-rose-700">{error}</p>
-        {onRetry && (
-          <button onClick={onRetry} className="mt-4 px-4 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200">
-            Try Again
-          </button>
-        )}
-      </div>
-    );
-  }
-  return children;
-};
+// const TabErrorBoundary = ({ error, onRetry, children }) => {
+//   if (error) {
+//     return (
+//       <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
+//         <p className="text-rose-700">{error}</p>
+//         {onRetry && (
+//           <button onClick={onRetry} className="mt-4 px-4 py-2 bg-rose-100 text-rose-700 rounded-lg hover:bg-rose-200">
+//             Try Again
+//           </button>
+//         )}
+//       </div>
+//     );
+//   }
+//   return children;
+// };
 
 const Home = () => {
   const {
     // User auth
     user,
     isUserAuthenticated,
-    userLoading,
+    // userLoading,
 
     // Etsy auth
     isEtsyConnected,
     etsyUserInfo,
     etsyShopInfo,
-    etsyLoading,
+    // etsyLoading,
     etsyError,
 
     // Methods
@@ -112,7 +112,7 @@ const Home = () => {
   }, [isUserAuthenticated]);
 
   // Simplified data fetching function
-  const handleFetchData = async (forceRefresh = false) => {
+  const handleFetchData = useCallback(async (forceRefresh = false) => {
     if (!isEtsyConnected) return;
 
     console.log('🔄 Fetching dashboard data...', { forceRefresh });
@@ -123,7 +123,7 @@ const Home = () => {
     } catch (err) {
       console.error('❌ Error fetching dashboard data:', err);
     }
-  };
+  }, [isEtsyConnected, fetchAllDashboardData]);
 
   const formatCurrency = (amount, divisor = 100) => {
     return new Intl.NumberFormat('en-US', {

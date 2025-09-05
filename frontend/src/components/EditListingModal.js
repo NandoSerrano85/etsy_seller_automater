@@ -60,7 +60,7 @@ const EditListingModal = ({ listing, onClose, onSuccess }) => {
 
     // Fetch dropdown options
     fetchDropdownOptions();
-  }, [listing]);
+  }, [listing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchDropdownOptions = async () => {
     setDropdownLoading(true);

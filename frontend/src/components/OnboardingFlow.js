@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 const OnboardingFlow = ({ onComplete }) => {
-  const { user } = useAuth();
+  // const { user } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
-  const [hasEtsyConnection, setHasEtsyConnection] = useState(false);
-  const [hasTemplates, setHasTemplates] = useState(false);
-  const [hasMockups, setHasMockups] = useState(false);
+  const [hasEtsyConnection] = useState(false);
+  const [hasTemplates] = useState(false);
+  const [hasMockups] = useState(false);
 
   const steps = [
     {

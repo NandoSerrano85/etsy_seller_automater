@@ -12,7 +12,7 @@ const TemplatesTab = () => {
 
   useEffect(() => {
     fetchTemplates();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTemplates = async () => {
     try {
@@ -260,7 +260,7 @@ const TemplateEditModal = ({ template, onSave, onClose }) => {
       }
     };
     fetchData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -285,9 +285,9 @@ const TemplateEditModal = ({ template, onSave, onClose }) => {
     setFormData(prev => ({ ...prev, [field]: array }));
   };
 
-  const handleArrayInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  // const handleArrayInputChange = (field, value) => {
+  //   setFormData(prev => ({ ...prev, [field]: value }));
+  // };
 
   const handleArrayKeyPress = (field, e) => {
     if (e.key === 'Enter' || e.key === ',') {

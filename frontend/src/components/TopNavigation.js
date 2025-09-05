@@ -11,7 +11,7 @@ const TopNavigation = ({
   onMenuToggle,
 }) => {
   const location = useLocation();
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const handleTabChange = tabId => {

@@ -73,7 +73,7 @@ const ViewMockupModal = ({ isOpen, onClose, mockup }) => {
                   <div key={image.id} className="border rounded-lg p-3">
                     <div className="aspect-square bg-gray-100 rounded-lg mb-2 flex items-center justify-center">
                       <span className="text-gray-500 text-sm">
-                        <img src={`file:///${image.file_path}`} />
+                        <img src={`file:///${image.file_path}`} alt={`Mockup image ${index + 1}`} />
                       </span>
                     </div>
                     <div className="text-xs text-gray-600">

@@ -1,0 +1,27 @@
+{
+  "short_name": "Printer Automater",
+  "name": "Printer Automater - Etsy Business Management",
+  "description": "Automate your Etsy business with professional mockups, order management, and analytics",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTMgMTdIMjFWMTlIM1YxN1pNMyA1SDE5VjE1SDNWNVpNNSA3VjEzSDE3VjdINVoiIGZpbGw9IiNGRkZGRkYiLz4KPC9zdmc+",
+      "sizes": "24x24",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNMyAxN0gyMVYxOUgzVjE3Wk0zIDVIMTlWMTVIM1Y1Wk01IDdWMTNIMTdWN0g1WiIgZmlsbD0iIzZCNzI4MCIvPgo8L3N2Zz4=",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgo8cGF0aCBkPSJNMyAxN0gyMVYxOUgzVjE3Wk0zIDVIMTlWMTVIM1Y1Wk01IDdWMTNIMTdWN0g1WiIgZmlsbD0iIzZCNzI4MCIvPgo8L3N2Zz4=",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#8B7CF8",
+  "background_color": "#ffffff",
+  "categories": ["business", "productivity", "ecommerce"]
+}

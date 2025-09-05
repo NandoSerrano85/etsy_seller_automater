@@ -20,7 +20,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
     if (isOpen) {
       fetchTemplates();
     }
-  }, [isOpen]);
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchTemplates = async () => {
     try {
@@ -129,6 +129,9 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         break;
       case 'upload':
         setStage('size');
+        break;
+      default:
+        // No action needed for other stages
         break;
     }
   };

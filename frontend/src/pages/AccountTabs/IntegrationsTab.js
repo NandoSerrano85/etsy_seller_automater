@@ -1,25 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
 import IntegrationCard from '../../components/IntegrationCard';
 
 const IntegrationsTab = () => {
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const {
-    user,
+    // user,
     isEtsyConnected,
     etsyUserInfo,
     etsyShopInfo,
     etsyLoading,
     etsyError,
-    checkEtsyConnection,
+    // checkEtsyConnection,
     disconnectEtsy,
   } = useAuth();
 
   const api = useApi();
   const [oauthData, setOauthData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Fetch OAuth configuration only when needed

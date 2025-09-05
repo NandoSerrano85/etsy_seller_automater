@@ -16,7 +16,7 @@ const ResizingTab = () => {
 
   useEffect(() => {
     fetchConfigurations();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchConfigurations = async () => {
     try {
@@ -407,7 +407,7 @@ const CanvasConfigModal = ({ config, onSave, onClose }) => {
       }
     };
     fetchTemplates();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -629,7 +629,7 @@ const SizeConfigModal = ({ config, onSave, onClose }) => {
       }
     };
     fetchData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async e => {
     e.preventDefault();

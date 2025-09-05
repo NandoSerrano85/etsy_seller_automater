@@ -9,7 +9,7 @@ const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, 
   const [showDesignUploadModal, setShowDesignUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [designsTab, setDesignsTab] = useState('mockups');
-  const [searchParams] = useSearchParams();
+  // const [searchParams] = useSearchParams();
   // const activeSubTab = searchParams.get('subtab') || defaultTab;
 
   if (!isConnected) {

@@ -7,7 +7,7 @@ import ResizingTab from './AccountTabs/ResizingTab';
 import IntegrationsTab from './AccountTabs/IntegrationsTab';
 
 const Account = () => {
-  const { user, isUserAuthenticated } = useAuth();
+  const { isUserAuthenticated } = useAuth();
   const [searchParams] = useSearchParams();
 
   // Get active tab from URL params, default to 'profile'

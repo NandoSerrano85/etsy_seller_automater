@@ -60,7 +60,7 @@ const MockupCreator = () => {
   useEffect(() => {
     loadTemplates();
     loadExistingMockups();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setMode = mode => {
     setDrawingMode(mode);
@@ -464,12 +464,12 @@ const MockupCreator = () => {
   // Redraw canvas when image changes
   useEffect(() => {
     drawImage();
-  }, [currentImage]);
+  }, [currentImage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redraw points when they change
   useEffect(() => {
     drawPoints();
-  }, [points]);
+  }, [points]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const renderStep1 = () => (
     <div className="space-y-6">
@@ -519,7 +519,7 @@ const MockupCreator = () => {
               <div key={index} className="relative">
                 <img
                   src={url}
-                  alt={`Selected image ${index + 1}`}
+                  alt={`Design ${index + 1}`}
                   className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
                 />
                 <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
@@ -551,7 +551,7 @@ const MockupCreator = () => {
             <div key={1} className="relative">
               <img
                 src={watermarkFile.url}
-                alt={`Selected Watermark Image`}
+                alt={`Watermark`}
                 className="w-full h-32 object-cover rounded-lg border-2 border-gray-200"
               />
               <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">{1}</div>
@@ -586,7 +586,7 @@ const MockupCreator = () => {
       <div className="flex justify-center">
         <img
           src={selectedImages[currentImageIndex]}
-          alt={`Image ${currentImageIndex + 1}`}
+          alt={`Design ${currentImageIndex + 1}`}
           className="max-h-64 object-contain rounded-lg border-2 border-gray-200"
         />
       </div>

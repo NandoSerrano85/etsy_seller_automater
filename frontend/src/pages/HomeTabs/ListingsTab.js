@@ -33,7 +33,7 @@ const ListingsTab = ({ isConnected, authUrl, loading: parentLoading, error: pare
 
   useEffect(() => {
     fetchListings();
-  }, [isConnected]);
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectListing = listingId => {
     setSelectedListings(prev => {

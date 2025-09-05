@@ -46,15 +46,15 @@ const DesignFilesGallery = ({ designFiles, openImageModal }) => {
   }, [searchTerm, sortOrder]);
 
   // Infinite scroll handler
-  const handleScroll = e => {
-    if (viewMode !== 'infinite') return;
+  // const handleScroll = e => {
+  //   if (viewMode !== 'infinite') return;
 
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollTop + clientHeight >= scrollHeight - 5) {
-      // Load more images (in this case, show all since we have all data)
-      // In a real app, you'd fetch more data here
-    }
-  };
+  //   const { scrollTop, scrollHeight, clientHeight } = e.target;
+  //   if (scrollTop + clientHeight >= scrollHeight - 5) {
+  //     // Load more images (in this case, show all since we have all data)
+  //     // In a real app, you'd fetch more data here
+  //   }
+  // };
 
   const openZoomModal = (image, index) => {
     setSelectedImage(image);
@@ -122,7 +122,7 @@ const DesignFilesGallery = ({ designFiles, openImageModal }) => {
       document.addEventListener('keydown', handleKeyPress);
       return () => document.removeEventListener('keydown', handleKeyPress);
     }
-  }, [selectedImage, currentImageIndex, filteredImages]);
+  }, [selectedImage, currentImageIndex, filteredImages, nextImage, prevImage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>

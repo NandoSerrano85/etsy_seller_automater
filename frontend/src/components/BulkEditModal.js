@@ -38,7 +38,7 @@ const BulkEditModal = ({ selectedListingIds, onClose, onSuccess }) => {
   useEffect(() => {
     // Fetch dropdown options when modal opens
     fetchDropdownOptions();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchDropdownOptions = async () => {
     setDropdownLoading(true);
