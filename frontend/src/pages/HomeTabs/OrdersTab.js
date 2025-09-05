@@ -28,7 +28,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, loading, error, onRefresh }) 
       console.log(response);
       if (response.success) {
         // Reset selection after successful print
-        setSelectedOrders([]);
+        // setSelectedOrders([]);
         // Show success message or handle downloads if needed
         setPrintMsg(response.message || 'Print files created successfully');
       } else {
