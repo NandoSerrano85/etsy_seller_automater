@@ -19,7 +19,7 @@ const IntegrationsTab = () => {
 
   const api = useApi();
   const [oauthData, setOauthData] = useState(null);
-  // const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Fetch OAuth configuration only when needed

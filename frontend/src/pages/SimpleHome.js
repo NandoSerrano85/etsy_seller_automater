@@ -112,18 +112,21 @@ const Home = () => {
   }, [isUserAuthenticated]);
 
   // Simplified data fetching function
-  const handleFetchData = useCallback(async (forceRefresh = false) => {
-    if (!isEtsyConnected) return;
+  const handleFetchData = useCallback(
+    async (forceRefresh = false) => {
+      if (!isEtsyConnected) return;
 
-    console.log('🔄 Fetching dashboard data...', { forceRefresh });
+      console.log('🔄 Fetching dashboard data...', { forceRefresh });
 
-    try {
-      await fetchAllDashboardData(forceRefresh);
-      console.log('✅ Dashboard data fetch completed');
-    } catch (err) {
-      console.error('❌ Error fetching dashboard data:', err);
-    }
-  }, [isEtsyConnected, fetchAllDashboardData]);
+      try {
+        await fetchAllDashboardData(forceRefresh);
+        console.log('✅ Dashboard data fetch completed');
+      } catch (err) {
+        console.error('❌ Error fetching dashboard data:', err);
+      }
+    },
+    [isEtsyConnected, fetchAllDashboardData]
+  );
 
   const formatCurrency = (amount, divisor = 100) => {
     return new Intl.NumberFormat('en-US', {
