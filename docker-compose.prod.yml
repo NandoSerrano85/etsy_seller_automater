@@ -1,35 +1,89 @@
 version: '3.8'
 
 services:
-  # Backend Service with built frontend
+  # Database Service
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-printer_automater_db}
+    expose:
+      - "5432"
+    volumes:
+      - printer_automater_pgdata:/var/lib/postgresql/data
+    networks:
+      - printer-automater-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend Service
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
+    image: ghcr.io/${GITHUB_REPOSITORY:-nandoserrano85/etsy_seller_automater}/printer-automater-backend:latest
     container_name: printer-automater-backend-prod
+    pull_policy: always
     ports:
-      - "3003:3003"
+      - "${BACKEND_PORT:-8080}:3003"
     environment:
       - HOST=0.0.0.0
       - PORT=3003
       - DEBUG=false
       - DOCKER_ENV=true
-      - FRONTEND_URL=http://localhost:3003
+      - FRONTEND_URL=${FRONTEND_URL:-https://printer-automater.netlify.app}
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-printer_automater_db}
+      - DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-true}
     env_file:
-      - .env
+      - .env.prod
     volumes:
-      # Mount the .env file for persistent configuration
-      - ./.env:/app/.env:ro
-      # Mount local images directory if needed
-      - ./server/images:/app/server/images
+      # Production volume mounts - adjust paths for your QNAP
+      - /share/printer-automater/images:/app/server/images
+      - /share/printer-automater/uploads:/app/uploads
+      - /share/printer-automater/temp:/app/temp
+      - /share/printer-automater/logs:/app/logs
+      # Mount your existing mockup directories
+      - /share/NookTransfers/Mockups/Cup\ Wraps:/app/mockups/cup-wraps:ro
+      - /share/NookTransfers/UVDTF\ 16oz:/app/mockups/uvdtf-16oz:ro
+      - /share/NookTransfers:/app/mockups/all:ro
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3003/api/ping"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:3003/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - printer-automater-network
+    depends_on:
+      db:
+        condition: service_healthy
+    labels:
+      # Watchtower labels for auto-updates
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  # Auto-updater service (optional - remove if you prefer manual updates)
+  watchtower:
+    image: containrrr/watchtower
+    container_name: printer-automater-watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_POLL_INTERVAL=300     # Check every 5 minutes
+      - WATCHTOWER_CLEANUP=true          # Remove old images
+      - WATCHTOWER_INCLUDE_STOPPED=true  # Update stopped containers
+      - WATCHTOWER_LABEL_ENABLE=true     # Only update labeled containers
+      - WATCHTOWER_NOTIFICATIONS_LEVEL=info
+    restart: unless-stopped
+    networks:
+      - printer-automater-network
 
 networks:
-  default:
-    driver: bridge 
+  printer-automater-network:
+    driver: bridge
+
+volumes:
+  printer_automater_pgdata:
+    external: false

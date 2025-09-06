@@ -21,3 +21,4 @@ slowapi
 python-multipart
 email-validator
 alembic
+psutil==5.9.6

@@ -12,6 +12,7 @@ credentials_desktop.json
 token.pickle
 .env
 .env.backup
+.env.prod
 .venv
 .venv3_11
 
