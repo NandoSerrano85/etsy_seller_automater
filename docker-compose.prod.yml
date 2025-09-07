@@ -26,8 +26,8 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY:-nandoserrano85/etsy_seller_automater}/printer-automater-backend:latest
     container_name: printer-automater-backend-prod
     pull_policy: always
-    ports:
-      - "${BACKEND_PORT:-8081}:3003"
+    expose:
+      - "3003"
     environment:
       - HOST=0.0.0.0
       - PORT=3003
@@ -63,6 +63,21 @@ services:
     labels:
       # Watchtower labels for auto-updates
       - "com.centurylinklabs.watchtower.enable=true"
+
+  # Nginx reverse proxy with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: printer-automater-nginx
+    ports:
+      - "${BACKEND_PORT:-8081}:443"
+    volumes:
+      - /share/printer-automater/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /share/printer-automater/ssl:/etc/ssl/certs:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - printer-automater-network
 
   # Auto-updater service (optional - remove if you prefer manual updates)
   watchtower:
