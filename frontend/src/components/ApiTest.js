@@ -134,7 +134,7 @@ const ApiTest = () => {
       </div>
       <div className="text-xs text-gray-600 mt-2">
         <p>Check browser console for request logs.</p>
-        <p>Expected API URL: http://localhost:3003</p>
+        <p>Expected API URL: {process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003'}</p>
       </div>
     </div>
   );

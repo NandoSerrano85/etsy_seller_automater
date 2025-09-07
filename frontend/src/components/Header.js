@@ -41,7 +41,7 @@ const Header = () => {
                   Mockup Creator
                 </Link>
                 <a
-                  href="http://localhost:3003/docs"
+                  href={`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003'}/docs`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium"
@@ -142,7 +142,7 @@ const Header = () => {
                   Mockup Creator
                 </Link>
                 <a
-                  href="http://localhost:3003/docs"
+                  href={`${process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003'}/docs`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium px-4 py-3 block rounded-lg hover:bg-gray-50"
