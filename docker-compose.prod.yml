@@ -27,7 +27,7 @@ services:
     container_name: printer-automater-backend-prod
     pull_policy: always
     ports:
-      - "${BACKEND_PORT:-8080}:3003"
+      - "${BACKEND_PORT:-8081}:3003"
     environment:
       - HOST=0.0.0.0
       - PORT=3003
