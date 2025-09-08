@@ -11,16 +11,16 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     pkg-config \
     libpq-dev \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
+    libgl1-mesa-dev \
+    libglib2.0-dev \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
     libgtk-3-0 \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
+    libavcodec59 \
+    libavformat59 \
+    libswscale6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
