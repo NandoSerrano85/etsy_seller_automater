@@ -7,7 +7,7 @@
   NODE_VERSION = "20.10.0"
   NPM_VERSION = "10.2.0"
   CI = "false"
-  REACT_APP_API_BASE_URL = "https://printmadenas.myqnapcloud.com/api"
+  REACT_APP_API_BASE_URL = "https://printmadenas.myqnapcloud.com:8443/api"
 
 # Redirect all routes to index.html for React Router
 [[redirects]]
