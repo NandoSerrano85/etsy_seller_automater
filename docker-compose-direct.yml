@@ -27,7 +27,7 @@ services:
     container_name: printer-automater-backend-direct
     pull_policy: always
     ports:
-      - "8443:3003"  # Direct mapping to port 443
+      - "8081:3003"  # Direct mapping to port 443
     environment:
       - HOST=0.0.0.0
       - PORT=3003

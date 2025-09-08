@@ -7,7 +7,7 @@
   NODE_VERSION = "20.10.0"
   NPM_VERSION = "10.2.0"
   CI = "false"
-  REACT_APP_API_BASE_URL = "https://printmadenas.myqnapcloud.com:8443/api"
+  REACT_APP_API_BASE_URL = "https://printmadenas.myqnapcloud.com:8082/api"
 
 # Redirect all routes to index.html for React Router
 [[redirects]]
@@ -23,7 +23,7 @@
     X-XSS-Protection = "1; mode=block"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://openapi.etsy.com https://printmadenas.myqnapcloud.com https://printmadenas.myqnapcloud.com:8443"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://openapi.etsy.com https://printmadenas.myqnapcloud.com https://printmadenas.myqnapcloud.com:8082"
 
 # Cache static assets for 1 year
 [[headers]]
