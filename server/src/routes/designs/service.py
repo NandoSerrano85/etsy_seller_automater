@@ -26,6 +26,9 @@ from . import model
 import logging, numpy as np, cv2, os, re
 from typing import Optional, List
 from fastapi import UploadFile
+from PIL import Image
+import imagehash
+import os
 
 def _validate_canvas_config(db: Session, product_template_id: UUID, canvas_config_id: UUID) -> bool:
     """Validate that canvas config exists and belongs to the user"""
@@ -129,6 +132,51 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 logging.error(f"Error processing physical image: {str(e)}")
                 return None, None
 
+        def list_images_in_dir(directory_path):
+            """List all image files in a directory"""
+            try:
+                if not os.path.exists(directory_path):
+                    return []
+                image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff']
+                return [f for f in os.listdir(directory_path) 
+                       if any(f.lower().endswith(ext) for ext in image_extensions)]
+            except Exception as e:
+                logging.error(f"Error listing images in directory {directory_path}: {str(e)}")
+                return []
+        
+        def build_hash_db(directory_path):
+            """Build a database of image hashes from a directory"""
+            hash_db = {}
+            try:
+                image_files = list_images_in_dir(directory_path)
+                for image_file in image_files:
+                    image_path = os.path.join(directory_path, image_file)
+                    try:
+                        with Image.open(image_path) as img:
+                            img_hash = imagehash.phash(img)
+                            hash_db[image_path] = img_hash
+                    except Exception as e:
+                        logging.error(f"Error processing image {image_path}: {str(e)}")
+                        continue
+            except Exception as e:
+                logging.error(f"Error building hash database for {directory_path}: {str(e)}")
+            return hash_db
+        
+        def check_for_duplicate(new_image_path, existing_hash_db, threshold=5):
+            """Check if a new image is a duplicate of any existing images"""
+            try:
+                with Image.open(new_image_path) as new_img:
+                    new_hash = imagehash.phash(new_img)
+                    
+                    for existing_path, existing_hash in existing_hash_db.items():
+                        hash_diff = new_hash - existing_hash
+                        if hash_diff <= threshold:
+                            return existing_path
+                    return None
+            except Exception as e:
+                logging.error(f"Error checking duplicate for {new_image_path}: {str(e)}")
+                return None
+
         async def process_image_digital(n, file, id_number):
             """Process digital product images"""
             try:
@@ -180,7 +228,12 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 logging.error(f"Error processing digital image: {str(e)}")
                 return None, None
         
+        # Build hash database of existing designs in the directory
+        existing_hash_db = build_hash_db(designs_path)
+        
         design_results = []
+        duplicate_count = 0
+        
         for i, file in enumerate(files):
             logging.info(f"Processing file: {file.filename}")
             if design_data.is_digital:
@@ -192,6 +245,26 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
             if not file_path or not filename:
                 logging.error(f"Failed to process image for user ID: {user_id}")
                 raise DesignCreateError()
+            
+            # Check for duplicates before storing in database
+            duplicate_match = check_for_duplicate(file_path, existing_hash_db, threshold=5)
+            if duplicate_match:
+                logging.warning(f"Skipping duplicate image: {filename} (matches existing {os.path.basename(duplicate_match)})")
+                # Remove the processed duplicate file
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    logging.error(f"Error removing duplicate file {file_path}: {str(e)}")
+                duplicate_count += 1
+                continue
+            
+            # Add the new image hash to the database for subsequent duplicate checks
+            try:
+                with Image.open(file_path) as img:
+                    img_hash = imagehash.phash(img)
+                    existing_hash_db[file_path] = img_hash
+            except Exception as e:
+                logging.error(f"Error adding hash to database for {file_path}: {str(e)}")
             
             design_data.file_path = file_path
             design_data.filename = filename
@@ -205,7 +278,11 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
             )
             design_results.append(design)
             db.add(design)
+        
         db.commit()
+        
+        if duplicate_count > 0:
+            logging.info(f"Skipped {duplicate_count} duplicate designs out of {len(files)} total files")
         
         response = model.DesignImageListResponse(
             designs=[model.DesignImageResponse.model_validate(design) for design in design_results],

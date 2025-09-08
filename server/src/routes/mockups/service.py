@@ -32,6 +32,64 @@ import logging, os, random, json
 from server.src.utils.mockups_util import create_mockup_images, create_mockups_for_etsy
 from server.src.utils.etsy_api_engine import EtsyAPI
 from fastapi import UploadFile, HTTPException
+from PIL import Image
+import imagehash
+
+
+def list_images_in_dir(directory, extensions={".jpg", ".jpeg", ".png", ".bmp", ".tiff"}):
+    """
+    List all image files in a directory (non-recursive).
+    
+    Parameters:
+        directory (str): Path to directory
+        extensions (set): Allowed image extensions
+    
+    Returns:
+        list: Paths to image files
+    """
+    return [
+        os.path.join(directory, f)
+        for f in os.listdir(directory)
+        if os.path.splitext(f)[1].lower() in extensions
+    ]
+
+
+def build_hash_db(image_paths, hash_size=16):
+    """
+    Precompute perceptual hashes for a list of images.
+    """
+    hash_db = {}
+    for path in image_paths:
+        try:
+            with Image.open(path) as img:
+                hash_db[path] = imagehash.phash(img, hash_size=hash_size)
+        except Exception as e:
+            logging.warning(f"Skipping {path}: {e}")
+    return hash_db
+
+
+def check_duplicates(new_images, hash_db, threshold=5, hash_size=16):
+    """
+    Check if new images already exist in hash_db.
+    
+    Returns:
+        dict: {new_image_path: matching_existing_path or None}
+    """
+    results = {}
+    for new_path in new_images:
+        match = None
+        try:
+            with Image.open(new_path) as img:
+                new_hash = imagehash.phash(img, hash_size=hash_size)
+
+            for existing_path, existing_hash in hash_db.items():
+                if abs(new_hash - existing_hash) <= threshold:
+                    match = existing_path
+                    break
+        except Exception as e:
+            logging.warning(f"Skipping {new_path}: {e}")
+        results[new_path] = match
+    return results
 
 
 def _validate_user_owns_mockup(db: Session, user_id: UUID, mockup_id: UUID) -> bool:
@@ -1072,6 +1130,105 @@ async def upload_mockup_files_to_etsy(
             .filter(DesignImages.id.in_(design_ids))
             .all()
         )
+
+        # Check for duplicate images and filter out duplicates before processing
+        filtered_designs = designs
+        try:
+            if designs:
+                logging.info(f"Checking for duplicate images among {len(designs)} design(s)")
+                
+                # Create a mapping of design objects to their file paths
+                design_path_mapping = {}
+                design_folder = None
+                
+                for design in designs:
+                    file_path = None
+                    # Try to get file_path or image_path from the design object
+                    if hasattr(design, 'file_path'):
+                        file_path_value = getattr(design, 'file_path', None)
+                        if file_path_value:
+                            file_path = str(file_path_value)
+                    elif hasattr(design, 'image_path'):
+                        image_path_value = getattr(design, 'image_path', None)
+                        if image_path_value:
+                            file_path = str(image_path_value)
+                    
+                    if file_path:
+                        design_path_mapping[design] = file_path
+                        if design_folder is None:
+                            design_folder = os.path.dirname(file_path)
+                
+                if design_path_mapping and design_folder and os.path.exists(design_folder):
+                    logging.info(f"Checking for duplicate images in design folder: {design_folder}")
+                    
+                    # Get all existing images in the design folder
+                    existing_images = list_images_in_dir(design_folder)
+                    design_file_paths = list(design_path_mapping.values())
+                    
+                    # Build hash database for existing images (excluding the current design files)
+                    existing_images_excluding_current = [
+                        img for img in existing_images 
+                        if img not in design_file_paths
+                    ]
+                    
+                    if existing_images_excluding_current:
+                        hash_db = build_hash_db(existing_images_excluding_current)
+                        
+                        # Check if any of the current design files are duplicates
+                        duplicate_results = check_duplicates(design_file_paths, hash_db, threshold=5)
+                        
+                        # Filter out designs that are duplicates
+                        unique_designs = []
+                        removed_designs = []
+                        
+                        for design, design_path in design_path_mapping.items():
+                            matching_image = duplicate_results.get(design_path)
+                            if matching_image:
+                                # This is a duplicate - remove it
+                                logging.warning(f"Removing duplicate design: {design_path} (matches existing {matching_image})")
+                                removed_designs.append(design)
+                            else:
+                                # This is unique - keep it
+                                logging.info(f"Keeping unique design: {design_path}")
+                                unique_designs.append(design)
+                        
+                        # Update the designs list to only include non-duplicates
+                        filtered_designs = unique_designs
+                        
+                        # Log summary
+                        duplicates_removed = len(removed_designs)
+                        if duplicates_removed > 0:
+                            logging.warning(f"Removed {duplicates_removed} duplicate design(s) out of {len(designs)} total design(s)")
+                            logging.info(f"Proceeding with {len(filtered_designs)} unique design(s)")
+                        else:
+                            logging.info(f"No duplicates found - proceeding with all {len(filtered_designs)} design(s)")
+                    else:
+                        logging.info("No existing images found in design folder for duplicate comparison")
+                        filtered_designs = designs
+                else:
+                    logging.info("Design folder not found or no design file paths available, skipping duplicate check")
+                    filtered_designs = designs
+            else:
+                logging.info("No designs found, skipping duplicate check")
+                filtered_designs = []
+                
+        except Exception as e:
+            # Don't fail the entire process if duplicate detection fails
+            logging.error(f"Error during duplicate detection: {e}")
+            logging.info("Proceeding with all designs due to duplicate detection error")
+            filtered_designs = designs
+        
+        # Use filtered designs instead of original designs
+        designs = filtered_designs
+        
+        # Check if we have any designs left after filtering
+        if not designs:
+            logging.warning("No designs remaining after duplicate filtering - all designs were duplicates")
+            return model.UploadToEtsyResponse(
+                success=False,
+                success_code=400,
+                message="All uploaded designs were duplicates of existing images. No Etsy listings created.",
+            )
 
         mockup_mask_data = {}
         for mockup_image in mockup_with_images.mockup_images:
