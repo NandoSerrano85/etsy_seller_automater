@@ -4,6 +4,13 @@
 # from server.constants import SERVER_CONFIG
 # import uvicorn, webbrowser, os, sys
 
+import os, sys
+
+# Add the project root to the Python path BEFORE any other imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.insert(0, project_root)
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from server.src.database.core import engine, Base
@@ -14,7 +21,7 @@ from server.src import message
 from threading import Timer
 from dotenv import load_dotenv
 
-import uvicorn, webbrowser, os, sys
+import uvicorn, webbrowser
 
 SERVER_CONFIG = {
     'default_host': '127.0.0.1',
@@ -24,9 +31,6 @@ SERVER_CONFIG = {
 
 config_logging(LogLevels.info)
 
-# Add the project root to the Python path
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, project_root)
 
 # Load environment variables
 dotenv_path = os.path.join(project_root, '.env')
