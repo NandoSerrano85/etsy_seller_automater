@@ -7,20 +7,15 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
-    libgl1 \
+    libgl1-mesa-dri \
     libglib2.0-0 \
     pkg-config \
     libpq-dev \
-    libgl1-mesa-dev \
-    libglib2.0-dev \
     libsm6 \
     libxext6 \
     libxrender1 \
-    libgomp1 \
-    libgtk-3-0 \
-    libavcodec59 \
-    libavformat59 \
-    libswscale6 \
+    libfontconfig1 \
+    libice6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
