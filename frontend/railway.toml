@@ -1,11 +1,12 @@
 [build]
 builder = "dockerfile"
-dockerfilePath = "Dockerfile.railway-frontend"
+dockerfilePath = "../Dockerfile.railway-frontend"
 
 [deploy]
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
+startCommand = ""
 
 [env]
 PORT = "80"
