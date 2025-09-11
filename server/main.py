@@ -73,6 +73,36 @@ except Exception as e:
     print(f"Warning: Database table creation failed: {e}")
     # Continue running - tables might already exist
 
+# Run database migrations for new columns
+def run_migrations():
+    """Run necessary database migrations for new columns."""
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            with conn.begin():
+                # Check if etsy_shop_id column exists
+                result = conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'etsy_shop_id'
+                """))
+                
+                if not result.fetchone():
+                    # Add the etsy_shop_id column
+                    conn.execute(text("ALTER TABLE users ADD COLUMN etsy_shop_id VARCHAR"))
+                    print("✅ Added etsy_shop_id column to users table")
+                else:
+                    print("✅ etsy_shop_id column already exists")
+                    
+    except Exception as e:
+        print(f"⚠️  Warning: Migration failed: {e}")
+        # Continue running - the column might exist or the migration might not be critical
+
+try:
+    run_migrations()
+except Exception as e:
+    print(f"⚠️  Migration error: {e}")
+
 # Serve static files from the frontend public directory
 frontend_public_dir = os.path.join(project_root, "frontend", "public")
 if os.path.exists(frontend_public_dir):
