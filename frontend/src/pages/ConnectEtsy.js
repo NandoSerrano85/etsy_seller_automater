@@ -15,6 +15,12 @@ const ConnectEtsy = () => {
       } catch (err) {
         setError('Failed to load OAuth configuration');
         console.error('Error fetching OAuth data:', err);
+        
+        // Debug: Log the actual response to see what HTML is being returned
+        if (err.response) {
+          console.error('Response status:', err.response.status);
+          console.error('Response data:', err.response.data);
+        }
       } finally {
         setLoading(false);
       }
