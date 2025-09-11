@@ -227,11 +227,19 @@ class EtsyAPI:
         
         shops_data = shops_response.json()
         
-        if not shops_data:
+        if not shops_data or 'results' not in shops_data or not shops_data['results']:
             logging.error(f"No shops found for this user: {shops_data}")
             return None
         
-        return shops_data['shop_id']
+        # Get the first shop's ID
+        first_shop = shops_data['results'][0]
+        shop_id = first_shop.get('shop_id')
+        
+        if not shop_id:
+            logging.error(f"Shop ID not found in shop data: {first_shop}")
+            return None
+            
+        return shop_id
 
     def create_draft_listing(self, title: str, description: str, price: float, 
                            quantity: int, tags: List[str], 

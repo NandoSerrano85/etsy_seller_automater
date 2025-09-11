@@ -6,7 +6,25 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from typing import Optional
 from fastapi import HTTPException
+from uuid import UUID
+from sqlalchemy.orm import Session
+from server.src.utils.etsy_api_engine import EtsyAPI
 from . import model
+
+# In-memory cache for shop IDs to avoid repeated API calls
+_shop_id_cache = {}
+
+def clear_shop_id_cache(user_id: UUID = None):
+    """Clear shop ID cache for a specific user or all users."""
+    global _shop_id_cache
+    if user_id:
+        cache_key = str(user_id)
+        if cache_key in _shop_id_cache:
+            del _shop_id_cache[cache_key]
+            logging.info(f"Cleared shop ID cache for user {user_id}")
+    else:
+        _shop_id_cache.clear()
+        logging.info("Cleared all shop ID cache")
 
 API_CONFIG = {
     'base_url': 'https://openapi.etsy.com/v3',
@@ -77,50 +95,39 @@ def make_robust_request(session, method, url, headers=None, params=None, timeout
         logging.error(f"Unexpected error: {method} {url} - {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
-def get_user_shop_id(access_token: str) -> str:
-    """Get the user's shop ID from Etsy API."""
-    oauth_vars = get_oauth_variables()
-    headers = {
-        'x-api-key': oauth_vars['clientID'],
-        'Authorization': f'Bearer {access_token}',
-    }
+def get_user_shop_id(user_id: UUID, db: Session) -> str:
+    """Get the user's shop ID using EtsyAPI class with memory caching."""
     
-    session = create_robust_session()
+    # Check if we have a cached shop ID for this user
+    cache_key = str(user_id)
+    if cache_key in _shop_id_cache:
+        cached_shop_id = _shop_id_cache[cache_key]
+        logging.info(f"Using cached shop ID for user {user_id}: {cached_shop_id}")
+        return cached_shop_id
     
     try:
-        # First get the user's shops
-        shops_url = f"{API_CONFIG['base_url']}/application/users/me/shops"
-        logging.info(f"Getting shops for user from: {shops_url}")
+        # Use the existing EtsyAPI class to fetch shop ID
+        logging.info(f"Fetching shop ID for user {user_id} using EtsyAPI")
+        etsy_api = EtsyAPI(user_id=user_id, db=db)
         
-        response = session.get(shops_url, headers=headers, timeout=30)
-        
-        if not response.ok:
-            logging.error(f"Failed to get shops: {response.status_code} - {response.text}")
-            raise HTTPException(
-                status_code=response.status_code, 
-                detail=f"Failed to get user shops: {response.status_code}"
-            )
-        
-        response_data = response.json()
-        logging.info(f"Shops response: {response_data}")
-        
-        if 'results' in response_data and len(response_data['results']) > 0:
-            shop_id = str(response_data['results'][0]['shop_id'])
-            logging.info(f"Retrieved shop ID: {shop_id}")
-            return shop_id
-        else:
-            logging.error(f"No shops found in response: {response_data}")
+        shop_id = etsy_api.shop_id
+        if not shop_id:
             raise HTTPException(status_code=404, detail="No Etsy shops found for this user")
-            
-    except HTTPException:
-        raise
+        
+        # Cache the shop ID for future requests
+        _shop_id_cache[cache_key] = str(shop_id)
+        logging.info(f"Cached shop ID for user {user_id}: {shop_id}")
+        
+        return str(shop_id)
+        
     except Exception as e:
-        logging.error(f"Unexpected error getting user shop ID: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to get shop information: {str(e)}")
-    finally:
-        session.close()
+        logging.error(f"Error getting user shop ID: {str(e)}", exc_info=True)
+        if "Could not fetch shop ID" in str(e):
+            raise HTTPException(status_code=404, detail="No Etsy shops found for this user")
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to get shop information: {str(e)}")
 
-def get_monthly_analytics(access_token: str, year: Optional[int], current_user) -> model.MonthlyAnalyticsResponse:
+def get_monthly_analytics(access_token: str, year: Optional[int], user_id: UUID, db: Session) -> model.MonthlyAnalyticsResponse:
     """Get monthly analytics for the year."""
     oauth_vars = get_oauth_variables()
     if year is None:
@@ -137,8 +144,8 @@ def get_monthly_analytics(access_token: str, year: Optional[int], current_user) 
     session = create_robust_session()
     
     try:
-        # Get shop ID dynamically from Etsy API
-        final_shop_id = get_user_shop_id(access_token)
+        # Get shop ID using EtsyAPI with memory caching
+        final_shop_id = get_user_shop_id(user_id, db)
         
         # Fetch receipts with robust pagination
         transactions_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/receipts"
@@ -308,7 +315,7 @@ def get_monthly_analytics(access_token: str, year: Optional[int], current_user) 
         except:
             pass
 
-def get_top_sellers(access_token: str, year: Optional[int], current_user) -> model.TopSellersResponse:
+def get_top_sellers(access_token: str, year: Optional[int], user_id: UUID, db: Session) -> model.TopSellersResponse:
     """Get top sellers for the year."""
     oauth_vars = get_oauth_variables()
     if year is None:
@@ -323,8 +330,8 @@ def get_top_sellers(access_token: str, year: Optional[int], current_user) -> mod
     session = create_robust_session()
     
     try:
-        # Get shop ID dynamically from Etsy API
-        final_shop_id = get_user_shop_id(access_token)
+        # Get shop ID using EtsyAPI with memory caching
+        final_shop_id = get_user_shop_id(user_id, db)
         transactions_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/receipts"
         start_timestamp = int(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")))
         end_timestamp = int(time.mktime(time.strptime(f"{year}-12-31 23:59:59", "%Y-%m-%d %H:%M:%S")))
@@ -404,7 +411,7 @@ def get_top_sellers(access_token: str, year: Optional[int], current_user) -> mod
         except:
             pass
 
-def get_shop_listings(access_token: str, limit: int, offset: int, current_user) -> model.ShopListingsResponse:
+def get_shop_listings(access_token: str, limit: int, offset: int, user_id: UUID, db: Session) -> model.ShopListingsResponse:
     """Get shop listings/designs."""
     oauth_vars = get_oauth_variables()
     headers = {
@@ -416,8 +423,8 @@ def get_shop_listings(access_token: str, limit: int, offset: int, current_user) 
     session = create_robust_session()
     
     try:
-        # Get shop ID dynamically from Etsy API
-        final_shop_id = get_user_shop_id(access_token)
+        # Get shop ID using EtsyAPI with memory caching
+        final_shop_id = get_user_shop_id(user_id, db)
         
         listings_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/listings/active"
         params = {

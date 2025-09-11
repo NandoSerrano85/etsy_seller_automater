@@ -40,7 +40,7 @@ async def get_monthly_analytics(
     db: Session = Depends(get_db)
 ):
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_monthly_analytics(access_token, year, current_user)
+    return service.get_monthly_analytics(access_token, year, current_user.get_uuid(), db)
 
 @router.get('/top-sellers', response_model=model.TopSellersResponse)
 async def get_top_sellers(
@@ -49,7 +49,7 @@ async def get_top_sellers(
     db: Session = Depends(get_db)
 ):
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_top_sellers(access_token, year, current_user)
+    return service.get_top_sellers(access_token, year, current_user.get_uuid(), db)
 
 @router.get('/shop-listings', response_model=model.ShopListingsResponse)
 async def get_shop_listings(
@@ -59,4 +59,4 @@ async def get_shop_listings(
     db: Session = Depends(get_db)
 ):
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_shop_listings(access_token, limit, offset, current_user)
+    return service.get_shop_listings(access_token, limit, offset, current_user.get_uuid(), db)
