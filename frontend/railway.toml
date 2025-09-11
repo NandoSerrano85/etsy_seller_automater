@@ -9,4 +9,3 @@ restartPolicyType = "on_failure"
 startCommand = ""
 
 [env]
-PORT = "80"
