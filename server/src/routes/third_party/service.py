@@ -5,6 +5,7 @@ from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from . import model
 from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
+from server.src.entities.user import User
 from server.src.message import ERROR_MESSAGES, SUCCESS_MESSAGES
 
 # Get the project root directory (2 levels up from this file)
@@ -70,6 +71,65 @@ def get_oauth_variables():
         'codeChallenge': codeChallenge,
         'dotenv_path': dotenv_path
     }
+
+def fetch_and_store_shop_id(access_token: str, user_id: UUID, db: Session):
+    """Fetch Etsy shop ID and store it in the user table."""
+    try:
+        logging.info(f"Fetching shop ID for user {user_id}")
+        
+        headers = {
+            'x-api-key': clientID,
+            'Authorization': f'Bearer {access_token}',
+        }
+        
+        # Get user info first
+        user_url = f"{ETSY_API_CONFIG['base_url']}/application/users/me"
+        user_response = requests.get(user_url, headers=headers)
+        
+        if not user_response.ok:
+            logging.error(f"Failed to fetch user data: {user_response.status_code} {user_response.text}")
+            return
+        
+        user_data = user_response.json()
+        etsy_user_id = user_data.get('user_id')
+        
+        if not etsy_user_id:
+            logging.error("Could not get user ID from access token")
+            return
+        
+        # Fetch shops owned by this user
+        shops_url = f"{ETSY_API_CONFIG['base_url']}/application/users/{etsy_user_id}/shops"
+        shops_response = requests.get(shops_url, headers=headers)
+        
+        if not shops_response.ok:
+            logging.error(f"Failed to fetch user shops: {shops_response.status_code} {shops_response.text}")
+            return
+        
+        shops_data = shops_response.json()
+        
+        if not shops_data or 'results' not in shops_data or not shops_data['results']:
+            logging.error(f"No shops found for user: {shops_data}")
+            return
+        
+        # Get the first shop's ID
+        first_shop = shops_data['results'][0]
+        shop_id = first_shop.get('shop_id')
+        
+        if not shop_id:
+            logging.error(f"Shop ID not found in shop data: {first_shop}")
+            return
+        
+        # Update user table with shop ID
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user.etsy_shop_id = str(shop_id)
+            db.commit()
+            logging.info(f"Successfully stored shop ID {shop_id} for user {user_id}")
+        else:
+            logging.error(f"User {user_id} not found in database")
+            
+    except Exception as e:
+        logging.error(f"Error fetching and storing shop ID: {str(e)}", exc_info=True)
 
 def get_oauth_data() -> model.ThirdPartyOauthDataResponse:
     oauth_vars = get_oauth_variables()
@@ -144,6 +204,10 @@ def oauth_redirect(code:str, user_id: UUID, db: Session) -> model.ThirdPartyOaut
             try:
                 db.commit()
                 logging.info("Successfully saved OAuth token to database")
+                
+                # Fetch and store shop ID after successful token save
+                fetch_and_store_shop_id(token_data['access_token'], user_id, db)
+                
             except Exception as e:
                 logging.error(f"Database error while saving token: {str(e)}")
                 db.rollback()

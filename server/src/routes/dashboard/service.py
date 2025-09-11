@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from uuid import UUID
 from sqlalchemy.orm import Session
 from server.src.utils.etsy_api_engine import EtsyAPI
+from server.src.entities.user import User
 from . import model
 
 # In-memory cache for shop IDs to avoid repeated API calls
@@ -96,7 +97,7 @@ def make_robust_request(session, method, url, headers=None, params=None, timeout
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 def get_user_shop_id(user_id: UUID, db: Session) -> str:
-    """Get the user's shop ID using EtsyAPI class with memory caching."""
+    """Get the user's shop ID from database with fallback to EtsyAPI and caching."""
     
     # Check if we have a cached shop ID for this user
     cache_key = str(user_id)
@@ -106,13 +107,29 @@ def get_user_shop_id(user_id: UUID, db: Session) -> str:
         return cached_shop_id
     
     try:
-        # Use the existing EtsyAPI class to fetch shop ID
-        logging.info(f"Fetching shop ID for user {user_id} using EtsyAPI")
+        # First try to get shop ID from user table
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and user.etsy_shop_id:
+            shop_id = user.etsy_shop_id
+            logging.info(f"Retrieved shop ID from user table for user {user_id}: {shop_id}")
+            
+            # Cache it for future requests
+            _shop_id_cache[cache_key] = shop_id
+            return shop_id
+        
+        # Fallback: Use EtsyAPI to fetch shop ID (for users who connected before this update)
+        logging.info(f"Shop ID not in user table, fetching via EtsyAPI for user {user_id}")
         etsy_api = EtsyAPI(user_id=user_id, db=db)
         
         shop_id = etsy_api.shop_id
         if not shop_id:
-            raise HTTPException(status_code=404, detail="No Etsy shops found for this user")
+            raise HTTPException(status_code=404, detail="No Etsy shops found for this user. Please reconnect your Etsy account.")
+        
+        # Store the fetched shop ID in the user table for next time
+        if user:
+            user.etsy_shop_id = str(shop_id)
+            db.commit()
+            logging.info(f"Stored shop ID {shop_id} in user table for user {user_id}")
         
         # Cache the shop ID for future requests
         _shop_id_cache[cache_key] = str(shop_id)
@@ -123,7 +140,7 @@ def get_user_shop_id(user_id: UUID, db: Session) -> str:
     except Exception as e:
         logging.error(f"Error getting user shop ID: {str(e)}", exc_info=True)
         if "Could not fetch shop ID" in str(e):
-            raise HTTPException(status_code=404, detail="No Etsy shops found for this user")
+            raise HTTPException(status_code=404, detail="No Etsy shops found for this user. Please reconnect your Etsy account.")
         else:
             raise HTTPException(status_code=500, detail=f"Failed to get shop information: {str(e)}")
 

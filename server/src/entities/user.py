@@ -11,6 +11,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     shop_name = Column(String, nullable=False)
+    etsy_shop_id = Column(String, nullable=True)  # Store Etsy shop ID
     is_active = Column(Boolean, default=True)
     root_folder = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
