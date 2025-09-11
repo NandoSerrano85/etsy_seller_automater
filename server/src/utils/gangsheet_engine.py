@@ -451,6 +451,8 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                    xmin = max(xmin - margin, 0)
                    xmax = min(xmax + margin, gang_sheet.shape[1] - 1)
                    cropped_gang_sheet = gang_sheet[ymin:ymax+1, xmin:xmax+1]
+                   print(f"dpi: {dpi}")
+                   print(f"STD_DPI: {STD_DPI}")
                    scale_factor = STD_DPI / dpi
                    new_width, new_height = int((xmax - xmin + 1) * scale_factor), int((ymax - ymin + 1) * scale_factor)
                    
@@ -461,7 +463,8 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                        save_single_image(
                            resized_gang_sheet,
                            output_path,
-                           filename
+                           filename,
+                           target_dpi=(dpi, dpi)
                        )
                        logging.info(f"Successfully created gang sheet: {filename}")
                        

@@ -72,31 +72,31 @@ def save_single_image(image, folder_path, filename, target_dpi=(STD_DPI,STD_DPI)
         channels = image.shape[2] if len(image.shape) > 2 else 1
         size_mb = (height * width * channels) / (1024 * 1024)
         logging.info(f"Saving image: {width}x{height}x{channels} ({size_mb:.1f}MB) -> {filename}")
-        
-        # For very large images, use simpler saving method to avoid memory issues
-        if size_mb > 500:  # > 500MB images
-            logging.info(f"Large image detected, using simplified save method")
-            success = cv2.imwrite(output_path, image)
-            if not success:
-                raise RuntimeError("cv2.imwrite failed for large image")
-            logging.info(f"Successfully saved large image: {filename}")
-            return
+        cv2.imwrite(output_path, image)
+        # # For very large images, use simpler saving method to avoid memory issues
+        # if size_mb > 500:  # > 500MB images
+        #     logging.info(f"Large image detected, using simplified save method")
+        #     success = cv2.imwrite(output_path, image)
+        #     if not success:
+        #         raise RuntimeError("cv2.imwrite failed for large image")
+        #     logging.info(f"Successfully saved large image: {filename}")
+        #     return
         
         # Use the original DPI method for smaller images
         retval, buffer = cv2.imencode(".png", image)
         if not retval:
             raise RuntimeError("Failed to encode image to PNG")
         
-        s = buffer.tobytes()
+        s = buffer.tostring()
         
         # Find start of IDAT chunk
         IDAToffset = s.find(b'IDAT') - 4
-        if IDAToffset < 0:
-            logging.warning(f"Could not find IDAT chunk in {filename}, using simple save")
-            success = cv2.imwrite(output_path, image)
-            if not success:
-                raise RuntimeError("cv2.imwrite failed")
-            return
+        # if IDAToffset < 0:
+        #     logging.warning(f"Could not find IDAT chunk in {filename}, using simple save")
+        #     success = cv2.imwrite(output_path, image)
+        #     if not success:
+        #         raise RuntimeError("cv2.imwrite failed")
+        #     return
         
         # Create pHYs chunk for DPI
         pHYs = b'pHYs' + struct.pack('!IIc',int(target_dpi[0]/0.0254),int(target_dpi[1]/0.0254),b"\x01")
