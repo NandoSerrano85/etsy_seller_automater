@@ -121,16 +121,16 @@
     padding: 24px;
     margin: 20px;
   }
-  
+
   .welcome-card {
     padding: 24px;
     margin: 20px;
   }
-  
+
   .auth-card h1 {
     font-size: 1.5rem;
   }
-  
+
   .welcome-card h1 {
     font-size: 2rem;
   }
@@ -213,14 +213,14 @@
     font-size: 14px;
     min-width: 60px;
   }
-  
+
   .card {
     margin: 8px;
     border-radius: 8px;
   }
-  
+
   .btn-primary {
     padding: 10px 20px;
     font-size: 14px;
   }
-} 
+}

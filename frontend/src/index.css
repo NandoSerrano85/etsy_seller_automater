@@ -8,11 +8,21 @@
   html {
     font-family: 'Inter', system-ui, sans-serif;
   }
-  
+
   body {
     margin: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    font-family:
+      'Inter',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      'Roboto',
+      'Oxygen',
+      'Ubuntu',
+      'Cantarell',
+      'Fira Sans',
+      'Droid Sans',
+      'Helvetica Neue',
       sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -20,8 +30,7 @@
   }
 
   code {
-    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-      monospace;
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
   }
 }
 
@@ -29,23 +38,23 @@
   .btn-primary {
     @apply bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-full font-semibold transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5;
   }
-  
+
   .btn-secondary {
     @apply bg-white text-gray-700 px-6 py-3 rounded-full font-semibold border-2 border-gray-200 transition-all duration-300 hover:border-blue-500 hover:text-blue-500;
   }
-  
+
   .card {
     @apply bg-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300;
   }
-  
+
   .input-field {
     @apply w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none transition-colors duration-200;
   }
-  
+
   .tab-button {
     @apply px-6 py-4 text-gray-600 font-medium border-b-2 border-transparent hover:text-blue-600 hover:border-blue-600 transition-all duration-200;
   }
-  
+
   .tab-button.active {
     @apply text-blue-600 border-blue-600;
   }
@@ -132,6 +141,10 @@
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-} 
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

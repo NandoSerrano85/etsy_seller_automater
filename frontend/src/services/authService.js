@@ -368,7 +368,7 @@ class AuthService {
       endpoint: finalEndpoint,
       hasToken: !!userToken,
       tokenPrefix: userToken ? userToken.substring(0, 20) + '...' : 'NO_TOKEN',
-      tokenLength: userToken ? userToken.length : 0
+      tokenLength: userToken ? userToken.length : 0,
     });
 
     const headers = {
@@ -389,7 +389,7 @@ class AuthService {
         endpoint: finalEndpoint,
         status: response.status,
         statusText: response.statusText,
-        errorText: errorText
+        errorText: errorText,
       });
 
       if (response.status === 401) {
