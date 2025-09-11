@@ -9,7 +9,7 @@ console.log('🔧 API_BASE_URL:', API_BASE_URL);
 export const apiCall = async (url, options = {}, token = null) => {
   // Construct the full URL using the API base URL
   const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
-  
+
   // Debug logging to see where requests are going
   console.log('🚀 API Request:', {
     url,
@@ -51,7 +51,7 @@ export const apiCall = async (url, options = {}, token = null) => {
       status: response.status,
       responseText: responseText.substring(0, 200) + '...', // First 200 chars
     });
-    
+
     // Try to parse as JSON, fallback to text error
     try {
       const errorData = JSON.parse(responseText);
@@ -71,7 +71,7 @@ export const apiCall = async (url, options = {}, token = null) => {
       fullUrl,
       status: response.status,
       responseText: responseText.substring(0, 200) + '...',
-      jsonError: jsonError.message
+      jsonError: jsonError.message,
     });
     throw new Error('Received HTML instead of JSON from API');
   }
