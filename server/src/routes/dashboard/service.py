@@ -90,20 +90,32 @@ def get_user_shop_id(access_token: str) -> str:
     try:
         # First get the user's shops
         shops_url = f"{API_CONFIG['base_url']}/application/users/me/shops"
-        response_data = make_robust_request(session, 'GET', shops_url, headers=headers)
+        logging.info(f"Getting shops for user from: {shops_url}")
+        
+        response = session.get(shops_url, headers=headers, timeout=30)
+        
+        if not response.ok:
+            logging.error(f"Failed to get shops: {response.status_code} - {response.text}")
+            raise HTTPException(
+                status_code=response.status_code, 
+                detail=f"Failed to get user shops: {response.status_code}"
+            )
+        
+        response_data = response.json()
+        logging.info(f"Shops response: {response_data}")
         
         if 'results' in response_data and len(response_data['results']) > 0:
             shop_id = str(response_data['results'][0]['shop_id'])
             logging.info(f"Retrieved shop ID: {shop_id}")
             return shop_id
         else:
-            logging.error("No shops found for user")
+            logging.error(f"No shops found in response: {response_data}")
             raise HTTPException(status_code=404, detail="No Etsy shops found for this user")
             
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting user shop ID: {str(e)}")
+        logging.error(f"Unexpected error getting user shop ID: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get shop information: {str(e)}")
     finally:
         session.close()
