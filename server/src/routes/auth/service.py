@@ -15,7 +15,10 @@ from .model import RegisterUserRequest, TokenData, UserToken, UserProfile, AuthR
 load_dotenv()
 
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
-ALGORITHM = os.getenv('JWT_ALGORITHM')
+if not JWT_SECRET_KEY:
+    raise ValueError("JWT_SECRET_KEY environment variable is required but not set")
+
+ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')  # Default to HS256 if not set
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('USER_LOGIN_ACCESS_TOKEN_EXPIRE_MINUTES', 30))
 
 oath2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
