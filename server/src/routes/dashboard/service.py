@@ -77,6 +77,37 @@ def make_robust_request(session, method, url, headers=None, params=None, timeout
         logging.error(f"Unexpected error: {method} {url} - {str(e)}")
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
+def get_user_shop_id(access_token: str) -> str:
+    """Get the user's shop ID from Etsy API."""
+    oauth_vars = get_oauth_variables()
+    headers = {
+        'x-api-key': oauth_vars['clientID'],
+        'Authorization': f'Bearer {access_token}',
+    }
+    
+    session = create_robust_session()
+    
+    try:
+        # First get the user's shops
+        shops_url = f"{API_CONFIG['base_url']}/application/users/me/shops"
+        response_data = make_robust_request(session, 'GET', shops_url, headers=headers)
+        
+        if 'results' in response_data and len(response_data['results']) > 0:
+            shop_id = str(response_data['results'][0]['shop_id'])
+            logging.info(f"Retrieved shop ID: {shop_id}")
+            return shop_id
+        else:
+            logging.error("No shops found for user")
+            raise HTTPException(status_code=404, detail="No Etsy shops found for this user")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error getting user shop ID: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get shop information: {str(e)}")
+    finally:
+        session.close()
+
 def get_monthly_analytics(access_token: str, year: Optional[int], current_user) -> model.MonthlyAnalyticsResponse:
     """Get monthly analytics for the year."""
     oauth_vars = get_oauth_variables()
@@ -94,20 +125,8 @@ def get_monthly_analytics(access_token: str, year: Optional[int], current_user) 
     session = create_robust_session()
     
     try:
-        # Get shop ID
-        shop_id = os.getenv('SHOP_ID')
-        shop_name = os.getenv('SHOP_NAME')
-        
-        if not shop_id and not shop_name:
-            logging.error("Shop ID or Shop Name not configured in .env file")
-            raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
-        
-        if shop_id:
-            final_shop_id = shop_id
-        else:
-            shop_url = f"{API_CONFIG['base_url']}/application/shops/{shop_name}"
-            shop_data = make_robust_request(session, 'GET', shop_url, headers=headers, timeout=15)
-            final_shop_id = shop_data['results'][0]['shop_id']
+        # Get shop ID dynamically from Etsy API
+        final_shop_id = get_user_shop_id(access_token)
         
         # Fetch receipts with robust pagination
         transactions_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/receipts"
@@ -292,19 +311,8 @@ def get_top_sellers(access_token: str, year: Optional[int], current_user) -> mod
     session = create_robust_session()
     
     try:
-        shop_id = os.getenv('SHOP_ID')
-        shop_name = os.getenv('SHOP_NAME')
-        
-        if not shop_id and not shop_name:
-            logging.error("Shop ID or Shop Name not configured in .env file")
-            raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
-        
-        if shop_id:
-            final_shop_id = shop_id
-        else:
-            shop_url = f"{API_CONFIG['base_url']}/application/shops/{shop_name}"
-            shop_data = make_robust_request(session, 'GET', shop_url, headers=headers, timeout=15)
-            final_shop_id = shop_data['results'][0]['shop_id']
+        # Get shop ID dynamically from Etsy API
+        final_shop_id = get_user_shop_id(access_token)
         transactions_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/receipts"
         start_timestamp = int(time.mktime(time.strptime(f"{year}-01-01", "%Y-%m-%d")))
         end_timestamp = int(time.mktime(time.strptime(f"{year}-12-31 23:59:59", "%Y-%m-%d %H:%M:%S")))
@@ -396,19 +404,8 @@ def get_shop_listings(access_token: str, limit: int, offset: int, current_user) 
     session = create_robust_session()
     
     try:
-        shop_id = os.getenv('SHOP_ID')
-        shop_name = getattr(current_user, 'shop_name', None)
-        
-        if not shop_id and not shop_name:
-            logging.error("Shop ID or Shop Name not configured in .env file")
-            raise HTTPException(status_code=400, detail="Shop ID or Shop Name not configured in .env file")
-        
-        if shop_id:
-            final_shop_id = shop_id
-        else:
-            shop_url = f"{API_CONFIG['base_url']}/application/shops/{shop_name}"
-            shop_data = make_robust_request(session, 'GET', shop_url, headers=headers, timeout=15)
-            final_shop_id = shop_data['results'][0]['shop_id']
+        # Get shop ID dynamically from Etsy API
+        final_shop_id = get_user_shop_id(access_token)
         
         listings_url = f"{API_CONFIG['base_url']}/application/shops/{final_shop_id}/listings/active"
         params = {
