@@ -38,12 +38,16 @@ load_dotenv(dotenv_path)
 
 app = FastAPI()
 
+# Get frontend URL from environment variable
+frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://comforting-cocada-88dd8c.netlify.app",
         "https://printer-automater.netlify.app", 
         "https://printer-automation-frontend-production.up.railway.app",  # Specific Railway frontend URL
+        frontend_url,  # Dynamic frontend URL from environment
         "http://localhost:3000",
         "http://127.0.0.1:3000"
     ],

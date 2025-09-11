@@ -49,10 +49,9 @@ clientVerifier, codeChallenge, state = generate_code_verifier_code_challenge_and
 
 def get_redirect_uri():
     """Get the correct redirect URI for OAuth flow."""
-    # Temporarily use the working legacy redirect URI until Etsy app is updated
-    # return "http://localhost:3003/oauth/redirect"
-    # TODO: Change back to frontend redirect URI after updating Etsy app
-    return "http://localhost:3000/oauth/redirect"
+    # Use environment variable for frontend URL, fallback to localhost for development
+    frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+    return f"{frontend_url}/oauth/redirect"
 
 def get_redirect_uri_legacy():
     """Get legacy redirect URI for testing."""
