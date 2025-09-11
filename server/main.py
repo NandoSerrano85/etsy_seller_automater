@@ -43,6 +43,7 @@ app.add_middleware(
     allow_origins=[
         "https://comforting-cocada-88dd8c.netlify.app",
         "https://printer-automater.netlify.app", 
+        "https://printer-automation-frontend-production.up.railway.app",  # Specific Railway frontend URL
         "https://*.railway.app",  # Allow all Railway frontend URLs
         "http://localhost:3000",
         "http://127.0.0.1:3000"
