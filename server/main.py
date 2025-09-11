@@ -44,14 +44,19 @@ app.add_middleware(
         "https://comforting-cocada-88dd8c.netlify.app",
         "https://printer-automater.netlify.app", 
         "https://printer-automation-frontend-production.up.railway.app",  # Specific Railway frontend URL
-        "https://*.railway.app",  # Allow all Railway frontend URLs
         "http://localhost:3000",
         "http://127.0.0.1:3000"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    allow_origin_regex=r"https://.*\.railway\.app",  # Use regex for Railway subdomains
 )
+
+# Add explicit OPTIONS handling for debugging
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return {"message": "OK"}
 
 register_routes(app)
 message.register_error_handlers(app)
