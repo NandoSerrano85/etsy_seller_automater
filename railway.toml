@@ -9,4 +9,3 @@ healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 
 [env]
-PORT = "3003"

@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 import uvicorn, webbrowser
 
 SERVER_CONFIG = {
-    'default_host': '127.0.0.1',
+    'default_host': '0.0.0.0',  # Railway requires 0.0.0.0 for external access
     'default_port': 3003,
     'default_debug': False,
 }
