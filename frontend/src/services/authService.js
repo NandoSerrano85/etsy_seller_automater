@@ -363,6 +363,14 @@ class AuthService {
       }
     }
 
+    // Debug: Log token format for troubleshooting
+    console.log('🔐 Making authenticated request:', {
+      endpoint: finalEndpoint,
+      hasToken: !!userToken,
+      tokenPrefix: userToken ? userToken.substring(0, 20) + '...' : 'NO_TOKEN',
+      tokenLength: userToken ? userToken.length : 0
+    });
+
     const headers = {
       Authorization: `Bearer ${userToken}`,
       'Content-Type': 'application/json',
@@ -375,9 +383,17 @@ class AuthService {
     });
 
     if (!response.ok) {
+      // Debug: Log detailed error information
+      const errorText = await response.text();
+      console.error('❌ API Request failed:', {
+        endpoint: finalEndpoint,
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText
+      });
+
       if (response.status === 401) {
         // Check if this is an Etsy token issue vs user token issue
-        const errorText = await response.text();
         if (errorText.includes('etsy') || errorText.includes('Etsy') || needsEtsyToken) {
           // This is likely an Etsy token issue
           throw new Error('Etsy session expired. Please reconnect your Etsy account.');
@@ -387,7 +403,7 @@ class AuthService {
           throw new Error('Session expired. Please log in again.');
         }
       }
-      throw new Error(`Request failed: ${response.status}`);
+      throw new Error(`Request failed: ${response.status} - ${errorText}`);
     }
 
     return response.json();
