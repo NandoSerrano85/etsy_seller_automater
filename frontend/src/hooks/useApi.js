@@ -2,6 +2,9 @@ import { useAuth } from '../hooks/useAuth';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
 
+// Debug: Log the API base URL to make sure it's correct
+console.log('🔧 API_BASE_URL:', API_BASE_URL);
+
 // Standalone API call function for use in AuthContext (no circular dependency)
 export const apiCall = async (url, options = {}, token = null) => {
   // Construct the full URL using the API base URL
@@ -40,16 +43,38 @@ export const apiCall = async (url, options = {}, token = null) => {
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    // Get the response as text first to see if it's HTML
+    const responseText = await response.text();
     console.error('❌ API Error:', {
       url,
+      fullUrl,
       status: response.status,
-      error: errorData.detail || `HTTP error! status: ${response.status}`,
+      responseText: responseText.substring(0, 200) + '...', // First 200 chars
     });
-    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    
+    // Try to parse as JSON, fallback to text error
+    try {
+      const errorData = JSON.parse(responseText);
+      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+    } catch (jsonError) {
+      throw new Error(`HTTP ${response.status}: Received HTML instead of JSON`);
+    }
   }
 
-  return response.json();
+  // Also add error handling for the success case
+  const responseText = await response.text();
+  try {
+    return JSON.parse(responseText);
+  } catch (jsonError) {
+    console.error('❌ JSON Parse Error:', {
+      url,
+      fullUrl,
+      status: response.status,
+      responseText: responseText.substring(0, 200) + '...',
+      jsonError: jsonError.message
+    });
+    throw new Error('Received HTML instead of JSON from API');
+  }
 };
 
 export const useApi = () => {
