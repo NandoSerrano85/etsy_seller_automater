@@ -337,8 +337,7 @@ class AuthService {
 
     // Check if this is an Etsy-related request that needs a token refresh
     // Note: dashboard endpoints now handle Etsy token internally, no need to inject it
-    const needsEtsyToken =
-      endpoint.includes('access_token=') || endpoint.includes('/orders/');
+    const needsEtsyToken = endpoint.includes('access_token=') || endpoint.includes('/orders/');
 
     let finalEndpoint = endpoint;
 
