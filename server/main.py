@@ -60,7 +60,14 @@ async def options_handler(path: str):
 
 register_routes(app)
 message.register_error_handlers(app)
-Base.metadata.create_all(bind=engine)
+
+# Create database tables with error handling
+try:
+    Base.metadata.create_all(bind=engine)
+    print("Database tables created successfully")
+except Exception as e:
+    print(f"Warning: Database table creation failed: {e}")
+    # Continue running - tables might already exist
 
 # Serve static files from the frontend public directory
 frontend_public_dir = os.path.join(project_root, "frontend", "public")
