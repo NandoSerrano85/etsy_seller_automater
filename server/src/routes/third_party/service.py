@@ -33,6 +33,11 @@ DEFAULTS = {
 clientID = os.getenv('CLIENT_ID')
 clientSecret = os.getenv('CLIENT_SECRET')
 
+if not clientID:
+    raise ValueError("CLIENT_ID environment variable is required but not set")
+if not clientSecret:
+    raise ValueError("CLIENT_SECRET environment variable is required but not set")
+
 # Generate a secure code verifier and code challenge
 def generate_code_verifier_code_challenge_and_state():
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(DEFAULTS['code_verifier_length'])).decode('utf-8').replace('=', '')
