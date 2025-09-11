@@ -91,3 +91,11 @@ async def revoke_etsy_token(
 ):
     """Revoke Etsy access token and remove connection"""
     return service.revoke_etsy_token(current_user.get_uuid(), db)
+
+@router.post('/refresh-shop-id')
+async def refresh_shop_id(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Refresh and store the user's Etsy shop ID"""
+    return service.refresh_shop_id(current_user.get_uuid(), db)

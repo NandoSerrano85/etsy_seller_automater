@@ -430,3 +430,32 @@ def revoke_etsy_token(user_id: UUID, db: Session) -> dict:
         logging.error(f"Token revocation error: {str(e)}")
         return {"success": False, "error": str(e)}
 
+def refresh_shop_id(user_id: UUID, db: Session) -> dict:
+    """Refresh and store the user's Etsy shop ID for existing users"""
+    try:
+        # Get the user's OAuth token
+        oauth_record = db.query(ThirdPartyOAuthToken).filter(
+            ThirdPartyOAuthToken.user_id == user_id
+        ).first()
+        
+        if not oauth_record or not oauth_record.access_token:
+            return {"success": False, "message": "No Etsy connection found. Please connect your Etsy account first."}
+        
+        # Check if token is expired
+        if oauth_record.expires_at and oauth_record.expires_at < datetime.now(timezone.utc):
+            return {"success": False, "message": "Etsy access token has expired. Please reconnect your Etsy account."}
+        
+        # Fetch and store the shop ID
+        fetch_and_store_shop_id(oauth_record.access_token, user_id, db)
+        
+        # Check if it was successfully stored
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and user.etsy_shop_id:
+            return {"success": True, "message": f"Shop ID {user.etsy_shop_id} successfully refreshed and stored"}
+        else:
+            return {"success": False, "message": "Failed to fetch shop ID from Etsy. Please check your Etsy account connection."}
+        
+    except Exception as e:
+        logging.error(f"Shop ID refresh error: {str(e)}")
+        return {"success": False, "error": str(e)}
+

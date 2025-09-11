@@ -52,7 +52,7 @@ class EtsyAPI:
         if self.shop_id:
             print(f"Using shop ID: {self.shop_id}")
         else:
-            raise Exception("Could not fetch shop ID. Please set SHOP_ID in your .env file.")
+            raise Exception("Could not fetch shop ID from Etsy API. Please reconnect your Etsy account in the application settings.")
         self.taxonomy_id = self.fetch_taxonomies()
         self.shipping_profile_id = self.fetch_shipping_profiles()
         self.shop_section_id = self.fetch_shop_sections()
