@@ -106,17 +106,25 @@ def fetch_and_store_shop_id(access_token: str, user_id: UUID, db: Session):
             return
         
         shops_data = shops_response.json()
+        logging.info(f"Shops API response: {shops_data}")
         
-        if not shops_data or 'results' not in shops_data or not shops_data['results']:
-            logging.error(f"No shops found for user: {shops_data}")
-            return
+        shop_id = None
         
-        # Get the first shop's ID
-        first_shop = shops_data['results'][0]
-        shop_id = first_shop.get('shop_id')
+        # Handle different response formats from Etsy API
+        if isinstance(shops_data, dict):
+            if 'results' in shops_data and shops_data['results']:
+                # Format: {"results": [{"shop_id": 123, ...}]}
+                first_shop = shops_data['results'][0]
+                shop_id = first_shop.get('shop_id')
+            elif 'shop_id' in shops_data:
+                # Format: {"shop_id": 123, "shop_name": "...", ...}
+                shop_id = shops_data.get('shop_id')
+        elif isinstance(shops_data, list) and shops_data:
+            # Format: [{"shop_id": 123, ...}]
+            shop_id = shops_data[0].get('shop_id')
         
         if not shop_id:
-            logging.error(f"Shop ID not found in shop data: {first_shop}")
+            logging.error(f"Could not extract shop_id from response: {shops_data}")
             return
         
         # Update user table with shop ID
