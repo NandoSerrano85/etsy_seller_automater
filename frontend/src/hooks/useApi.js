@@ -1,13 +1,18 @@
 import { useAuth } from '../hooks/useAuth';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
+
 // Standalone API call function for use in AuthContext (no circular dependency)
 export const apiCall = async (url, options = {}, token = null) => {
+  // Construct the full URL using the API base URL
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+  
   // Debug logging to see where requests are going
   console.log('🚀 API Request:', {
     url,
     method: options.method || 'GET',
     hasToken: !!token,
-    fullUrl: url.startsWith('http') ? url : `${window.location.origin}${url}`,
+    fullUrl,
   });
 
   const headers = {
@@ -23,7 +28,7 @@ export const apiCall = async (url, options = {}, token = null) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
+  const response = await fetch(fullUrl, {
     ...options,
     headers,
   });
