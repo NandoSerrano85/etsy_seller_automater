@@ -227,12 +227,21 @@ class EtsyAPI:
         
         shops_data = shops_response.json()
         
-        if not shops_data or 'results' not in shops_data or not shops_data['results']:
-            logging.error(f"No shops found for this user: {shops_data}")
+        # Handle different response formats from Etsy API
+        if not shops_data:
+            logging.error("No shops data received from Etsy API")
             return None
         
-        # Get the first shop's ID
-        first_shop = shops_data['results'][0]
+        # Check if response has 'results' array (standard format)
+        if 'results' in shops_data and shops_data['results']:
+            first_shop = shops_data['results'][0]
+        # Check if response is a direct shop object
+        elif 'shop_id' in shops_data:
+            first_shop = shops_data
+        else:
+            logging.error(f"Unexpected shop data format: {shops_data}")
+            return None
+        
         shop_id = first_shop.get('shop_id')
         
         if not shop_id:
