@@ -68,7 +68,7 @@ const OrganizationDetails = ({ organization, onOrganizationUpdate }) => {
   };
 
   const handleRemoveMember = async userId => {
-    if (!confirm('Are you sure you want to remove this member?')) return;
+    if (!window.confirm('Are you sure you want to remove this member?')) return;
 
     try {
       const result = await organizationService.removeMember(organization.id, userId);

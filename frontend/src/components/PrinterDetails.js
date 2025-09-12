@@ -71,7 +71,7 @@ const PrinterDetails = ({ printer, isDefault, onPrinterUpdate }) => {
   };
 
   const handleDeletePrinter = async () => {
-    if (!confirm(`Are you sure you want to delete "${printer.name}"? This action cannot be undone.`)) {
+    if (!window.confirm(`Are you sure you want to delete "${printer.name}"? This action cannot be undone.`)) {
       return;
     }
 

@@ -12,7 +12,7 @@ const PrinterManagement = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPrinterId, setSelectedPrinterId] = useState(searchParams.get('printer') || null);
-  
+
   const { addNotification } = useNotifications();
   const { isUserAuthenticated } = useAuthStore();
   const {
@@ -51,7 +51,7 @@ const PrinterManagement = () => {
       const result = await printerService.getUserPrinters();
       if (result.success) {
         setPrinters(result.data);
-        
+
         // Set default printer if available
         const defaultPrinter = result.data.find(p => p.is_default);
         if (defaultPrinter) {
@@ -75,7 +75,7 @@ const PrinterManagement = () => {
     }
   };
 
-  const handleCreatePrinter = async (printerData) => {
+  const handleCreatePrinter = async printerData => {
     try {
       const result = await printerService.createPrinter(printerData);
       if (result.success) {
@@ -85,7 +85,7 @@ const PrinterManagement = () => {
           type: 'success',
           message: 'Printer created successfully!',
         });
-        
+
         // If this is the first printer, select it
         if (printers.length === 0) {
           setSelectedPrinterId(result.data.id);
@@ -104,13 +104,11 @@ const PrinterManagement = () => {
     }
   };
 
-  const handlePrinterSelect = (printerId) => {
+  const handlePrinterSelect = printerId => {
     setSelectedPrinterId(printerId);
   };
 
-  const selectedPrinter = selectedPrinterId 
-    ? printers.find(printer => printer.id === selectedPrinterId)
-    : null;
+  const selectedPrinter = selectedPrinterId ? printers.find(printer => printer.id === selectedPrinterId) : null;
 
   if (printersLoading && printers.length === 0) {
     return (
@@ -129,11 +127,9 @@ const PrinterManagement = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-sage-900">Printer Management</h1>
-            <p className="text-sage-600 mt-2">
-              Manage your printers and printing capabilities
-            </p>
+            <p className="text-sage-600 mt-2">Manage your printers and printing capabilities</p>
           </div>
-          
+
           <button
             onClick={() => setShowCreateModal(true)}
             className="bg-sage-600 hover:bg-sage-700 text-white px-6 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2"
@@ -176,17 +172,21 @@ const PrinterManagement = () => {
               <div className="bg-white rounded-lg shadow-sm border border-sage-200 p-8 text-center">
                 <div className="text-sage-400 mb-4">
                   <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-9a2 2 0 00-2-2H9a2 2 0 00-2 2v9a2 2 0 002 2z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1}
+                      d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-9a2 2 0 00-2-2H9a2 2 0 00-2 2v9a2 2 0 002 2z"
+                    />
                   </svg>
                 </div>
                 <h3 className="text-xl font-medium text-sage-900 mb-2">
                   {printers.length === 0 ? 'No Printers Added' : 'Select a Printer'}
                 </h3>
                 <p className="text-sage-600">
-                  {printers.length === 0 
+                  {printers.length === 0
                     ? 'Add your first printer to get started with automated printing.'
-                    : 'Choose a printer from the list to view its details and manage settings.'
-                  }
+                    : 'Choose a printer from the list to view its details and manage settings.'}
                 </p>
                 {printers.length === 0 && (
                   <button

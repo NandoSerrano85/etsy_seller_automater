@@ -13,7 +13,7 @@ const AdminDashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
   const [loading, setLoading] = useState(false);
-  
+
   const { addNotification } = useNotifications();
   const { isUserAuthenticated, user } = useAuthStore();
   const { hasAdminAccess, currentOrganization } = useOrganizationStore();
@@ -43,7 +43,12 @@ const AdminDashboard = () => {
         <div className="text-center">
           <div className="text-red-400 mb-4">
             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1}
+                d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           </div>
           <h2 className="text-2xl font-semibold text-sage-900 mb-2">Access Denied</h2>
@@ -86,16 +91,14 @@ const AdminDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Admin Dashboard</h1>
-              <p className="text-slate-600 mt-2">
-                System administration and operations management
-              </p>
+              <p className="text-slate-600 mt-2">System administration and operations management</p>
               {currentOrganization && (
                 <p className="text-sm text-slate-500 mt-1">
                   Organization: <span className="font-medium">{currentOrganization.name}</span>
                 </p>
               )}
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="bg-white rounded-lg px-4 py-2 border border-slate-200">
                 <div className="flex items-center space-x-2 text-sm">
@@ -111,7 +114,7 @@ const AdminDashboard = () => {
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 mb-8">
           <div className="border-b border-slate-200">
             <nav className="-mb-px flex space-x-8 px-6">
-              {tabs.map((tab) => (
+              {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}

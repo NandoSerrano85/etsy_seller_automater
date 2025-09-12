@@ -9,32 +9,70 @@ const SystemLogs = () => {
     const loadLogs = async () => {
       await new Promise(resolve => setTimeout(resolve, 700));
       setLogs([
-        { id: '1', level: 'info', message: 'User john@example.com logged in', timestamp: new Date(), component: 'auth' },
-        { id: '2', level: 'error', message: 'Print job failed for order #12345', timestamp: new Date(Date.now() - 60000), component: 'print' },
-        { id: '3', level: 'warning', message: 'High memory usage detected', timestamp: new Date(Date.now() - 120000), component: 'system' },
-        { id: '4', level: 'info', message: 'Backup completed successfully', timestamp: new Date(Date.now() - 180000), component: 'backup' },
-        { id: '5', level: 'error', message: 'Database connection failed', timestamp: new Date(Date.now() - 240000), component: 'database' }
+        {
+          id: '1',
+          level: 'info',
+          message: 'User john@example.com logged in',
+          timestamp: new Date(),
+          component: 'auth',
+        },
+        {
+          id: '2',
+          level: 'error',
+          message: 'Print job failed for order #12345',
+          timestamp: new Date(Date.now() - 60000),
+          component: 'print',
+        },
+        {
+          id: '3',
+          level: 'warning',
+          message: 'High memory usage detected',
+          timestamp: new Date(Date.now() - 120000),
+          component: 'system',
+        },
+        {
+          id: '4',
+          level: 'info',
+          message: 'Backup completed successfully',
+          timestamp: new Date(Date.now() - 180000),
+          component: 'backup',
+        },
+        {
+          id: '5',
+          level: 'error',
+          message: 'Database connection failed',
+          timestamp: new Date(Date.now() - 240000),
+          component: 'database',
+        },
       ]);
       setLoading(false);
     };
     loadLogs();
   }, []);
 
-  const getLevelColor = (level) => {
+  const getLevelColor = level => {
     switch (level) {
-      case 'error': return 'bg-red-100 text-red-800';
-      case 'warning': return 'bg-yellow-100 text-yellow-800';
-      case 'info': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'error':
+        return 'bg-red-100 text-red-800';
+      case 'warning':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'info':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const getLevelIcon = (level) => {
+  const getLevelIcon = level => {
     switch (level) {
-      case 'error': return '❌';
-      case 'warning': return '⚠️';
-      case 'info': return 'ℹ️';
-      default: return '📝';
+      case 'error':
+        return '❌';
+      case 'warning':
+        return '⚠️';
+      case 'info':
+        return 'ℹ️';
+      default:
+        return '📝';
     }
   };
 
@@ -47,7 +85,7 @@ const SystemLogs = () => {
       <div className="flex items-center justify-between">
         <select
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={e => setFilter(e.target.value)}
           className="px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sage-500"
         >
           <option value="all">All Levels</option>
@@ -63,7 +101,7 @@ const SystemLogs = () => {
           <h3 className="text-lg font-semibold">System Logs</h3>
         </div>
         <div className="divide-y max-h-96 overflow-y-auto">
-          {filteredLogs.map((log) => (
+          {filteredLogs.map(log => (
             <div key={log.id} className="px-6 py-3 flex items-start space-x-3">
               <span className="text-lg mt-0.5">{getLevelIcon(log.level)}</span>
               <div className="flex-1 min-w-0">
@@ -76,9 +114,7 @@ const SystemLogs = () => {
                     <span className="text-xs text-slate-500">{log.component}</span>
                   </div>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  {log.timestamp.toLocaleString()}
-                </p>
+                <p className="text-xs text-slate-500 mt-1">{log.timestamp.toLocaleString()}</p>
               </div>
             </div>
           ))}

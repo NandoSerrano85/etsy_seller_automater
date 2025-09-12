@@ -11,49 +11,41 @@ const useOrganizationStore = create(
       organizationError: null,
 
       // Organization management actions
-      setCurrentOrganization: (organization) =>
+      setCurrentOrganization: organization =>
         set({
           currentOrganization: organization,
           organizationError: null,
         }),
 
-      setOrganizations: (organizations) =>
+      setOrganizations: organizations =>
         set({
           organizations,
           organizationError: null,
         }),
 
-      addOrganization: (organization) =>
+      addOrganization: organization =>
         set(state => ({
           organizations: [...state.organizations, organization],
           organizationError: null,
         })),
 
-      updateOrganization: (updatedOrg) =>
+      updateOrganization: updatedOrg =>
         set(state => ({
-          organizations: state.organizations.map(org =>
-            org.id === updatedOrg.id ? updatedOrg : org
-          ),
-          currentOrganization: state.currentOrganization?.id === updatedOrg.id
-            ? updatedOrg
-            : state.currentOrganization,
+          organizations: state.organizations.map(org => (org.id === updatedOrg.id ? updatedOrg : org)),
+          currentOrganization: state.currentOrganization?.id === updatedOrg.id ? updatedOrg : state.currentOrganization,
           organizationError: null,
         })),
 
-      removeOrganization: (organizationId) =>
+      removeOrganization: organizationId =>
         set(state => ({
           organizations: state.organizations.filter(org => org.id !== organizationId),
-          currentOrganization: state.currentOrganization?.id === organizationId
-            ? null
-            : state.currentOrganization,
+          currentOrganization: state.currentOrganization?.id === organizationId ? null : state.currentOrganization,
           organizationError: null,
         })),
 
-      setOrganizationLoading: (loading) =>
-        set({ organizationLoading: loading }),
+      setOrganizationLoading: loading => set({ organizationLoading: loading }),
 
-      setOrganizationError: (error) =>
-        set({ organizationError: error }),
+      setOrganizationError: error => set({ organizationError: error }),
 
       clearOrganizationData: () =>
         set({
@@ -102,7 +94,7 @@ const useOrganizationStore = create(
     }),
     {
       name: 'organization-store',
-      partialize: (state) => ({
+      partialize: state => ({
         currentOrganization: state.currentOrganization,
         organizations: state.organizations,
       }),

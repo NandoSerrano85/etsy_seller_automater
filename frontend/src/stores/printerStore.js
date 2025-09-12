@@ -11,49 +11,41 @@ const usePrinterStore = create(
       printersError: null,
 
       // Printer management actions
-      setPrinters: (printers) =>
+      setPrinters: printers =>
         set({
           printers,
           printersError: null,
         }),
 
-      addPrinter: (printer) =>
+      addPrinter: printer =>
         set(state => ({
           printers: [...state.printers, printer],
           printersError: null,
         })),
 
-      updatePrinter: (updatedPrinter) =>
+      updatePrinter: updatedPrinter =>
         set(state => ({
-          printers: state.printers.map(printer =>
-            printer.id === updatedPrinter.id ? updatedPrinter : printer
-          ),
-          defaultPrinter: state.defaultPrinter?.id === updatedPrinter.id
-            ? updatedPrinter
-            : state.defaultPrinter,
+          printers: state.printers.map(printer => (printer.id === updatedPrinter.id ? updatedPrinter : printer)),
+          defaultPrinter: state.defaultPrinter?.id === updatedPrinter.id ? updatedPrinter : state.defaultPrinter,
           printersError: null,
         })),
 
-      removePrinter: (printerId) =>
+      removePrinter: printerId =>
         set(state => ({
           printers: state.printers.filter(printer => printer.id !== printerId),
-          defaultPrinter: state.defaultPrinter?.id === printerId
-            ? null
-            : state.defaultPrinter,
+          defaultPrinter: state.defaultPrinter?.id === printerId ? null : state.defaultPrinter,
           printersError: null,
         })),
 
-      setDefaultPrinter: (printer) =>
+      setDefaultPrinter: printer =>
         set({
           defaultPrinter: printer,
           printersError: null,
         }),
 
-      setPrintersLoading: (loading) =>
-        set({ printersLoading: loading }),
+      setPrintersLoading: loading => set({ printersLoading: loading }),
 
-      setPrintersError: (error) =>
-        set({ printersError: error }),
+      setPrintersError: error => set({ printersError: error }),
 
       clearPrintersData: () =>
         set({
@@ -63,7 +55,7 @@ const usePrinterStore = create(
         }),
 
       // Helper methods
-      getPrinterById: (printerId) => {
+      getPrinterById: printerId => {
         const { printers } = get();
         return printers.find(printer => printer.id === printerId);
       },
@@ -73,21 +65,17 @@ const usePrinterStore = create(
         return printers.filter(printer => printer.is_active);
       },
 
-      getPrintersByType: (templateId) => {
+      getPrintersByType: templateId => {
         const { printers } = get();
-        return printers.filter(printer => 
-          printer.is_active && 
-          printer.supported_template_ids.includes(templateId)
-        );
+        return printers.filter(printer => printer.is_active && printer.supported_template_ids.includes(templateId));
       },
 
       // Get printers that can handle specific dimensions
       getPrintersForDimensions: (widthInches, heightInches) => {
         const { printers } = get();
-        return printers.filter(printer =>
-          printer.is_active &&
-          printer.max_width_inches >= widthInches &&
-          printer.max_height_inches >= heightInches
+        return printers.filter(
+          printer =>
+            printer.is_active && printer.max_width_inches >= widthInches && printer.max_height_inches >= heightInches
         );
       },
 
@@ -109,7 +97,7 @@ const usePrinterStore = create(
     }),
     {
       name: 'printer-store',
-      partialize: (state) => ({
+      partialize: state => ({
         printers: state.printers,
         defaultPrinter: state.defaultPrinter,
       }),

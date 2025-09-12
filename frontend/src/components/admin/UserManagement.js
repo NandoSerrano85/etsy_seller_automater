@@ -17,13 +17,37 @@ const UserManagement = () => {
     try {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 800));
-      
+
       const mockUsers = [
-        { id: '1', name: 'John Doe', email: 'john@example.com', org: 'Acme Corp', role: 'admin', status: 'active', last_login: '2024-01-15T10:00:00Z' },
-        { id: '2', name: 'Jane Smith', email: 'jane@design.com', org: 'Design Studio', role: 'member', status: 'active', last_login: '2024-01-14T15:30:00Z' },
-        { id: '3', name: 'Bob Johnson', email: 'bob@test.com', org: 'Test Co', role: 'owner', status: 'inactive', last_login: '2024-01-10T09:15:00Z' }
+        {
+          id: '1',
+          name: 'John Doe',
+          email: 'john@example.com',
+          org: 'Acme Corp',
+          role: 'admin',
+          status: 'active',
+          last_login: '2024-01-15T10:00:00Z',
+        },
+        {
+          id: '2',
+          name: 'Jane Smith',
+          email: 'jane@design.com',
+          org: 'Design Studio',
+          role: 'member',
+          status: 'active',
+          last_login: '2024-01-14T15:30:00Z',
+        },
+        {
+          id: '3',
+          name: 'Bob Johnson',
+          email: 'bob@test.com',
+          org: 'Test Co',
+          role: 'owner',
+          status: 'inactive',
+          last_login: '2024-01-10T09:15:00Z',
+        },
       ];
-      
+
       setUsers(mockUsers);
     } catch (error) {
       addNotification({ type: 'error', message: 'Failed to load users' });
@@ -32,9 +56,10 @@ const UserManagement = () => {
     }
   };
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredUsers = users.filter(
+    user =>
+      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -48,7 +73,7 @@ const UserManagement = () => {
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sage-500"
             placeholder="Search users..."
           />
@@ -66,15 +91,23 @@ const UserManagement = () => {
           <thead className="bg-slate-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">User</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Organization</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Organization
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Role</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Last Login</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Last Login
+              </th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-200">
-            {filteredUsers.map((user) => (
+            {filteredUsers.map(user => (
               <tr key={user.id} className="hover:bg-slate-50">
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div>
@@ -84,18 +117,24 @@ const UserManagement = () => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900">{user.org}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    user.role === 'owner' ? 'bg-purple-100 text-purple-800' :
-                    user.role === 'admin' ? 'bg-blue-100 text-blue-800' :
-                    'bg-green-100 text-green-800'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      user.role === 'owner'
+                        ? 'bg-purple-100 text-purple-800'
+                        : user.role === 'admin'
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-green-100 text-green-800'
+                    }`}
+                  >
                     {user.role}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                    user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                    }`}
+                  >
                     {user.status}
                   </span>
                 </td>

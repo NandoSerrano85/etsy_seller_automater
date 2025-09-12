@@ -11,20 +11,20 @@ class PrinterService {
 
     // Add auth interceptor
     this.api.interceptors.request.use(
-      (config) => {
+      config => {
         const { userToken } = useAuthStore.getState();
         if (userToken) {
           config.headers.Authorization = `Bearer ${userToken}`;
         }
         return config;
       },
-      (error) => Promise.reject(error)
+      error => Promise.reject(error)
     );
 
     // Add response interceptor for error handling
     this.api.interceptors.response.use(
-      (response) => response,
-      (error) => {
+      response => response,
+      error => {
         if (error.response?.status === 401) {
           useAuthStore.getState().clearUserAuth();
         }

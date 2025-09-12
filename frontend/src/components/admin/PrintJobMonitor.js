@@ -11,20 +11,25 @@ const PrintJobMonitor = () => {
         { id: '1', order: '#12345', status: 'printing', progress: 75, printer: 'HP LaserJet Pro', eta: '5 min' },
         { id: '2', order: '#12346', status: 'queued', progress: 0, printer: 'Canon Inkjet', eta: '15 min' },
         { id: '3', order: '#12347', status: 'completed', progress: 100, printer: 'Epson Sublimation', eta: 'Done' },
-        { id: '4', order: '#12348', status: 'failed', progress: 45, printer: 'HP LaserJet Pro', eta: 'Error' }
+        { id: '4', order: '#12348', status: 'failed', progress: 45, printer: 'HP LaserJet Pro', eta: 'Error' },
       ]);
       setLoading(false);
     };
     loadJobs();
   }, []);
 
-  const getStatusColor = (status) => {
+  const getStatusColor = status => {
     switch (status) {
-      case 'printing': return 'bg-blue-100 text-blue-800';
-      case 'queued': return 'bg-yellow-100 text-yellow-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'printing':
+        return 'bg-blue-100 text-blue-800';
+      case 'queued':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -56,7 +61,7 @@ const PrintJobMonitor = () => {
           <h3 className="text-lg font-semibold">Recent Print Jobs</h3>
         </div>
         <div className="divide-y">
-          {printJobs.map((job) => (
+          {printJobs.map(job => (
             <div key={job.id} className="px-6 py-4 flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div>
@@ -71,10 +76,7 @@ const PrintJobMonitor = () => {
                     <span>{job.eta}</span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${job.progress}%` }}
-                    ></div>
+                    <div className="bg-blue-600 h-2 rounded-full" style={{ width: `${job.progress}%` }}></div>
                   </div>
                 </div>
                 <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(job.status)}`}>
