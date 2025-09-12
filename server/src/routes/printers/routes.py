@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 from typing import List, Optional
 
-from server.src.database import get_db
+from server.src.database.core import get_db
 from server.src.auth.dependencies import get_current_user
 from server.src.entities.user import User
 from server.src.routes.organizations.service import OrganizationService
