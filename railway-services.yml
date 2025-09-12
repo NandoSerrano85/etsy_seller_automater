@@ -1,0 +1,162 @@
+# Railway Services Configuration
+# This file documents the microservices architecture for Railway deployment
+
+services:
+  # Main API Service
+  etsy-automation-api:
+    name: "Etsy Automation API"
+    description: "Main FastAPI backend service"
+    service_type: "web"
+    dockerfile: "Dockerfile.railway-backend"
+    start_command: "python server/main.py"
+    healthcheck: "/health"
+    replicas: 1
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3003
+      - DEBUG=false
+      - DOCKER_ENV=railway
+    variables:
+      - DATABASE_URL
+      - REDIS_URL
+      - JWT_SECRET
+      - ETSY_API_KEY
+      - ETSY_CLIENT_SECRET
+      - QNAP_NAS_HOST
+      - QNAP_NAS_USERNAME
+      - QNAP_NAS_PASSWORD
+      - FRONTEND_URL
+
+  # Background Worker Service
+  etsy-automation-worker:
+    name: "Background Worker"
+    description: "General purpose background task processor"
+    service_type: "worker"
+    dockerfile: "Dockerfile.railway-worker"
+    start_command: "python worker/main.py"
+    replicas: 2
+    environment:
+      - WORKER_TYPE=general
+      - DOCKER_ENV=railway
+    variables:
+      - DATABASE_URL
+      - REDIS_URL
+      - QNAP_NAS_HOST
+      - QNAP_NAS_USERNAME
+      - QNAP_NAS_PASSWORD
+
+  # Print Job Processor
+  etsy-automation-print-worker:
+    name: "Print Job Processor"
+    description: "Dedicated worker for print job processing"
+    service_type: "worker"
+    dockerfile: "Dockerfile.railway-worker"
+    start_command: "python worker/print_processor.py"
+    replicas: 1
+    environment:
+      - WORKER_TYPE=print_jobs
+      - DOCKER_ENV=railway
+    variables:
+      - DATABASE_URL
+      - REDIS_URL
+      - QNAP_NAS_HOST
+      - QNAP_NAS_USERNAME
+      - QNAP_NAS_PASSWORD
+
+  # Task Scheduler
+  etsy-automation-scheduler:
+    name: "Task Scheduler"
+    description: "Cron-like scheduler for periodic tasks"
+    service_type: "cron"
+    dockerfile: "Dockerfile.railway-worker"
+    start_command: "python worker/scheduler.py"
+    replicas: 1
+    environment:
+      - WORKER_TYPE=scheduler
+      - DOCKER_ENV=railway
+    variables:
+      - DATABASE_URL
+      - REDIS_URL
+
+  # Frontend Service (if deploying together)
+  etsy-automation-frontend:
+    name: "React Frontend"
+    description: "React.js frontend application"
+    service_type: "web"
+    dockerfile: "Dockerfile.frontend"
+    start_command: "npm run start:production"
+    healthcheck: "/"
+    replicas: 1
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    variables:
+      - REACT_APP_API_URL
+      - REACT_APP_ENVIRONMENT=production
+
+# Required Railway Plugins
+plugins:
+  postgresql:
+    name: "PostgreSQL"
+    version: "15"
+    description: "Primary database for organizations, users, files, jobs, events"
+    environment_variable: "DATABASE_URL"
+    
+  redis:
+    name: "Redis"
+    version: "7"
+    description: "Task queues, caching, session storage"
+    environment_variable: "REDIS_URL"
+
+# External Dependencies
+external_services:
+  qnap_nas:
+    name: "QNAP NAS"
+    description: "File storage via SFTP"
+    protocol: "SFTP"
+    required_variables:
+      - QNAP_NAS_HOST
+      - QNAP_NAS_USERNAME  
+      - QNAP_NAS_PASSWORD
+      - QNAP_NAS_BASE_PATH
+    
+  etsy_api:
+    name: "Etsy API"
+    description: "Etsy marketplace integration"
+    required_variables:
+      - ETSY_API_KEY
+      - ETSY_CLIENT_SECRET
+
+# Deployment Strategy
+deployment:
+  strategy: "rolling"
+  zero_downtime: true
+  health_checks: true
+  auto_scaling: false  # Manual scaling for cost control
+  
+# Monitoring & Alerts
+monitoring:
+  health_endpoints:
+    - "/health" 
+    - "/ping"
+  metrics:
+    - cpu_usage
+    - memory_usage
+    - request_count
+    - error_rate
+  alerts:
+    - high_error_rate
+    - service_down
+    - high_resource_usage
+
+# Security
+security:
+  environment_variables:
+    encrypted:
+      - JWT_SECRET
+      - ETSY_CLIENT_SECRET
+      - QNAP_NAS_PASSWORD
+    public:
+      - FRONTEND_URL
+      - QNAP_NAS_HOST
+      - ETSY_API_KEY

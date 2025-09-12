@@ -16,6 +16,7 @@ class DesignImages(Base):
     __tablename__ = 'design_images'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)  # Added for multi-tenancy
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
@@ -27,6 +28,7 @@ class DesignImages(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
+    organization = relationship('Organization', back_populates='design_images')
     user = relationship('User', back_populates='design_images')
     product_templates = relationship('EtsyProductTemplate', secondary=design_template_association, back_populates='design_images')
     canvas_config = relationship('CanvasConfig', back_populates='design_images')

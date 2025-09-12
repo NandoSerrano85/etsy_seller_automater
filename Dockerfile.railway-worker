@@ -1,0 +1,39 @@
+# Railway Worker Dockerfile for background task processing
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libffi-dev \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional worker dependencies
+RUN pip install --no-cache-dir \
+    celery \
+    redis \
+    paramiko \
+    Pillow \
+    python-multipart
+
+# Copy the application code
+COPY server/ ./server/
+COPY .env* ./
+
+# Set Python path
+ENV PYTHONPATH=/app
+
+# Health check for worker processes
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import redis; r = redis.from_url('${REDIS_URL}'); r.ping()" || exit 1
+
+# Default command (can be overridden)
+CMD ["python", "server/worker/main.py"]

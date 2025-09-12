@@ -1,0 +1,87 @@
+# Railway Configuration for Etsy Seller Automater
+# QNAP NAS + Railway Architecture
+
+services:
+  # Main FastAPI Application
+  api:
+    source: .
+    dockerfile: Dockerfile
+    port: 8000
+    environment:
+      - PORT=8000
+      - PYTHONPATH=/app
+    build:
+      buildCommand: pip install --no-cache-dir -r requirements.txt
+    start:
+      command: uvicorn server.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers
+    healthcheck:
+      path: /health
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+  # Background Worker for Image Processing
+  worker:
+    source: .
+    dockerfile: Dockerfile.worker
+    environment:
+      - PYTHONPATH=/app
+      - WORKER_CONCURRENCY=2
+    build:
+      buildCommand: pip install --no-cache-dir -r requirements.txt
+    start:
+      command: python -m server.worker.main
+    
+  # Database (Railway Plugin)
+  postgres:
+    plugin: postgresql
+    
+  # Cache/Queue (Railway Plugin)  
+  redis:
+    plugin: redis
+
+# Environment Variables Template
+# These should be set in Railway Dashboard > Variables
+environments:
+  production:
+    variables:
+      # Database & Cache (Auto-injected by Railway)
+      - DATABASE_URL
+      - REDIS_URL
+      
+      # QNAP NAS Storage
+      - QNAP_HOST
+      - QNAP_USERNAME 
+      - QNAP_PASSWORD
+      - QNAP_PORT=22
+      - NAS_BASE_PATH=/share/Graphics
+      
+      # Application Settings
+      - JWT_SECRET_KEY
+      - JWT_ALGORITHM=HS256
+      - USER_LOGIN_ACCESS_TOKEN_EXPIRE_MINUTES=300
+      
+      # Etsy API
+      - CLIENT_ID
+      - CLIENT_SECRET
+      - ETSY_OAUTH_TOKEN
+      - ETSY_REFRESH_TOKEN
+      
+      # Optional Features
+      - DISABLE_REGISTRATION=false
+      - FEATURE_FLAGS_DEFAULT=mockups:true,print:true,designs:true
+      - RAILWAY_ENV=production
+      
+  staging:
+    variables:
+      - DATABASE_URL
+      - REDIS_URL
+      - QNAP_HOST
+      - QNAP_USERNAME
+      - QNAP_PASSWORD
+      - QNAP_PORT=22
+      - NAS_BASE_PATH=/share/Graphics
+      - JWT_SECRET_KEY
+      - CLIENT_ID
+      - CLIENT_SECRET
+      - RAILWAY_ENV=staging

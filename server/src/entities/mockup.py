@@ -38,11 +38,13 @@ class Mockups(Base):
     __tablename__ = 'mockups'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)  # Added for multi-tenancy
     name = Column(String, nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     product_template_id = Column(UUID(as_uuid=True), ForeignKey('etsy_product_templates.id'), nullable=False)
     starting_name = Column(Integer, default=100)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    organization = relationship('Organization', back_populates='mockups')
     user = relationship('User', back_populates='mockups')
     mockup_images = relationship('MockupImage', back_populates='mockups', cascade='all, delete-orphan')
