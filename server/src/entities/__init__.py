@@ -3,7 +3,7 @@ Entities package - SQLAlchemy models for the application
 """
 
 # Import all entities to ensure they are registered with SQLAlchemy
-from .organization import Organization
+from .organization import Organization, OrganizationMember
 from .user import User
 from .shop import Shop
 from .files import File
@@ -21,6 +21,7 @@ from .printer import Printer
 # Export all entities
 __all__ = [
     'Organization',
+    'OrganizationMember',
     'User',
     'Shop',
     'File',

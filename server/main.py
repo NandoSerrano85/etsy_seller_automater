@@ -80,6 +80,8 @@ def run_migrations():
         from sqlalchemy import text
         with engine.connect() as conn:
             with conn.begin():
+                print("🔄 Running database migrations...")
+                
                 # Check if etsy_shop_id column exists
                 result = conn.execute(text("""
                     SELECT column_name 
@@ -93,10 +95,176 @@ def run_migrations():
                     print("✅ Added etsy_shop_id column to users table")
                 else:
                     print("✅ etsy_shop_id column already exists")
+
+                # Run multi-tenant migration
+                run_multi_tenant_migration(conn)
                     
     except Exception as e:
         print(f"⚠️  Warning: Migration failed: {e}")
         # Continue running - the column might exist or the migration might not be critical
+
+def run_multi_tenant_migration(conn):
+    """Run the multi-tenant schema migration."""
+    try:
+        from sqlalchemy import text
+        
+        print("🔄 Checking multi-tenant schema...")
+        
+        # Check if organizations table exists
+        result = conn.execute(text("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_name = 'organizations' AND table_schema = 'public'
+        """))
+        
+        if not result.fetchone():
+            print("📋 Creating multi-tenant tables...")
+            
+            # Create organizations table
+            conn.execute(text("""
+                CREATE TABLE organizations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    settings JSONB DEFAULT '{}',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("✅ Created organizations table")
+            
+            # Create organization_members table
+            conn.execute(text("""
+                CREATE TABLE organization_members (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR(50) DEFAULT 'member',
+                    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(organization_id, user_id)
+                )
+            """))
+            print("✅ Created organization_members table")
+            
+            # Add org_id column to users table if it doesn't exist
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'users' AND column_name = 'org_id'
+            """))
+            
+            if not result.fetchone():
+                conn.execute(text("""
+                    ALTER TABLE users 
+                    ADD COLUMN org_id UUID REFERENCES organizations(id) ON DELETE SET NULL
+                """))
+                print("✅ Added org_id column to users table")
+            
+            # Create other multi-tenant tables
+            multi_tenant_tables = {
+                'shops': """
+                    CREATE TABLE shops (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        name VARCHAR(255) NOT NULL,
+                        etsy_shop_id VARCHAR(255),
+                        settings JSONB DEFAULT '{}',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                """,
+                'printers': """
+                    CREATE TABLE printers (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                        name VARCHAR(255) NOT NULL,
+                        printer_type VARCHAR(100) NOT NULL,
+                        dpi INTEGER DEFAULT 300,
+                        max_width_inches DECIMAL(8,2) NOT NULL,
+                        max_height_inches DECIMAL(8,2) NOT NULL,
+                        supported_template_ids JSONB DEFAULT '[]',
+                        is_active BOOLEAN DEFAULT true,
+                        is_default BOOLEAN DEFAULT false,
+                        settings JSONB DEFAULT '{}',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                """,
+                'files': """
+                    CREATE TABLE files (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        filename VARCHAR(255) NOT NULL,
+                        file_path VARCHAR(500) NOT NULL,
+                        file_type VARCHAR(100),
+                        file_size_bytes BIGINT,
+                        metadata JSONB DEFAULT '{}',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                """,
+                'print_jobs': """
+                    CREATE TABLE print_jobs (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                        printer_id UUID REFERENCES printers(id) ON DELETE SET NULL,
+                        file_id UUID REFERENCES files(id) ON DELETE CASCADE,
+                        status VARCHAR(50) DEFAULT 'pending',
+                        settings JSONB DEFAULT '{}',
+                        error_message TEXT,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP WITH TIME ZONE
+                    )
+                """,
+                'events': """
+                    CREATE TABLE events (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        org_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+                        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+                        event_type VARCHAR(100) NOT NULL,
+                        event_data JSONB DEFAULT '{}',
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    )
+                """
+            }
+            
+            for table_name, create_sql in multi_tenant_tables.items():
+                # Check if table exists
+                result = conn.execute(text(f"""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_name = '{table_name}' AND table_schema = 'public'
+                """))
+                
+                if not result.fetchone():
+                    conn.execute(text(create_sql))
+                    print(f"✅ Created {table_name} table")
+                else:
+                    print(f"✅ {table_name} table already exists")
+            
+            print("✅ Multi-tenant schema migration completed successfully")
+            
+            # Enable multi-tenant features after successful migration
+            enable_multi_tenant_features()
+            
+        else:
+            print("✅ Multi-tenant schema already exists")
+            # Check if multi-tenant features should be enabled
+            enable_multi_tenant_features()
+            
+    except Exception as e:
+        print(f"❌ Multi-tenant migration failed: {e}")
+        # Don't raise the exception to prevent app startup failure
+        print("⚠️  App will continue running with existing schema")
+
+def enable_multi_tenant_features():
+    """Enable multi-tenant features by setting environment variable."""
+    import os
+    # Set environment variable to enable multi-tenant features
+    os.environ['ENABLE_MULTI_TENANT'] = 'true'
+    print("✅ Multi-tenant features enabled")
 
 try:
     run_migrations()

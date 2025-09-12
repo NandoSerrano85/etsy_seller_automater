@@ -44,7 +44,13 @@ class AuthService {
         setUserAuth(userData, data.access_token);
       }
 
-      return { success: true };
+      // Check if user needs to select an organization
+      const needsOrgSelection = await this.checkOrganizationSelectionRequired(data.access_token);
+
+      return {
+        success: true,
+        needsOrganizationSelection: needsOrgSelection,
+      };
     } catch (error) {
       setUserError(error.message);
       return { success: false, error: error.message };
@@ -53,21 +59,27 @@ class AuthService {
     }
   }
 
-  async registerUser(email, password, shopName) {
+  async registerUser(registrationData) {
     const { setUserLoading, setUserError } = useAuthStore.getState();
 
     try {
       setUserLoading(true);
       setUserError(null);
 
+      // Support both old format (for backward compatibility) and new format
+      const payload =
+        typeof registrationData === 'object' && registrationData.email
+          ? registrationData
+          : {
+              email: arguments[0],
+              password: arguments[1],
+              shop_name: arguments[2],
+            };
+
       const response = await fetch(`${API_BASE_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          password,
-          shop_name: shopName,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
@@ -85,6 +97,8 @@ class AuthService {
         return { success: true };
       } else {
         // Fallback: log them in to get user data
+        const email = payload.email;
+        const password = payload.password;
         return await this.loginUser(email, password);
       }
     } catch (error) {
@@ -118,6 +132,28 @@ class AuthService {
     } catch (error) {
       setUserError(error.message);
       return { success: false, error: error.message };
+    }
+  }
+
+  async checkOrganizationSelectionRequired(token) {
+    try {
+      // Check if user has multiple organizations or no current organization selected
+      const response = await fetch(`${API_BASE_URL}/api/organizations`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (response.ok) {
+        const organizations = await response.json();
+
+        // If user has organizations but no current organization selected, they need to choose
+        return organizations.length > 0;
+      }
+
+      return false;
+    } catch (error) {
+      // If we can't check organizations, assume selection is not required
+      console.warn('Could not check organization selection requirement:', error);
+      return false;
     }
   }
 

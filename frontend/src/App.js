@@ -13,6 +13,7 @@ import Account from './pages/Account';
 import OrganizationManagement from './pages/OrganizationManagement';
 import PrinterManagement from './pages/PrinterManagement';
 import AdminDashboard from './pages/AdminDashboard';
+import OrganizationSelection from './pages/OrganizationSelection';
 import NotificationSystem, { useNotifications } from './components/NotificationSystem';
 import DesignsTab from './pages/HomeTabs/DesignsTab';
 import AnalyticsTab from './pages/HomeTabs/AnalyticsTab';
@@ -27,7 +28,7 @@ const AppLayout = ({ children }) => {
   const { notifications, removeNotification } = useNotifications();
 
   // Hide sidebar and top nav on login and public pages
-  const isPublicPage = ['/login', '/oauth/redirect', '/welcome'].includes(location.pathname);
+  const isPublicPage = ['/login', '/oauth/redirect', '/welcome', '/organization-select'].includes(location.pathname);
 
   if (isPublicPage) {
     return (
@@ -90,6 +91,7 @@ function App() {
           <Route path="/login" element={<LoginRegister />} />
           <Route path="/welcome" element={<Navigate to="/" replace />} />
           <Route path="/oauth/redirect" element={<OAuthRedirect />} />
+          <Route path="/organization-select" element={<OrganizationSelection />} />
 
           {/* Protected routes */}
           {/* Main Dashboard */}

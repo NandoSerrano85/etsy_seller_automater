@@ -12,14 +12,17 @@ from server.src.routes.designs.controller import router as design_router
 from server.src.routes.mockups.controller import router as mockup_router
 from server.src.routes.third_party_listings.controller import router as third_party_listings_router
 
-# New multi-tenant routes for Railway architecture
-# TODO: Fix authentication integration for new routes
-# from server.src.routes.organizations.routes import router as organization_router
-# from server.src.routes.shops.routes import router as shop_router
-# from server.src.routes.files.routes import router as file_router
-# from server.src.routes.print_jobs.routes import router as print_job_router
-# from server.src.routes.events.routes import router as event_router
-# from server.src.routes.printers.routes import router as printer_router
+# Multi-tenant routes - conditionally imported if multi-tenant is enabled
+def get_multi_tenant_routers():
+    """Import multi-tenant routers only if multi-tenant is enabled"""
+    routers = []
+    if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
+        try:
+            from server.src.routes.organizations.routes import router as organization_router
+            routers.append(organization_router)
+        except ImportError as e:
+            print(f"Warning: Could not import organization router: {e}")
+    return routers
 import os
 import time
 import psutil
@@ -94,11 +97,7 @@ def register_routes(app: FastAPI):
     app.include_router(mockup_router)
     app.include_router(third_party_listings_router)
     
-    # New multi-tenant routes for Railway architecture  
-    # TODO: Fix authentication integration and uncomment these routes
-    # app.include_router(organization_router, prefix="/api")
-    # app.include_router(shop_router, prefix="/api")
-    # app.include_router(file_router, prefix="/api")
-    # app.include_router(print_job_router, prefix="/api")
-    # app.include_router(event_router, prefix="/api")
-    # app.include_router(printer_router, prefix="/api")
+    # Multi-tenant routes - only enabled if multi-tenant is enabled
+    multi_tenant_routers = get_multi_tenant_routers()
+    for router in multi_tenant_routers:
+        app.include_router(router, prefix="/api")

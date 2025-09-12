@@ -11,7 +11,9 @@ const LoginRegister = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [shopName, setShopName] = useState('');
-  // const [registerError, setRegisterError] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [registrationMode, setRegistrationMode] = useState('create'); // 'create' or 'join'
 
   const { login, register, isUserAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -42,6 +44,14 @@ const LoginRegister = () => {
       setError('Passwords do not match.');
       return false;
     }
+    if (tab === 'register' && registrationMode === 'create' && !organizationName.trim()) {
+      setError('Organization name is required.');
+      return false;
+    }
+    if (tab === 'register' && registrationMode === 'join' && !inviteCode.trim()) {
+      setError('Invite code is required to join an organization.');
+      return false;
+    }
     setError('');
     return true;
   };
@@ -56,12 +66,23 @@ const LoginRegister = () => {
       if (tab === 'login') {
         const result = await login(email, password);
         if (result.success) {
-          navigate('/connect-etsy', { replace: true });
+          if (result.needsOrganizationSelection) {
+            navigate('/organization-select', { replace: true });
+          } else {
+            navigate('/connect-etsy', { replace: true });
+          }
         } else {
           setError(result.error);
         }
       } else {
-        const result = await register(email, password, shopName);
+        const registrationData = {
+          email,
+          password,
+          shop_name: shopName,
+          registration_mode: registrationMode,
+          ...(registrationMode === 'create' ? { organization_name: organizationName } : { invite_code: inviteCode }),
+        };
+        const result = await register(registrationData);
         if (result.success) {
           navigate('/', { replace: true });
         } else {
@@ -92,6 +113,7 @@ const LoginRegister = () => {
             onClick={() => {
               setTab('register');
               setError('');
+              setRegistrationMode('create');
             }}
           >
             Register
@@ -161,8 +183,73 @@ const LoginRegister = () => {
                   required
                 />
               </div>
+
+              {/* Registration Mode Selection */}
               <div className="mb-4">
-                <label htmlFor="shop-name" className="block text-sm font-medium text-gray-700">
+                <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Registration Type</label>
+                <div className="flex space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="create"
+                      checked={registrationMode === 'create'}
+                      onChange={e => setRegistrationMode(e.target.value)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">Create New Organization</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      value="join"
+                      checked={registrationMode === 'join'}
+                      onChange={e => setRegistrationMode(e.target.value)}
+                      className="mr-2"
+                    />
+                    <span className="text-sm">Join Existing Organization</span>
+                  </label>
+                </div>
+              </div>
+
+              {registrationMode === 'create' && (
+                <div className="mb-4">
+                  <label
+                    htmlFor="organization-name"
+                    className="block text-gray-700 font-medium mb-1 text-sm sm:text-base"
+                  >
+                    Organization Name
+                  </label>
+                  <input
+                    id="organization-name"
+                    type="text"
+                    value={organizationName}
+                    onChange={e => setOrganizationName(e.target.value)}
+                    className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
+                    placeholder="Enter your organization name"
+                    required
+                  />
+                </div>
+              )}
+
+              {registrationMode === 'join' && (
+                <div className="mb-4">
+                  <label htmlFor="invite-code" className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">
+                    Invite Code
+                  </label>
+                  <input
+                    id="invite-code"
+                    type="text"
+                    value={inviteCode}
+                    onChange={e => setInviteCode(e.target.value)}
+                    className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
+                    placeholder="Enter your invite code"
+                    required
+                  />
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label htmlFor="shop-name" className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">
                   Shop Name
                 </label>
                 <input
@@ -171,7 +258,8 @@ const LoginRegister = () => {
                   value={shopName}
                   onChange={e => setShopName(e.target.value)}
                   required
-                  className="input-field"
+                  className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
+                  placeholder="Enter your shop name"
                 />
               </div>
             </div>

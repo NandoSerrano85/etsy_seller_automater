@@ -62,17 +62,93 @@ def verify_token(token: str) -> TokenData:
 
 def register_user(register_user_request: RegisterUserRequest, db: Session) -> User | bool:
     try:
-        user = User(
-            email=register_user_request.email,
-            hashed_password=get_password_hash(register_user_request.password),
-            shop_name=register_user_request.shop_name
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        return user
+        # Check if multi-tenant is enabled
+        multi_tenant_enabled = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
+        
+        if multi_tenant_enabled:
+            return register_user_multi_tenant(register_user_request, db)
+        else:
+            # Legacy single-tenant registration
+            user = User(
+                email=register_user_request.email,
+                hashed_password=get_password_hash(register_user_request.password),
+                shop_name=register_user_request.shop_name
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            return user
     except Exception as e:
-        logging.error(e)
+        logging.error(f"Registration failed: {e}")
+        return False
+
+def register_user_multi_tenant(register_user_request: RegisterUserRequest, db: Session) -> User | bool:
+    """Handle multi-tenant user registration."""
+    from server.src.entities.organization import Organization, OrganizationMember
+    
+    try:
+        if register_user_request.registration_mode == 'create':
+            # Create new organization
+            if not register_user_request.organization_name:
+                logging.error("Organization name is required for creating new organization")
+                return False
+                
+            # Create organization
+            organization = Organization(
+                name=register_user_request.organization_name,
+                description=f"Organization for {register_user_request.organization_name}",
+                settings={}
+            )
+            db.add(organization)
+            db.flush()  # Get the organization ID
+            
+            # Create user with organization reference
+            user = User(
+                email=register_user_request.email,
+                hashed_password=get_password_hash(register_user_request.password),
+                shop_name=register_user_request.shop_name,
+                org_id=organization.id,
+                role='owner'  # First user is owner
+            )
+            db.add(user)
+            db.flush()  # Get the user ID
+            
+            # Create organization membership
+            membership = OrganizationMember(
+                organization_id=organization.id,
+                user_id=user.id,
+                role='owner'
+            )
+            db.add(membership)
+            
+            db.commit()
+            db.refresh(user)
+            return user
+            
+        elif register_user_request.registration_mode == 'join':
+            # Join existing organization via invite code
+            if not register_user_request.invite_code:
+                logging.error("Invite code is required for joining organization")
+                return False
+            
+            # TODO: Implement invite code logic
+            # For now, just create user without organization
+            user = User(
+                email=register_user_request.email,
+                hashed_password=get_password_hash(register_user_request.password),
+                shop_name=register_user_request.shop_name
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            return user
+        else:
+            logging.error(f"Invalid registration mode: {register_user_request.registration_mode}")
+            return False
+            
+    except Exception as e:
+        logging.error(f"Multi-tenant registration failed: {e}")
+        db.rollback()
         return False
 
 def get_current_user(token: Annotated[str, Depends(oath2_bearer)]) -> TokenData:

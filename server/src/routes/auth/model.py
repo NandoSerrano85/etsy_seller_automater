@@ -8,6 +8,10 @@ class RegisterUserRequest(BaseModel):
     email: EmailStr
     password: str
     shop_name: str
+    # Multi-tenant registration fields (optional for backward compatibility)
+    registration_mode: Optional[str] = 'create'  # 'create' or 'join'
+    organization_name: Optional[str] = None  # For creating new organization
+    invite_code: Optional[str] = None  # For joining existing organization
 
 class UserProfile(BaseModel):
     id: UUID
