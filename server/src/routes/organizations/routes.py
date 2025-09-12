@@ -8,7 +8,7 @@ from uuid import UUID
 from typing import List
 
 from server.src.database.core import get_db
-from server.src.auth.dependencies import get_current_user
+from server.src.routes.auth.service import CurrentUser
 from server.src.entities.user import User
 from . import model
 from .service import OrganizationService
@@ -18,15 +18,19 @@ router = APIRouter(prefix="/organizations", tags=["organizations"])
 @router.post("/", response_model=model.OrganizationResponse)
 def create_organization(
     org_data: model.OrganizationCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
 ):
     """Create a new organization"""
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+    
     try:
         org = OrganizationService.create_organization(
             db=db,
             org_data=org_data,
-            owner_user_id=current_user.id
+            owner_user_id=user_id
         )
         return model.OrganizationResponse.model_validate(org)
     except Exception as e:
