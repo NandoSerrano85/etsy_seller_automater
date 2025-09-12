@@ -9,6 +9,7 @@ from server.src.entities.user import User
 from . import model
 from server.src.utils.gangsheet_engine import create_gang_sheets_from_db, create_gang_sheets
 from server.src.utils.etsy_api_engine import EtsyAPI
+from server.src.utils.nas_storage import nas_storage
 from server.src.entities.template import EtsyProductTemplate
 
 load_dotenv()
@@ -57,6 +58,27 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
             "success": False,
             "error": f"No mockup images found for template '{template_name}'"
         }
+    
+    # Upload generated print files to NAS
+    try:
+        if os.path.exists(output_dir):
+            for filename in os.listdir(output_dir):
+                if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+                    file_path = os.path.join(output_dir, filename)
+                    relative_path = f"Printfiles/{filename}"
+                    success = nas_storage.upload_file(
+                        local_file_path=file_path,
+                        shop_name=current_user.shop_name,
+                        relative_path=relative_path
+                    )
+                    if success:
+                        logging.info(f"Successfully uploaded print file to NAS: {relative_path}")
+                    else:
+                        logging.warning(f"Failed to upload print file to NAS: {relative_path}")
+    except Exception as e:
+        logging.error(f"Error uploading print files to NAS: {e}")
+        # Don't fail the entire process if NAS upload fails
+    
     return {
         "success": True,
         "message": f"Successfully created gang sheets from mockup images for template '{template_name}'",
@@ -96,6 +118,27 @@ def create_print_files(current_user, db):
                     "error": "Failed to create gang sheets - check logs for details"
                 }
             elif isinstance(result, dict) and result.get("success"):
+                # Upload generated print files to NAS
+                try:
+                    printfiles_dir = f"{local_root}{shop_name}/Printfiles/"
+                    if os.path.exists(printfiles_dir):
+                        for filename in os.listdir(printfiles_dir):
+                            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+                                file_path = os.path.join(printfiles_dir, filename)
+                                relative_path = f"Printfiles/{filename}"
+                                success = nas_storage.upload_file(
+                                    local_file_path=file_path,
+                                    shop_name=shop_name,
+                                    relative_path=relative_path
+                                )
+                                if success:
+                                    logging.info(f"Successfully uploaded print file to NAS: {relative_path}")
+                                else:
+                                    logging.warning(f"Failed to upload print file to NAS: {relative_path}")
+                except Exception as e:
+                    logging.error(f"Error uploading print files to NAS: {e}")
+                    # Don't fail the entire process if NAS upload fails
+                
                 return {
                     "success": True,
                     "message": f"Print files created successfully - {result.get('sheets_created', 0)} sheets generated",

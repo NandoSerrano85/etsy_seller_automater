@@ -18,6 +18,7 @@ from server.src.utils.util import (
     get_width_and_height,
     inches_to_pixels
 )
+from server.src.utils.nas_storage import nas_storage
 from server.src.utils.resizing import resize_image_by_inches
 from server.src.utils.cropping import crop_transparent
 from uuid import UUID
@@ -121,6 +122,22 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 # Save the processed image
                 save_single_image(resized_image, designs_path, filename, target_dpi=(400, 400))
                 
+                # Upload design to NAS
+                try:
+                    relative_path = f"{template.name}/{filename}" if not design_data.is_digital else f"Digital/{template.name}/{filename}"
+                    success = nas_storage.upload_file(
+                        local_file_path=image_path,
+                        shop_name=user.shop_name,
+                        relative_path=relative_path
+                    )
+                    if success:
+                        logging.info(f"Successfully uploaded design to NAS: {relative_path}")
+                    else:
+                        logging.warning(f"Failed to upload design to NAS: {relative_path}")
+                except Exception as e:
+                    logging.error(f"Error uploading design to NAS: {e}")
+                    # Don't fail the entire process if NAS upload fails
+                
                 # Reset file pointer
                 await file.seek(0)
                 
@@ -218,6 +235,22 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 
                 # Save the processed image
                 save_single_image(resized_image, designs_path, filename, target_dpi=target_dpi)
+                
+                # Upload design to NAS
+                try:
+                    relative_path = f"Digital/{template.name}/{filename}"
+                    success = nas_storage.upload_file(
+                        local_file_path=image_path,
+                        shop_name=user.shop_name,
+                        relative_path=relative_path
+                    )
+                    if success:
+                        logging.info(f"Successfully uploaded digital design to NAS: {relative_path}")
+                    else:
+                        logging.warning(f"Failed to upload digital design to NAS: {relative_path}")
+                except Exception as e:
+                    logging.error(f"Error uploading digital design to NAS: {e}")
+                    # Don't fail the entire process if NAS upload fails
                 
                 # Reset file pointer
                 await file.seek(0)

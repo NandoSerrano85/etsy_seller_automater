@@ -31,6 +31,7 @@ from . import model
 import logging, os, random, json
 from server.src.utils.mockups_util import create_mockup_images, create_mockups_for_etsy
 from server.src.utils.etsy_api_engine import EtsyAPI
+from server.src.utils.nas_storage import nas_storage
 from fastapi import UploadFile, HTTPException
 from PIL import Image
 import imagehash
@@ -336,7 +337,7 @@ def create_mockup(db: Session, user_id: UUID, mockup_data: model.MockupFullCreat
         except Exception as e:
             logging.error(f"Failed to generate mockup images: {e}")
             raise MockupCreateError()
-        # 8. Save mockup images to database
+        # 8. Save mockup images to database and upload to NAS
         mockup_images = []
         for mockup_img in generated_mockups:
             mockup_image = MockupImage(
@@ -348,6 +349,22 @@ def create_mockup(db: Session, user_id: UUID, mockup_data: model.MockupFullCreat
             )
             db.add(mockup_image)
             mockup_images.append(mockup_image)
+            
+            # Upload mockup image to NAS
+            try:
+                relative_path = f"Mockups/BaseMockups/{template_name}/{mockup_img['filename']}"
+                success = nas_storage.upload_file(
+                    local_file_path=mockup_img['file_path'],
+                    shop_name=user.shop_name,
+                    relative_path=relative_path
+                )
+                if success:
+                    logging.info(f"Successfully uploaded mockup to NAS: {relative_path}")
+                else:
+                    logging.warning(f"Failed to upload mockup to NAS: {relative_path}")
+            except Exception as e:
+                logging.error(f"Error uploading mockup to NAS: {e}")
+                # Don't fail the entire process if NAS upload fails
         # 9. Commit
         db.commit()
         logging.info(f"Successfully created and stored complete mockup for user: {user_id}")
@@ -1048,6 +1065,22 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
             db.add(mockup_image)
             db.flush()  # Get the ID
             mockup_images.append(mockup_image)
+            
+            # Upload mockup image to NAS
+            try:
+                relative_path = f"Mockups/BaseMockups/{template_name}/{unique_filename}"
+                success = nas_storage.upload_file(
+                    local_file_path=file_path,
+                    shop_name=user.shop_name,
+                    relative_path=relative_path
+                )
+                if success:
+                    logging.info(f"Successfully uploaded mockup file to NAS: {relative_path}")
+                else:
+                    logging.warning(f"Failed to upload mockup file to NAS: {relative_path}")
+            except Exception as e:
+                logging.error(f"Error uploading mockup file to NAS: {e}")
+                # Don't fail the entire process if NAS upload fails
 
         db.commit()
         

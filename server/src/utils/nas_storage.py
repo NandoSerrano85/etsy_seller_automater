@@ -1,0 +1,270 @@
+import os
+import logging
+import paramiko
+from pathlib import Path
+from typing import Optional, Union
+from contextlib import contextmanager
+from io import BytesIO
+
+class NASStorage:
+    """
+    Utility class for connecting to QNAP NAS via SFTP and managing file operations.
+    Handles saving mockups, designs, and print files to the NAS at /share/Graphics/{shop_name}/
+    """
+    
+    def __init__(self):
+        self.host = os.getenv('QNAP_HOST')
+        self.port = int(os.getenv('QNAP_PORT', '22'))
+        self.username = os.getenv('QNAP_USERNAME')
+        self.password = os.getenv('QNAP_PASSWORD')
+        self.base_path = '/share/Graphics'
+        
+        if not all([self.host, self.username, self.password]):
+            logging.warning("QNAP NAS credentials not fully configured. NAS storage will be disabled.")
+            self.enabled = False
+        else:
+            self.enabled = True
+            logging.info(f"NAS storage configured for host: {self.host}")
+    
+    @contextmanager
+    def get_sftp_connection(self):
+        """Context manager for SFTP connections with automatic cleanup"""
+        if not self.enabled:
+            raise Exception("NAS storage is not enabled. Check QNAP configuration.")
+        
+        ssh = None
+        sftp = None
+        try:
+            # Create SSH connection
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                timeout=30
+            )
+            
+            # Create SFTP connection
+            sftp = ssh.open_sftp()
+            yield sftp
+            
+        except Exception as e:
+            logging.error(f"Failed to connect to NAS: {e}")
+            raise
+        finally:
+            if sftp:
+                sftp.close()
+            if ssh:
+                ssh.close()
+    
+    def ensure_directory(self, sftp, directory_path: str) -> bool:
+        """
+        Ensure directory exists on NAS, creating it if necessary
+        Returns True if directory exists or was created successfully
+        """
+        try:
+            # Try to list the directory (this will fail if it doesn't exist)
+            sftp.listdir(directory_path)
+            return True
+        except FileNotFoundError:
+            # Directory doesn't exist, try to create it
+            try:
+                # Create parent directories if they don't exist
+                parent_path = str(Path(directory_path).parent)
+                if parent_path != '/' and parent_path != directory_path:
+                    self.ensure_directory(sftp, parent_path)
+                
+                sftp.mkdir(directory_path)
+                logging.info(f"Created directory on NAS: {directory_path}")
+                return True
+            except Exception as e:
+                logging.error(f"Failed to create directory {directory_path} on NAS: {e}")
+                return False
+        except Exception as e:
+            logging.error(f"Error checking directory {directory_path} on NAS: {e}")
+            return False
+    
+    def upload_file(self, local_file_path: str, shop_name: str, relative_path: str) -> bool:
+        """
+        Upload a file to the NAS
+        
+        Args:
+            local_file_path: Path to the local file to upload
+            shop_name: Name of the shop (used in NAS path)
+            relative_path: Relative path within the shop directory (e.g., 'Mockups/BaseMockups/UVDTF/file.png')
+        
+        Returns:
+            bool: True if upload successful, False otherwise
+        """
+        if not self.enabled:
+            logging.warning("NAS storage disabled, skipping upload")
+            return False
+        
+        if not os.path.exists(local_file_path):
+            logging.error(f"Local file does not exist: {local_file_path}")
+            return False
+        
+        try:
+            with self.get_sftp_connection() as sftp:
+                # Build the remote path
+                remote_dir = f"{self.base_path}/{shop_name}"
+                remote_file_path = f"{remote_dir}/{relative_path}"
+                remote_dir_for_file = str(Path(remote_file_path).parent)
+                
+                # Ensure directory exists
+                if not self.ensure_directory(sftp, remote_dir_for_file):
+                    return False
+                
+                # Upload the file
+                sftp.put(local_file_path, remote_file_path)
+                logging.info(f"Successfully uploaded {local_file_path} to NAS: {remote_file_path}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Failed to upload {local_file_path} to NAS: {e}")
+            return False
+    
+    def upload_file_content(self, file_content: bytes, shop_name: str, relative_path: str) -> bool:
+        """
+        Upload file content directly to the NAS without saving locally first
+        
+        Args:
+            file_content: File content as bytes
+            shop_name: Name of the shop (used in NAS path)
+            relative_path: Relative path within the shop directory
+        
+        Returns:
+            bool: True if upload successful, False otherwise
+        """
+        if not self.enabled:
+            logging.warning("NAS storage disabled, skipping upload")
+            return False
+        
+        try:
+            with self.get_sftp_connection() as sftp:
+                # Build the remote path
+                remote_dir = f"{self.base_path}/{shop_name}"
+                remote_file_path = f"{remote_dir}/{relative_path}"
+                remote_dir_for_file = str(Path(remote_file_path).parent)
+                
+                # Ensure directory exists
+                if not self.ensure_directory(sftp, remote_dir_for_file):
+                    return False
+                
+                # Upload file content using BytesIO
+                file_obj = BytesIO(file_content)
+                sftp.putfo(file_obj, remote_file_path)
+                logging.info(f"Successfully uploaded content to NAS: {remote_file_path}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Failed to upload content to NAS: {e}")
+            return False
+    
+    def download_file(self, shop_name: str, relative_path: str, local_file_path: str) -> bool:
+        """
+        Download a file from the NAS
+        
+        Args:
+            shop_name: Name of the shop
+            relative_path: Relative path within the shop directory
+            local_file_path: Where to save the file locally
+        
+        Returns:
+            bool: True if download successful, False otherwise
+        """
+        if not self.enabled:
+            logging.warning("NAS storage disabled, skipping download")
+            return False
+        
+        try:
+            with self.get_sftp_connection() as sftp:
+                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+                
+                # Ensure local directory exists
+                os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+                
+                # Download the file
+                sftp.get(remote_file_path, local_file_path)
+                logging.info(f"Successfully downloaded {remote_file_path} from NAS to {local_file_path}")
+                return True
+                
+        except Exception as e:
+            logging.error(f"Failed to download {relative_path} from NAS: {e}")
+            return False
+    
+    def file_exists(self, shop_name: str, relative_path: str) -> bool:
+        """
+        Check if a file exists on the NAS
+        
+        Args:
+            shop_name: Name of the shop
+            relative_path: Relative path within the shop directory
+        
+        Returns:
+            bool: True if file exists, False otherwise
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            with self.get_sftp_connection() as sftp:
+                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+                sftp.stat(remote_file_path)
+                return True
+        except FileNotFoundError:
+            return False
+        except Exception as e:
+            logging.error(f"Error checking file existence on NAS: {e}")
+            return False
+    
+    def list_files(self, shop_name: str, relative_path: str = "") -> list:
+        """
+        List files in a directory on the NAS
+        
+        Args:
+            shop_name: Name of the shop
+            relative_path: Relative path within the shop directory
+        
+        Returns:
+            list: List of filenames, empty list if error
+        """
+        if not self.enabled:
+            return []
+        
+        try:
+            with self.get_sftp_connection() as sftp:
+                remote_dir = f"{self.base_path}/{shop_name}/{relative_path}" if relative_path else f"{self.base_path}/{shop_name}"
+                return sftp.listdir(remote_dir)
+        except Exception as e:
+            logging.error(f"Failed to list files in {relative_path} on NAS: {e}")
+            return []
+    
+    def delete_file(self, shop_name: str, relative_path: str) -> bool:
+        """
+        Delete a file from the NAS
+        
+        Args:
+            shop_name: Name of the shop
+            relative_path: Relative path within the shop directory
+        
+        Returns:
+            bool: True if deletion successful, False otherwise
+        """
+        if not self.enabled:
+            return False
+        
+        try:
+            with self.get_sftp_connection() as sftp:
+                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+                sftp.remove(remote_file_path)
+                logging.info(f"Successfully deleted {remote_file_path} from NAS")
+                return True
+        except Exception as e:
+            logging.error(f"Failed to delete {relative_path} from NAS: {e}")
+            return False
+
+# Global instance
+nas_storage = NASStorage()
