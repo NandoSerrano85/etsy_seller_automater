@@ -10,6 +10,9 @@ import LoginRegister from './pages/LoginRegister';
 // import ApiTest from './components/ApiTest';
 import ConnectEtsy from './pages/ConnectEtsy';
 import Account from './pages/Account';
+import OrganizationManagement from './pages/OrganizationManagement';
+import PrinterManagement from './pages/PrinterManagement';
+import AdminDashboard from './pages/AdminDashboard';
 import NotificationSystem, { useNotifications } from './components/NotificationSystem';
 import DesignsTab from './pages/HomeTabs/DesignsTab';
 import AnalyticsTab from './pages/HomeTabs/AnalyticsTab';
@@ -166,6 +169,36 @@ function App() {
             element={
               <ProtectedRoute>
                 <ConnectEtsy />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Organization Management */}
+          <Route
+            path="/organizations"
+            element={
+              <ProtectedRoute>
+                <OrganizationManagement />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Printer Management */}
+          <Route
+            path="/printers"
+            element={
+              <ProtectedRoute>
+                <PrinterManagement />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin Dashboard */}
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute>
+                <AdminDashboard />
               </ProtectedRoute>
             }
           />
