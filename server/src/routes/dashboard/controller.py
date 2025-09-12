@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from server.src.routes.auth.service import CurrentUser
+from server.src.routes.auth.service import CurrentUser, CurrentShopInfo
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
 from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
@@ -36,27 +36,48 @@ def get_user_etsy_token(current_user: CurrentUser, db: Session) -> str:
 @router.get('/analytics', response_model=model.MonthlyAnalyticsResponse)
 async def get_monthly_analytics(
     current_user: CurrentUser,
+    shop_info: CurrentShopInfo,
     year: int = Query(None, description="Year for analytics"),
     db: Session = Depends(get_db)
 ):
+    if not shop_info.has_shop_id():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Etsy shop ID found. Please reconnect your Etsy account."
+        )
+    
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_monthly_analytics(access_token, year, current_user.get_uuid(), db)
+    return service.get_monthly_analytics(access_token, year, shop_info.shop_id)
 
 @router.get('/top-sellers', response_model=model.TopSellersResponse)
 async def get_top_sellers(
     current_user: CurrentUser,
+    shop_info: CurrentShopInfo,
     year: int = Query(None, description="Year for top sellers"),
     db: Session = Depends(get_db)
 ):
+    if not shop_info.has_shop_id():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Etsy shop ID found. Please reconnect your Etsy account."
+        )
+    
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_top_sellers(access_token, year, current_user.get_uuid(), db)
+    return service.get_top_sellers(access_token, year, shop_info.shop_id)
 
 @router.get('/shop-listings', response_model=model.ShopListingsResponse)
 async def get_shop_listings(
     current_user: CurrentUser,
+    shop_info: CurrentShopInfo,
     limit: int = Query(50, ge=1, le=100, description="Number of listings to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: Session = Depends(get_db)
 ):
+    if not shop_info.has_shop_id():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Etsy shop ID found. Please reconnect your Etsy account."
+        )
+    
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_shop_listings(access_token, limit, offset, current_user.get_uuid(), db)
+    return service.get_shop_listings(access_token, limit, offset, shop_info.shop_id)

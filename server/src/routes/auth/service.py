@@ -11,7 +11,8 @@ from server.src.message import AuthVerifyTokenError, AuthUserNotFound
 import os, jwt, logging
 
 from server.src.entities.user import User
-from .model import RegisterUserRequest, TokenData, UserToken, UserProfile, AuthResponse
+from server.src.database.core import get_db
+from .model import RegisterUserRequest, TokenData, UserToken, UserProfile, AuthResponse, ShopInfo
 load_dotenv()
 
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
@@ -77,7 +78,28 @@ def register_user(register_user_request: RegisterUserRequest, db: Session) -> Us
 def get_current_user(token: Annotated[str, Depends(oath2_bearer)]) -> TokenData:
     return verify_token(token)
 
+def get_current_shop_info(
+    current_user: Annotated[TokenData, Depends(get_current_user)],
+    db: Session = Depends(get_db)
+) -> ShopInfo:
+    """Get the current user's shop information from the database."""
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise AuthUserNotFound()
+    
+    # Get user with shop information
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise AuthUserNotFound()
+    
+    return ShopInfo(
+        user_id=user_id,
+        shop_id=user.etsy_shop_id,
+        shop_name=user.shop_name
+    )
+
 CurrentUser = Annotated[TokenData, Depends(get_current_user)]
+CurrentShopInfo = Annotated[ShopInfo, Depends(get_current_shop_info)]
 
 def create_user_profile(user: User) -> UserProfile:
     """Create a UserProfile from a User entity."""

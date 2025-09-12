@@ -38,4 +38,17 @@ class TokenData(BaseModel):
         return None
 
 class TokenDataRequest(BaseModel):
-    token:str  
+    token:str
+
+class ShopInfo(BaseModel):
+    user_id: UUID
+    shop_id: str | None = None
+    shop_name: str | None = None
+    
+    def has_shop_id(self) -> bool:
+        """Check if shop ID is available."""
+        return self.shop_id is not None and self.shop_id != ""
+    
+    def has_shop_name(self) -> bool:
+        """Check if shop name is available.""" 
+        return self.shop_name is not None and self.shop_name != ""  
