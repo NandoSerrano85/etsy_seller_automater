@@ -9,7 +9,8 @@ class User(Base):
     __tablename__ = 'users'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)  # Nullable for backward compatibility
+    # TODO: Uncomment after running multi-tenant migration
+    # org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     
     # User authentication
     email = Column(String, unique=True, index=True, nullable=False)
@@ -29,23 +30,26 @@ class User(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
-    organization = relationship('Organization', back_populates='users')
+    # TODO: Uncomment after running multi-tenant migration
+    # organization = relationship('Organization', back_populates='users')
     third_party_tokens = relationship('ThirdPartyOAuthToken', back_populates='user')
     etsy_product_templates = relationship('EtsyProductTemplate', order_by='EtsyProductTemplate.id', back_populates='user')
     mockups = relationship('Mockups', order_by='Mockups.id', back_populates='user')
     design_images = relationship('DesignImages', order_by='DesignImages.id', back_populates='user')
-    files = relationship('File', back_populates='created_by_user')
-    print_jobs = relationship('PrintJob', back_populates='created_by_user')
-    events = relationship('Event', back_populates='user')
-    printers = relationship('Printer', back_populates='user', cascade='all, delete-orphan')
+    # TODO: Uncomment after running multi-tenant migration
+    # files = relationship('File', back_populates='created_by_user')
+    # print_jobs = relationship('PrintJob', back_populates='created_by_user')
+    # events = relationship('Event', back_populates='user')
+    # printers = relationship('Printer', back_populates='user', cascade='all, delete-orphan')
     
     def __repr__(self):
-        return f"<User(id={self.id}, email={self.email}, org_id={self.org_id})>"
+        return f"<User(id={self.id}, email={self.email})>"
     
     def to_dict(self):
         return {
             'id': str(self.id),
-            'org_id': str(self.org_id) if self.org_id else None,
+            # TODO: Uncomment after running multi-tenant migration
+            # 'org_id': str(self.org_id) if self.org_id else None,
             'email': self.email,
             'role': self.role,
             'shop_name': self.shop_name,
@@ -58,6 +62,7 @@ class User(Base):
     @property
     def effective_shop_name(self) -> str:
         """Get shop name from organization or fall back to user's shop_name"""
-        if self.organization and self.organization.shop_name:
-            return self.organization.shop_name
+        # TODO: Uncomment after running multi-tenant migration
+        # if self.organization and self.organization.shop_name:
+        #     return self.organization.shop_name
         return self.shop_name or 'default'

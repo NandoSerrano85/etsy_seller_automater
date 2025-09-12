@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import OrganizationSelector from './OrganizationSelector';
+import useOrganizationStore from '../stores/organizationStore';
 
 const SidebarNavigation = ({ isOpen, onToggle }) => {
   const { user, isUserAuthenticated, logout } = useAuth();
+  const { hasAdminAccess } = useOrganizationStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [expandedSections, setExpandedSections] = useState({});
@@ -118,6 +121,38 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
       ),
       path: '/?tab=tools',
       gradient: 'from-sky-100 to-sky-200',
+    },
+    {
+      id: 'organizations',
+      label: 'Organizations',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h5a2 2 0 002-2V9a2 2 0 00-2-2H9a2 2 0 00-2 2v10a2 2 0 002 2z"
+          />
+        </svg>
+      ),
+      path: '/organizations',
+      gradient: 'from-indigo-100 to-indigo-200',
+    },
+    {
+      id: 'printers',
+      label: 'Printer Management',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-9a2 2 0 00-2-2H9a2 2 0 00-2 2v9a2 2 0 002 2z"
+          />
+        </svg>
+      ),
+      path: '/printers',
+      gradient: 'from-orange-100 to-orange-200',
     },
     {
       id: 'account',
@@ -267,7 +302,38 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
         {/* Navigation */}
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
           {isUserAuthenticated ? (
-            mainNavItems.map(item => <NavItem key={item.id} item={item} />)
+            <>
+              {mainNavItems.map(item => (
+                <NavItem key={item.id} item={item} />
+              ))}
+
+              {/* Admin Dashboard - Only show if user has admin access */}
+              {(hasAdminAccess() || user?.role === 'admin' || user?.role === 'super_admin') && (
+                <div className="pt-4 mt-4 border-t border-sage-200">
+                  <p className="px-3 text-xs font-semibold text-sage-500 uppercase tracking-wider mb-2">
+                    Administration
+                  </p>
+                  <NavItem
+                    item={{
+                      id: 'admin',
+                      label: 'Admin Dashboard',
+                      icon: (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      ),
+                      path: '/admin',
+                      gradient: 'from-red-100 to-red-200',
+                    }}
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <div className="text-center py-8">
               <p className="text-sage-600 text-sm mb-4">Please log in to access navigation</p>
@@ -283,7 +349,14 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
 
         {/* User Profile Section */}
         {isUserAuthenticated && (
-          <div className="p-4 border-t border-sage-200">
+          <div className="p-4 border-t border-sage-200 space-y-4">
+            {/* Organization Selector */}
+            <div className="px-1">
+              <p className="text-xs font-semibold text-sage-500 uppercase tracking-wider mb-2">Organization</p>
+              <OrganizationSelector className="w-full" />
+            </div>
+
+            {/* User Profile */}
             <div className="flex items-center space-x-3 p-3 rounded-xl bg-gradient-to-r from-sage-50 to-mint-50">
               <div className="w-8 h-8 bg-gradient-to-br from-mint-400 to-mint-500 rounded-full flex items-center justify-center">
                 <span className="text-white font-semibold text-sm">

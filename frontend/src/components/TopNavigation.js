@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import OrganizationSelector from './OrganizationSelector';
 
 const TopNavigation = ({
   sectionTitle,
@@ -217,32 +218,38 @@ const TopNavigation = ({
             </div>
           </div>
 
-          {/* Right side - Actions */}
-          {actions.length > 0 && (
-            <div className="flex items-center space-x-3">
-              {actions.map((action, index) => (
-                <button
-                  key={index}
-                  onClick={action.onClick}
-                  disabled={action.disabled}
-                  className={`
-                    px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2
-                    ${
-                      action.variant === 'primary'
-                        ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white hover:from-lavender-600 hover:to-lavender-700 shadow-sm'
-                        : action.variant === 'secondary'
-                          ? 'bg-gradient-to-r from-mint-100 to-mint-200 text-mint-800 hover:from-mint-200 hover:to-mint-300'
-                          : 'bg-sage-100 text-sage-700 hover:bg-sage-200'
-                    }
-                    ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md active:scale-95'}
-                  `}
-                >
-                  {action.icon && <span className="text-lg">{action.icon}</span>}
-                  <span className="hidden sm:inline">{action.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Right side - Organization Selector and Actions */}
+          <div className="flex items-center space-x-4">
+            {/* Organization Selector */}
+            <OrganizationSelector className="hidden md:block" />
+
+            {/* Actions */}
+            {actions.length > 0 && (
+              <div className="flex items-center space-x-3">
+                {actions.map((action, index) => (
+                  <button
+                    key={index}
+                    onClick={action.onClick}
+                    disabled={action.disabled}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2
+                      ${
+                        action.variant === 'primary'
+                          ? 'bg-gradient-to-r from-lavender-500 to-lavender-600 text-white hover:from-lavender-600 hover:to-lavender-700 shadow-sm'
+                          : action.variant === 'secondary'
+                            ? 'bg-gradient-to-r from-mint-100 to-mint-200 text-mint-800 hover:from-mint-200 hover:to-mint-300'
+                            : 'bg-sage-100 text-sage-700 hover:bg-sage-200'
+                      }
+                      ${action.disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md active:scale-95'}
+                    `}
+                  >
+                    {action.icon && <span className="text-lg">{action.icon}</span>}
+                    <span className="hidden sm:inline">{action.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
