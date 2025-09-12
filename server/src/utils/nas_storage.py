@@ -140,6 +140,39 @@ class NASStorage:
             logging.error(f"Failed to upload {local_file_path} to NAS: {e}")
             return False
     
+    def save_file_content(self, file_content: bytes, shop_name: str, relative_path: str, local_root_path: Optional[str] = None) -> tuple[bool, str]:
+        """
+        Save file content either locally + NAS or directly to NAS based on environment
+        
+        Args:
+            file_content: File content as bytes
+            shop_name: Name of the shop
+            relative_path: Relative path within the shop directory
+            local_root_path: Local root path (if None, saves only to NAS)
+        
+        Returns:
+            tuple: (success: bool, file_path: str) - file_path is NAS path if local_root_path is None
+        """
+        # If local_root_path is provided and we have local storage, save locally and upload to NAS
+        if local_root_path:
+            import os
+            local_file_path = os.path.join(local_root_path, shop_name, relative_path)
+            os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
+            
+            # Save locally
+            with open(local_file_path, "wb") as f:
+                f.write(file_content)
+                
+            # Also upload to NAS
+            self.upload_file_content(file_content, shop_name, relative_path)
+            return True, local_file_path
+            
+        # If no local root path, save directly to NAS only (production mode)
+        else:
+            success = self.upload_file_content(file_content, shop_name, relative_path)
+            nas_path = f"{self.base_path}/{shop_name}/{relative_path}" if success else ""
+            return success, nas_path
+
     def upload_file_content(self, file_content: bytes, shop_name: str, relative_path: str) -> bool:
         """
         Upload file content directly to the NAS without saving locally first

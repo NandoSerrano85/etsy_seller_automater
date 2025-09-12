@@ -1021,22 +1021,44 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
 
         template_name = template.name
         
-        # Build root path and ensure directory exists
+        # Build root path and ensure directory exists (optional for production)
         local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
-        if not local_root_path:
-            logging.error("LOCAL_ROOT_PATH environment variable not set")
-            raise MockupCreateError()
-            
-        root_path = f"{local_root_path}{user.shop_name}/"
-        target_dir = os.path.join(root_path, f"Mockups/BaseMockups/{template_name}/")
-        os.makedirs(target_dir, exist_ok=True)
+        use_local_storage = bool(local_root_path)
+        
+        if use_local_storage:
+            # Development/local mode: use local storage + NAS backup
+            root_path = f"{local_root_path}{user.shop_name}/"
+            target_dir = os.path.join(root_path, f"Mockups/BaseMockups/{template_name}/")
+            os.makedirs(target_dir, exist_ok=True)
+        else:
+            # Production mode: NAS only
+            if not nas_storage.enabled:
+                logging.error("Neither local storage nor NAS storage is available")
+                raise MockupCreateError()
+            logging.info("Production mode: saving files directly to NAS")
         # Handle watermark file
-        watermark_dir = os.path.join(root_path, f"Mockups/BaseMockups/Watermarks/")
-        os.makedirs(watermark_dir, exist_ok=True)
-        watermark_path = os.path.join(watermark_dir, watermark_file.filename)
-        with open(watermark_path, "wb") as f:
-            watermark_content = await watermark_file.read()
-            f.write(watermark_content)
+        watermark_content = await watermark_file.read()
+        watermark_filename = watermark_file.filename or "watermark.png"
+        
+        if use_local_storage:
+            # Local + NAS mode
+            watermark_dir = os.path.join(root_path, f"Mockups/BaseMockups/Watermarks/")
+            os.makedirs(watermark_dir, exist_ok=True)
+            watermark_path = os.path.join(watermark_dir, watermark_filename)
+            with open(watermark_path, "wb") as f:
+                f.write(watermark_content)
+        else:
+            # NAS only mode
+            watermark_relative_path = f"Mockups/BaseMockups/Watermarks/{watermark_filename}"
+            success, watermark_path = nas_storage.save_file_content(
+                file_content=watermark_content,
+                shop_name=user.shop_name,
+                relative_path=watermark_relative_path,
+                local_root_path=None
+            )
+            if not success:
+                logging.error("Failed to save watermark to NAS")
+                raise MockupCreateError()
         # Process each uploaded file
         mockup_images = []
         for i, file in enumerate(files):
@@ -1045,14 +1067,43 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
                 continue
 
             # Generate a unique filename
-            file_extension = os.path.splitext(file.filename)[1]
+            file_extension = os.path.splitext(file.filename)[1] if file.filename else ".png"
             unique_filename = f"mockup_{mockup_id}_{i}{file_extension}"
-            file_path = os.path.join(target_dir, unique_filename)
-
-            # Save the file
-            with open(file_path, "wb") as f:
-                file_content = await file.read()
-                f.write(file_content)
+            file_content = await file.read()
+            
+            if use_local_storage:
+                # Local + NAS mode
+                file_path = os.path.join(target_dir, unique_filename)
+                with open(file_path, "wb") as f:
+                    f.write(file_content)
+                    
+                # Upload mockup image to NAS
+                try:
+                    relative_path = f"Mockups/BaseMockups/{template_name}/{unique_filename}"
+                    success = nas_storage.upload_file(
+                        local_file_path=file_path,
+                        shop_name=user.shop_name,
+                        relative_path=relative_path
+                    )
+                    if success:
+                        logging.info(f"Successfully uploaded mockup file to NAS: {relative_path}")
+                    else:
+                        logging.warning(f"Failed to upload mockup file to NAS: {relative_path}")
+                except Exception as e:
+                    logging.error(f"Error uploading mockup file to NAS: {e}")
+                    # Don't fail the entire process if NAS upload fails
+            else:
+                # NAS only mode
+                relative_path = f"Mockups/BaseMockups/{template_name}/{unique_filename}"
+                success, file_path = nas_storage.save_file_content(
+                    file_content=file_content,
+                    shop_name=user.shop_name,
+                    relative_path=relative_path,
+                    local_root_path=None
+                )
+                if not success:
+                    logging.error(f"Failed to save mockup file to NAS: {relative_path}")
+                    continue  # Skip this file but continue with others
 
             # Create mockup image record
             mockup_image = MockupImage(
@@ -1065,22 +1116,6 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
             db.add(mockup_image)
             db.flush()  # Get the ID
             mockup_images.append(mockup_image)
-            
-            # Upload mockup image to NAS
-            try:
-                relative_path = f"Mockups/BaseMockups/{template_name}/{unique_filename}"
-                success = nas_storage.upload_file(
-                    local_file_path=file_path,
-                    shop_name=user.shop_name,
-                    relative_path=relative_path
-                )
-                if success:
-                    logging.info(f"Successfully uploaded mockup file to NAS: {relative_path}")
-                else:
-                    logging.warning(f"Failed to upload mockup file to NAS: {relative_path}")
-            except Exception as e:
-                logging.error(f"Error uploading mockup file to NAS: {e}")
-                # Don't fail the entire process if NAS upload fails
 
         db.commit()
         
