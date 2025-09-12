@@ -67,7 +67,7 @@ def upgrade() -> None:
         sa.Column('width', sa.Integer),
         sa.Column('height', sa.Integer),
         sa.Column('sha256', sa.String),
-        sa.Column('metadata', postgresql.JSONB, default={}),
+        sa.Column('file_metadata', postgresql.JSONB, default={}),
         sa.Column('created_by', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id')),
         sa.Column('created_at', sa.DateTime, default=datetime.utcnow),
         sa.Column('updated_at', sa.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

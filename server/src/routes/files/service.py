@@ -80,7 +80,7 @@ class FileService:
                 mime_type=file_data.mime_type,
                 file_size=file_size,
                 sha256=sha256_hash,
-                metadata=file_data.metadata,
+                file_metadata=file_data.metadata,
                 created_by=user_id
             )
             db.add(file_record)

@@ -122,12 +122,15 @@ After deployment, run database migrations:
 # Connect to your Railway project
 railway shell
 
-# Run the migration script
+# Run the migration scripts
 python -c "
 import sys
 sys.path.insert(0, '.')
 exec(open('migration_add_railway_entities.py').read())
 "
+
+# Run printer and canvas config migration
+python migration_add_printers_and_canvas_updates.py
 ```
 
 Or use Alembic if configured:
@@ -190,6 +193,20 @@ The multi-tenant architecture provides these new endpoints:
 - `GET /api/organizations/{org_id}/events/activity/errors` - System errors
 - `GET /api/organizations/{org_id}/events/stats/summary` - Event stats
 - `GET /api/organizations/{org_id}/events/export/audit-trail` - Export audit
+
+### Printers
+
+- `POST /api/printers/` - Create printer
+- `GET /api/printers/` - List user printers
+- `GET /api/printers/{id}` - Get printer details
+- `PUT /api/printers/{id}` - Update printer
+- `DELETE /api/printers/{id}` - Delete printer
+- `POST /api/printers/{id}/check-capability` - Check print capability
+- `GET /api/printers/compatible/find` - Find compatible printers
+- `GET /api/printers/default/get` - Get default printer
+- `POST /api/printers/{id}/set-default` - Set default printer
+- `GET /api/printers/stats/summary` - Printer statistics
+- `GET /api/printers/suggestions/config` - Configuration suggestions
 
 ## File Storage Architecture
 

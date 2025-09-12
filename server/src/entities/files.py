@@ -48,8 +48,8 @@ class File(Base):
     height = Column(Integer)
     sha256 = Column(String)  # For deduplication
     
-    # Additional metadata as JSON
-    metadata = Column(JSONB, default={})
+    # Additional file metadata as JSON
+    file_metadata = Column(JSONB, default={})
     
     # Audit fields
     created_by = Column(UUID(as_uuid=True), ForeignKey('users.id'))
@@ -77,7 +77,7 @@ class File(Base):
             'width': self.width,
             'height': self.height,
             'sha256': self.sha256,
-            'metadata': self.metadata,
+            'metadata': self.file_metadata,
             'created_by': str(self.created_by) if self.created_by else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
