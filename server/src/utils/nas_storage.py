@@ -1,10 +1,18 @@
 import os
 import logging
-import paramiko
 from pathlib import Path
 from typing import Optional, Union
 from contextlib import contextmanager
 from io import BytesIO
+
+# Optional import for paramiko - graceful fallback if not available
+try:
+    import paramiko
+    PARAMIKO_AVAILABLE = True
+except ImportError:
+    paramiko = None
+    PARAMIKO_AVAILABLE = False
+    logging.warning("paramiko not installed. NAS storage functionality will be disabled.")
 
 class NASStorage:
     """
@@ -13,6 +21,12 @@ class NASStorage:
     """
     
     def __init__(self):
+        # Check if paramiko is available first
+        if not PARAMIKO_AVAILABLE:
+            self.enabled = False
+            logging.warning("NAS storage disabled: paramiko module not available")
+            return
+            
         self.host = os.getenv('QNAP_HOST')
         self.port = int(os.getenv('QNAP_PORT', '22'))
         self.username = os.getenv('QNAP_USERNAME')
@@ -29,8 +43,8 @@ class NASStorage:
     @contextmanager
     def get_sftp_connection(self):
         """Context manager for SFTP connections with automatic cleanup"""
-        if not self.enabled:
-            raise Exception("NAS storage is not enabled. Check QNAP configuration.")
+        if not self.enabled or not PARAMIKO_AVAILABLE:
+            raise Exception("NAS storage is not enabled. Check QNAP configuration or paramiko installation.")
         
         ssh = None
         sftp = None
