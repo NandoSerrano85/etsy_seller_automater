@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Form
+from fastapi import APIRouter, Depends, Form
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
 from server.src.routes.auth.service import CurrentUser
@@ -13,10 +13,9 @@ router = APIRouter(
 @router.get('/', response_model=model.OrdersResponse)
 async def get_orders(
     current_user: CurrentUser,
-    access_token: str = Query(..., description="Etsy access token"),
     db: Session = Depends(get_db)
 ):
-    return service.get_orders(access_token, current_user, db)
+    return service.get_orders(current_user, db)
 
 @router.post('/print-files')
 async def create_gang_sheets_from_mockups(

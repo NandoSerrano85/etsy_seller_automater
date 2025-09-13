@@ -1,8 +1,6 @@
 import os
 import tempfile
 import logging
-import requests
-from typing import Any
 from fastapi import HTTPException
 from dotenv import load_dotenv
 
@@ -24,7 +22,7 @@ def get_oauth_variables():
         'clientSecret': os.getenv('CLIENT_SECRET'),
     }
 
-def get_orders(access_token: str, current_user, db) -> model.OrdersResponse:
+def get_orders(current_user, db) -> model.OrdersResponse:
     try:
         etsy_api = EtsyAPI(current_user.get_uuid(), db)
         orders = etsy_api.fetch_order_summary(model)
@@ -43,6 +41,15 @@ def get_orders(access_token: str, current_user, db) -> model.OrdersResponse:
 
 def create_gang_sheets_from_mockups(template_name: str, current_user, db):
     """Create gang sheets from mockup images stored in the database."""
+    # Get user information from database
+    user_id = current_user.get_uuid()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not user.shop_name:
+        raise HTTPException(status_code=400, detail="User shop name not set")
+
     # Use temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
         output_dir = os.path.join(temp_dir, "Printfiles")
@@ -50,7 +57,7 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
 
         result = create_gang_sheets_from_db(
             db=db,
-            user_id=current_user.id,
+            user_id=user_id,
             template_name=template_name,
             output_path=output_dir
         )
@@ -71,7 +78,7 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
                         relative_path = f"Printfiles/{filename}"
                         success = nas_storage.upload_file(
                             local_file_path=file_path,
-                            shop_name=current_user.shop_name,
+                            shop_name=user.shop_name,
                             relative_path=relative_path
                         )
                         if success:
