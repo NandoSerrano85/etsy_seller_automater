@@ -99,34 +99,89 @@ class EtsyAPI:
         refresh_token = self.refresh_token
         if not refresh_token:
             raise Exception("No refresh token available.")
+
         data = {
             'grant_type': 'refresh_token',
             'client_id': self.client_id,
             'refresh_token': refresh_token,
         }
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+        logging.info("Refreshing Etsy OAuth token...")
         resp = self.session.post(token_url, data=data, headers=headers)
+
         if resp.status_code == 200:
             token_info = resp.json()
             self.oauth_token = token_info.get('access_token')
-            self.refresh_token = token_info.get('refresh_token')
+            new_refresh_token = token_info.get('refresh_token')
+            if new_refresh_token:  # Some providers don't return a new refresh token
+                self.refresh_token = new_refresh_token
             expires_in = token_info.get('expires_in', 3600)
             self.token_expiry = time.time() + expires_in
-            # Update .env file
+
+            # Save refreshed tokens to database first (primary storage)
+            if self.user_id and self.db:
+                try:
+                    from datetime import datetime, timezone
+                    expires_at = datetime.fromtimestamp(self.token_expiry, tz=timezone.utc)
+
+                    # Find existing token record
+                    token_obj = self.db.query(ThirdPartyOAuthToken).filter(
+                        ThirdPartyOAuthToken.user_id == self.user_id
+                    ).first()
+
+                    if token_obj:
+                        # Update existing record
+                        token_obj.access_token = self.oauth_token
+                        if new_refresh_token:
+                            token_obj.refresh_token = self.refresh_token
+                        token_obj.expires_at = expires_at
+                        token_obj.updated_at = datetime.now(timezone.utc)
+                    else:
+                        # Create new record
+                        token_obj = ThirdPartyOAuthToken(
+                            user_id=self.user_id,
+                            provider='etsy',
+                            access_token=self.oauth_token,
+                            refresh_token=self.refresh_token,
+                            expires_at=expires_at,
+                            created_at=datetime.now(timezone.utc),
+                            updated_at=datetime.now(timezone.utc)
+                        )
+                        self.db.add(token_obj)
+
+                    self.db.commit()
+                    logging.info("Successfully saved refreshed tokens to database")
+
+                except Exception as db_error:
+                    logging.error(f"Failed to save tokens to database: {db_error}")
+                    self.db.rollback()
+                    # Continue anyway - token refresh succeeded
+
+            # Also update .env file as fallback (will be lost on container restart but helps locally)
             try:
                 set_key(dotenv_path, "ETSY_OAUTH_TOKEN", self.oauth_token)
                 set_key(dotenv_path, "ETSY_REFRESH_TOKEN", self.refresh_token)
                 set_key(dotenv_path, "ETSY_OAUTH_TOKEN_EXPIRY", str(self.token_expiry))
             except Exception as e:
-                print(f"Warning: Could not update .env: {e}")
-            print("Access token refreshed and .env updated.")
+                logging.warning(f"Could not update .env file: {e}")
+
+            logging.info("Access token refreshed successfully")
         else:
-            raise Exception(f"Failed to refresh token: {resp.text}")
+            error_msg = f"Failed to refresh token: {resp.status_code} - {resp.text}"
+            logging.error(error_msg)
+            raise Exception(error_msg)
 
     def ensure_valid_token(self):
         if self.is_token_expired():
-            print("Access token expired or about to expire, refreshing...")
-            self.refresh_access_token()
+            logging.info("Access token expired or about to expire, refreshing...")
+            try:
+                self.refresh_access_token()
+            except Exception as e:
+                logging.error(f"Failed to refresh access token: {e}")
+                # Don't raise the exception - let the API call proceed and fail with a proper HTTP error
+                # This prevents the entire application from crashing
+                logging.warning("Proceeding with expired token - API calls may fail with 401 errors")
 
     def test_token(self):
         self.ensure_valid_token()
@@ -560,7 +615,7 @@ class EtsyAPI:
         parts = search_name.split(" ")
         search_name = " ".join(parts[:2])
         pattern = re.compile(re.escape(search_name), re.IGNORECASE)
-        for root, dirs, files in os.walk(image_dir):
+        for root, _, files in os.walk(image_dir):
             for file in files:
                 if file.lower().endswith(extensions) and pattern.search(file):
                     full_path = os.path.join(root, file)
