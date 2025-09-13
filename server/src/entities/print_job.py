@@ -66,9 +66,8 @@ class PrintJob(Base):
         return f"<PrintJob(id={self.id}, type={self.job_type}, status={self.status})>"
     
     def to_dict(self):
-        return {
+        result = {
             'id': str(self.id),
-            'org_id': str(self.org_id),
             'created_by': str(self.created_by) if self.created_by else None,
             'job_type': self.job_type.value if self.job_type else None,
             'status': self.status.value if self.status else None,
@@ -82,6 +81,12 @@ class PrintJob(Base):
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Add org_id only if multi-tenant is enabled and the attribute exists
+        if MULTI_TENANT_ENABLED and hasattr(self, 'org_id'):
+            result['org_id'] = str(self.org_id) if self.org_id else None
+            
+        return result
     
     def mark_started(self):
         """Mark job as started"""

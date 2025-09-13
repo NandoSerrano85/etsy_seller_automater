@@ -35,12 +35,18 @@ class Event(Base):
     # Timestamp
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     
-    # Indexes for performance
-    __table_args__ = (
-        Index('idx_events_org_type', 'org_id', 'event_type'),
-        Index('idx_events_user_created', 'user_id', 'created_at'),
-        Index('idx_events_entity', 'entity_type', 'entity_id'),
-    )
+    # Indexes for performance - conditionally include org_id indexes
+    if MULTI_TENANT_ENABLED:
+        __table_args__ = (
+            Index('idx_events_org_type', 'org_id', 'event_type'),
+            Index('idx_events_user_created', 'user_id', 'created_at'),
+            Index('idx_events_entity', 'entity_type', 'entity_id'),
+        )
+    else:
+        __table_args__ = (
+            Index('idx_events_user_created', 'user_id', 'created_at'),
+            Index('idx_events_entity', 'entity_type', 'entity_id'),
+        )
     
     # Relationships (temporarily simplified to avoid circular dependencies)
     # organization = relationship("Organization", back_populates="events")
@@ -50,9 +56,8 @@ class Event(Base):
         return f"<Event(id={self.id}, type={self.event_type}, entity={self.entity_type})>"
     
     def to_dict(self):
-        return {
+        result = {
             'id': str(self.id),
-            'org_id': str(self.org_id) if self.org_id else None,
             'user_id': str(self.user_id) if self.user_id else None,
             'event_type': self.event_type,
             'entity_type': self.entity_type,
@@ -60,6 +65,12 @@ class Event(Base):
             'payload': self.payload,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Add org_id only if multi-tenant is enabled and the attribute exists
+        if MULTI_TENANT_ENABLED and hasattr(self, 'org_id'):
+            result['org_id'] = str(self.org_id) if self.org_id else None
+            
+        return result
     
     @classmethod
     def create_event(
@@ -72,14 +83,19 @@ class Event(Base):
         payload: dict = None
     ):
         """Helper method to create event records"""
-        return cls(
-            event_type=event_type,
-            org_id=org_id,
-            user_id=user_id,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            payload=payload or {}
-        )
+        kwargs = {
+            'event_type': event_type,
+            'user_id': user_id,
+            'entity_type': entity_type,
+            'entity_id': entity_id,
+            'payload': payload or {}
+        }
+        
+        # Only add org_id if multi-tenant is enabled
+        if MULTI_TENANT_ENABLED and org_id is not None:
+            kwargs['org_id'] = org_id
+            
+        return cls(**kwargs)
 
 # Common event types as constants
 class EventTypes:

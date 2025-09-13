@@ -71,9 +71,8 @@ class File(Base):
         return f"<File(id={self.id}, filename={self.filename}, type={self.file_type})>"
     
     def to_dict(self):
-        return {
+        result = {
             'id': str(self.id),
-            'org_id': str(self.org_id),
             'file_type': self.file_type,
             'status': self.status,
             'nas_path': self.nas_path,
@@ -89,3 +88,9 @@ class File(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+        
+        # Add org_id only if multi-tenant is enabled and the attribute exists
+        if MULTI_TENANT_ENABLED and hasattr(self, 'org_id'):
+            result['org_id'] = str(self.org_id) if self.org_id else None
+            
+        return result
