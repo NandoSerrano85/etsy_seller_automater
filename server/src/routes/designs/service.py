@@ -440,8 +440,7 @@ def delete_design(db: Session, design_id: UUID, user_id: UUID) -> None:
 async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGalleryResponse:
     """Get design gallery data including Etsy mockups and QNAP design files"""
     try:
-        from server.src.utils.etsy_api_engine import EtsyAPI
-        from server.src.utils.nas_storage import nas_storage
+        logging.info(f"Starting gallery data fetch for user {user_id}")
 
         # Get user and shop info
         user = db.query(User).filter(User.id == user_id).first()
@@ -449,79 +448,20 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
             logging.error(f"User not found with ID: {user_id}")
             raise InvalidUserToken()
 
-        # Get user's product templates
-        templates = db.query(EtsyProductTemplate).filter(
-            EtsyProductTemplate.user_id == user_id,
-            EtsyProductTemplate.is_active == True
-        ).all()
+        logging.info(f"Found user: {user.shop_name}")
 
-        mockups = []
-        design_files = []
-
-        # Fetch Etsy mockups (product listing images)
-        try:
-            etsy_api = EtsyAPI(user_id, db)
-            if etsy_api:
-                # Get active listings with images
-                etsy_listings = etsy_api.get_all_active_listings_images()
-                if etsy_listings and isinstance(etsy_listings, list):
-                    for listing in etsy_listings:
-                        if isinstance(listing, dict) and 'images' in listing:
-                            listing_id = listing.get('listing_id', '')
-                            for image in listing.get('images', []):
-                                if isinstance(image, dict):
-                                    mockups.append(model.EtsyMockupImage(
-                                        filename=f"listing_{listing_id}_{image.get('image_id', '')}.jpg",
-                                        url=image.get('url_fullxfull', ''),
-                                        path=image.get('url_fullxfull', ''),  # For frontend compatibility
-                                        etsy_listing_id=str(listing_id),
-                                        image_id=str(image.get('image_id', ''))
-                                    ))
-
-        except Exception as e:
-            logging.warning(f"Failed to fetch Etsy mockups for user {user_id}: {e}")
-
-        # Fetch design files from QNAP NAS based on templates
-        try:
-            if nas_storage.enabled and user.shop_name:
-                for template in templates:
-                    template_name = template.name
-                    # List files from both regular and digital template paths
-                    template_paths = [template_name, f"Digital/{template_name}"]
-
-                    for template_path in template_paths:
-                        try:
-                            # List files from NAS
-                            file_list = nas_storage.list_files(user.shop_name, template_path)
-                            if file_list:
-                                for file_info in file_list:
-                                    if isinstance(file_info, dict):
-                                        filename = file_info.get('filename', '')
-                                        # Filter for image files
-                                        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
-                                            design_files.append(model.DesignFile(
-                                                filename=filename,
-                                                path=f"/nas/{user.shop_name}/{template_path}/{filename}",  # Virtual path for frontend
-                                                url=f"/api/designs/nas-file/{user.shop_name}/{template_path}/{filename}",  # Download endpoint
-                                                template_name=template_name,
-                                                nas_path=f"{template_path}/{filename}",
-                                                file_size=file_info.get('size'),
-                                                last_modified=file_info.get('modified')
-                                            ))
-                        except Exception as e:
-                            logging.warning(f"Failed to list files from NAS path {template_path}: {e}")
-        except Exception as e:
-            logging.warning(f"Failed to fetch design files from NAS for user {user_id}: {e}")
-
+        # Return empty results for now to test basic functionality
         return model.DesignGalleryResponse(
-            mockups=mockups,
-            files=design_files,
-            total_mockups=len(mockups),
-            total_files=len(design_files)
+            mockups=[],
+            files=[],
+            total_mockups=0,
+            total_files=0
         )
 
     except Exception as e:
         logging.error(f"Error fetching design gallery data for user {user_id}: {e}")
+        import traceback
+        logging.error(f"Gallery error traceback: {traceback.format_exc()}")
         raise DesignGetAllError()
 
 
