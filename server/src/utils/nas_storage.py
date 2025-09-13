@@ -1,9 +1,11 @@
 import os
+import stat
 import logging
 from pathlib import Path
 from typing import Optional, Union
 from contextlib import contextmanager
 from io import BytesIO
+from datetime import datetime
 
 # Optional import for paramiko - graceful fallback if not available
 try:
@@ -269,25 +271,67 @@ class NASStorage:
     
     def list_files(self, shop_name: str, relative_path: str = "") -> list:
         """
-        List files in a directory on the NAS
-        
+        List files in a directory on the NAS with metadata
+
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
-        
+
         Returns:
-            list: List of filenames, empty list if error
+            list: List of file info dicts with filename, size, modified, empty list if error
         """
         if not self.enabled:
             return []
-        
+
         try:
             with self.get_sftp_connection() as sftp:
                 remote_dir = f"{self.base_path}/{shop_name}/{relative_path}" if relative_path else f"{self.base_path}/{shop_name}"
-                return sftp.listdir(remote_dir)
+                files = []
+
+                # List files with attributes
+                for attr in sftp.listdir_attr(remote_dir):
+                    if not stat.S_ISDIR(attr.st_mode):  # Only files, not directories
+                        files.append({
+                            'filename': attr.filename,
+                            'size': attr.st_size,
+                            'modified': datetime.fromtimestamp(attr.st_mtime) if attr.st_mtime else None
+                        })
+                return files
         except Exception as e:
             logging.error(f"Failed to list files in {relative_path} on NAS: {e}")
             return []
+
+    def download_file_to_memory(self, shop_name: str, relative_path: str) -> bytes:
+        """
+        Download a file from the NAS to memory
+
+        Args:
+            shop_name: Name of the shop
+            relative_path: Relative path within the shop directory
+
+        Returns:
+            bytes: File content as bytes, None if error
+        """
+        if not self.enabled:
+            logging.warning("NAS storage disabled, skipping download")
+            return None
+
+        try:
+            with self.get_sftp_connection() as sftp:
+                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
+                # Download the file to memory
+                file_obj = BytesIO()
+                sftp.getfo(remote_file_path, file_obj)
+                file_obj.seek(0)
+                file_content = file_obj.read()
+
+                logging.info(f"Successfully downloaded {remote_file_path} from NAS to memory ({len(file_content)} bytes)")
+                return file_content
+
+        except Exception as e:
+            logging.error(f"Failed to download {relative_path} from NAS to memory: {e}")
+            return None
     
     def delete_file(self, shop_name: str, relative_path: str) -> bool:
         """

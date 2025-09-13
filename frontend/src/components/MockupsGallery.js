@@ -127,7 +127,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-2 sm:space-y-0">
-        <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Local Mockups</h3>
+        <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Etsy Store Mockups</h3>
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
           <div className="flex space-x-4 p-4">
             {/* View Mode Dropdown */}
@@ -141,7 +141,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
           <div className="relative w-full sm:w-auto">
             <input
               type="text"
-              placeholder="Search mockups..."
+              placeholder="Search Etsy mockups..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-auto text-sm sm:text-base"
@@ -190,7 +190,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
             </div>
             <div className="p-3 sm:p-4">
               <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 text-sm sm:text-base">{image.filename}</h3>
-              <p className="text-xs sm:text-sm text-gray-500">Mockup Image</p>
+              <p className="text-xs sm:text-sm text-gray-500">Etsy Listing Image</p>
             </div>
           </div>
         ))}
@@ -246,7 +246,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
 
       {/* Results Info */}
       <div className="text-center text-sm text-gray-600 mt-4">
-        Showing {startIndex + 1}-{Math.min(endIndex, filteredImages.length)} of {filteredImages.length} mockups
+        Showing {startIndex + 1}-{Math.min(endIndex, filteredImages.length)} of {filteredImages.length} Etsy mockups
       </div>
 
       {/* Zoom Modal */}

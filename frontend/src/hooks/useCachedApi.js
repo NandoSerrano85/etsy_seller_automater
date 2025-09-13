@@ -118,9 +118,9 @@ export const useCachedApi = () => {
       return makeCachedApiCall(
         'designs',
         async () => {
-          // Set limit to 1000 to get all designs (backend max is 1000)
-          const response = await makeAuthenticatedRequest('/designs/list?limit=1000');
-          return response?.designs || response?.data?.designs || [];
+          // Use new gallery endpoint that returns both Etsy mockups and QNAP design files
+          const response = await makeAuthenticatedRequest('/designs/gallery');
+          return response || { mockups: [], files: [] };
         },
         forceRefresh
       );
@@ -186,8 +186,10 @@ export const useCachedApi = () => {
               ? monthlyAnalytics.value?.total_revenue || monthlyAnalytics.value?.data?.total_revenue || 0
               : 0,
           totalOrders: orders.status === 'fulfilled' ? orders.value?.length || 0 : 0,
-          totalDesigns: designs.status === 'fulfilled' ? designs.value?.length || 0 : 0,
-          totalMockups: mockups.status === 'fulfilled' ? mockups.value?.length || 0 : 0,
+          totalDesigns:
+            designs.status === 'fulfilled' ? designs.value?.total_files || designs.value?.files?.length || 0 : 0,
+          totalMockups:
+            designs.status === 'fulfilled' ? designs.value?.total_mockups || designs.value?.mockups?.length || 0 : 0,
         };
 
         // Cache dashboard stats
@@ -198,7 +200,7 @@ export const useCachedApi = () => {
         return {
           topSellers: topSellers.status === 'fulfilled' ? topSellers.value : [],
           monthlyAnalytics: monthlyAnalytics.status === 'fulfilled' ? monthlyAnalytics.value : null,
-          designs: designs.status === 'fulfilled' ? designs.value : [],
+          designs: designs.status === 'fulfilled' ? designs.value : { mockups: [], files: [] },
           orders: orders.status === 'fulfilled' ? orders.value : [],
           mockups: mockups.status === 'fulfilled' ? mockups.value : [],
           dashboardStats: stats,

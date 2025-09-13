@@ -45,3 +45,25 @@ class DesignImageResponse(DesignImageBase):
 class DesignImageListResponse(BaseModel):
     designs: List[DesignImageResponse]
     total: int
+
+class EtsyMockupImage(BaseModel):
+    filename: str
+    url: str
+    path: Optional[str] = None  # For compatibility with frontend
+    etsy_listing_id: Optional[str] = None
+    image_id: Optional[str] = None
+
+class DesignFile(BaseModel):
+    filename: str
+    path: str
+    url: Optional[str] = None  # For compatibility with frontend
+    template_name: str
+    nas_path: str
+    file_size: Optional[int] = None
+    last_modified: Optional[datetime] = None
+
+class DesignGalleryResponse(BaseModel):
+    mockups: List[EtsyMockupImage]
+    files: List[DesignFile]
+    total_mockups: int
+    total_files: int

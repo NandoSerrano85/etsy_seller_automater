@@ -78,3 +78,58 @@ async def delete_design(
     if not user_id:
         raise InvalidUserToken()
     service.delete_design(db, design_id, user_id)
+
+@router.get('/gallery', response_model=model.DesignGalleryResponse)
+async def get_design_gallery(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get design gallery data including Etsy mockups and QNAP design files"""
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+    return await service.get_design_gallery_data(db, user_id)
+
+@router.get('/nas-file/{shop_name}/{path:path}')
+async def serve_nas_file(
+    shop_name: str,
+    path: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Serve design files from QNAP NAS"""
+    from fastapi.responses import StreamingResponse
+    from server.src.utils.nas_storage import nas_storage
+    import io
+
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+
+    # Verify user owns this shop
+    user = service.get_user_by_id(db, user_id)
+    if not user or user.shop_name != shop_name:
+        raise InvalidUserToken()
+
+    try:
+        # Download file from NAS to memory
+        file_data = nas_storage.download_file_to_memory(shop_name, path)
+        if not file_data:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Determine content type based on file extension
+        import mimetypes
+        filename = path.split('/')[-1]
+        content_type, _ = mimetypes.guess_type(filename)
+        if not content_type:
+            content_type = 'application/octet-stream'
+
+        return StreamingResponse(
+            io.BytesIO(file_data),
+            media_type=content_type,
+            headers={"Content-Disposition": f"inline; filename={filename}"}
+        )
+    except Exception as e:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"Failed to serve file: {str(e)}")

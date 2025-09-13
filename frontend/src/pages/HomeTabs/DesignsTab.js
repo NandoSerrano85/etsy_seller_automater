@@ -67,7 +67,9 @@ const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, 
       </div>
       <div className="mb-6">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Designs Gallery</h2>
-        <p className="text-gray-600 text-sm sm:text-base">Your Etsy listings, local design files, and mockups</p>
+        <p className="text-gray-600 text-sm sm:text-base">
+          Etsy store mockups and QNAP design files from your templates
+        </p>
       </div>
       {/* Sub-tabs for Mockups and Design Files */}
       <div className="flex space-x-2 mb-6 overflow-x-auto">

@@ -1003,3 +1003,31 @@ class EtsyAPI:
             'count': len(all_listings),
             'total': len(all_listings)
         }
+
+    def get_all_active_listings_images(self) -> list:
+        """
+        Get all active listings with their images for the design gallery
+
+        Returns:
+            list: List of listings with images formatted for gallery display
+        """
+        try:
+            response = self.get_all_shop_listings(state="active", include_images=True)
+            listings_with_images = []
+
+            for listing in response.get('results', []):
+                if isinstance(listing, dict):
+                    listing_id = listing.get('listing_id')
+                    images = listing.get('Images', [])
+
+                    if images:  # Only include listings that have images
+                        listings_with_images.append({
+                            'listing_id': listing_id,
+                            'title': listing.get('title', ''),
+                            'images': images
+                        })
+
+            return listings_with_images
+        except Exception as e:
+            logging.error(f"Failed to fetch active listings with images: {e}")
+            return []
