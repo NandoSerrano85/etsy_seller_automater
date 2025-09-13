@@ -41,14 +41,15 @@ class User(Base):
     mockups = relationship('Mockups', order_by='Mockups.id', back_populates='user')
     design_images = relationship('DesignImages', order_by='DesignImages.id', back_populates='user')
     
-    # Multi-tenant relationships - only active when enabled
-    if MULTI_TENANT_ENABLED:
-        organization = relationship('Organization', back_populates='users')
-        organization_memberships = relationship('OrganizationMember', back_populates='user')
-        # shops = relationship('Shop', back_populates='user')  # TODO: Enable after shop.py is updated
-        # files = relationship('File', back_populates='created_by_user')  # TODO: Enable after files.py is updated
-        # print_jobs = relationship('PrintJob', back_populates='created_by_user')  # TODO: Enable after print_job.py is updated
-        # events = relationship('Event', back_populates='user')  # TODO: Enable after event.py is updated
+    # Multi-tenant relationships - temporarily disabled to resolve join condition issues
+    # TODO: Re-enable after Organization relationships are stable
+    # if MULTI_TENANT_ENABLED:
+    #     organization = relationship('Organization', back_populates='users')
+    #     organization_memberships = relationship('OrganizationMember', back_populates='user')
+    #     # shops = relationship('Shop', back_populates='user')  # TODO: Enable after shop.py is updated
+    #     # files = relationship('File', back_populates='created_by_user')  # TODO: Enable after files.py is updated
+    #     # print_jobs = relationship('PrintJob', back_populates='created_by_user')  # TODO: Enable after print_job.py is updated
+    #     # events = relationship('Event', back_populates='user')  # TODO: Enable after event.py is updated
     
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

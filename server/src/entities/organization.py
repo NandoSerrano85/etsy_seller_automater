@@ -26,10 +26,11 @@ class Organization(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    # Conditional relationships - only active if multi-tenant is enabled
-    if MULTI_TENANT_ENABLED:
-        users = relationship("User", back_populates="organization")
-        members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
+    # Conditional relationships - temporarily disabled to resolve join condition issues
+    # TODO: Re-enable after User.org_id foreign key is stable
+    # if MULTI_TENANT_ENABLED:
+    #     users = relationship("User", back_populates="organization")
+    #     members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Organization(id={self.id}, name={self.name})>"
@@ -56,10 +57,11 @@ class OrganizationMember(Base):
     # Audit fields
     joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
-    # Conditional relationships
-    if MULTI_TENANT_ENABLED:
-        organization = relationship("Organization", back_populates="members")
-        user = relationship("User", back_populates="organization_memberships")
+    # Conditional relationships - temporarily disabled to resolve join condition issues
+    # TODO: Re-enable after Organization/User relationships are stable
+    # if MULTI_TENANT_ENABLED:
+    #     organization = relationship("Organization", back_populates="members")
+    #     user = relationship("User", back_populates="organization_memberships")
     
     def __repr__(self):
         return f"<OrganizationMember(org_id={self.organization_id}, user_id={self.user_id}, role={self.role})>"
