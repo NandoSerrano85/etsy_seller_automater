@@ -3,6 +3,7 @@ File Entity for NAS-based storage
 Tracks file metadata in database while files are stored on QNAP NAS
 """
 
+import os
 from sqlalchemy import Column, String, Integer, BigInteger, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM
 from sqlalchemy.ext.declarative import declarative_base
@@ -11,6 +12,9 @@ from datetime import datetime, timezone
 import uuid
 
 from ..database.core import Base
+
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
 # File type enum
 file_type_enum = ENUM(
@@ -30,7 +34,10 @@ class File(Base):
     __tablename__ = 'files'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=True)
     
     # File type and status
     file_type = Column(file_type_enum, nullable=False)

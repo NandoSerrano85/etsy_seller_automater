@@ -1,3 +1,4 @@
+import os
 from sqlalchemy import Column, Float, Integer, String, Boolean, DateTime, func, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from server.src.database.core import Base
@@ -5,12 +6,18 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import UUID
 
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
+
 class EtsyProductTemplate(Base):
     __tablename__ = 'etsy_product_templates'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)  # Added for multi-tenancy
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     name = Column(String, nullable=False)  # e.g., 'UVDTF 16oz'
     template_title = Column(String, nullable=True)  # User-friendly template name/key
     title = Column(String, nullable=True)
@@ -37,7 +44,8 @@ class EtsyProductTemplate(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Relationships
-    organization = relationship('Organization', back_populates='templates')
+    # Temporarily commented out to avoid circular dependencies
+    # organization = relationship('Organization', back_populates='templates')
     user = relationship('User', back_populates='etsy_product_templates')
     canvas_configs = relationship('CanvasConfig', back_populates='product_template')
     size_configs = relationship('SizeConfig', back_populates='product_template')
