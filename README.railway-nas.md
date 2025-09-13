@@ -1,6 +1,6 @@
 # Railway + QNAP NAS Deployment Guide
 
-This guide shows how to deploy your Etsy Seller Automater to Railway using your QNAP NAS as storage instead of AWS S3.
+This guide shows how to deploy your CraftFlow application to Railway using your QNAP NAS as storage instead of AWS S3.
 
 ## 🏗️ Architecture Overview
 
@@ -28,7 +28,7 @@ Railway Cloud Infrastructure:
 
    # Create new project
    railway new
-   # Name: etsy-seller-automater-prod
+   # Name: craftflow-prod
    ```
 
 2. **Add Database Services**

@@ -445,7 +445,7 @@ def run_server():
     port = int(os.getenv('PORT', SERVER_CONFIG['default_port']))
     debug = os.getenv('DEBUG', str(SERVER_CONFIG['default_debug'])).lower() == 'true'
     
-    print(f"Starting Etsy OAuth server on http://{host}:{port}")
+    print(f"Starting CraftFlow server on http://{host}:{port}")
     print(f"Debug mode: {debug}")
     
     # Open browser only if not running in Docker and debug is enabled

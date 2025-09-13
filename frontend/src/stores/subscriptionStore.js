@@ -43,7 +43,7 @@ export const TIER_CONFIGS = {
   [SUBSCRIPTION_TIERS.FREE]: {
     name: 'Free Plan',
     price: 0,
-    description: 'Perfect for trying out our tools',
+    description: 'Perfect for trying out CraftFlow',
     features: {
       [FEATURES.ETSY_DASHBOARD]: true,
       [FEATURES.BASIC_ANALYTICS]: true,
@@ -61,7 +61,7 @@ export const TIER_CONFIGS = {
   [SUBSCRIPTION_TIERS.PRO]: {
     name: 'Pro Plan',
     price: 29,
-    description: 'For serious Etsy sellers who want to scale',
+    description: 'For serious Etsy sellers ready to scale their business',
     features: {
       [FEATURES.ETSY_DASHBOARD]: true,
       [FEATURES.BASIC_ANALYTICS]: true,
@@ -84,7 +84,7 @@ export const TIER_CONFIGS = {
   [SUBSCRIPTION_TIERS.PRINT_PRO]: {
     name: 'Print Shop Pro',
     price: 99,
-    description: 'For print shops & businesses processing bulk orders',
+    description: 'For print shops & businesses processing high-volume orders',
     features: {
       [FEATURES.ETSY_DASHBOARD]: true,
       [FEATURES.BASIC_ANALYTICS]: true,

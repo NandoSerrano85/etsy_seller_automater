@@ -24,7 +24,7 @@ const PricingTable = ({ className = '', onSelectPlan = null, highlightCurrent = 
     <div className={`bg-white ${className}`}>
       <div className="text-center mb-8">
         <h2 className="text-3xl font-bold text-gray-900 mb-4">Choose Your Plan</h2>
-        <p className="text-lg text-gray-600">Scale your Etsy business with the right tools for your needs</p>
+        <p className="text-lg text-gray-600">Scale your Etsy business with CraftFlow's powerful automation tools</p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-8">

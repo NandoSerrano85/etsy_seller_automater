@@ -1,6 +1,6 @@
-# Etsy Seller Automaker
+# CraftFlow
 
-A comprehensive tool for Etsy sellers to automate listing creation, manage shop analytics, and create design mockups.
+A comprehensive platform for Etsy sellers to streamline their business with professional mockups, automation tools, and analytics.
 
 ## Features
 
@@ -21,12 +21,14 @@ A comprehensive tool for Etsy sellers to automate listing creation, manage shop 
 - Etsy Developer Account
 
 ### 1. **Clone the Repository**
+
 ```sh
 git clone <repo-url>
-cd etsy_seller_automater
+cd craftflow
 ```
 
 ### 2. **Environment Setup**
+
 - Copy or create a `.env` file in the project root. For local development, use:
   ```env
   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/etsydb
@@ -39,29 +41,38 @@ cd etsy_seller_automater
 Use the provided `run_docker.sh` script for all modes:
 
 #### **Development with Docker Compose**
+
 Runs backend, frontend, and database in containers (recommended for most users):
+
 ```sh
 ./run_docker.sh dev
 ```
+
 - Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend:  [http://localhost:3003](http://localhost:3003)
+- Backend: [http://localhost:3003](http://localhost:3003)
 - API Docs: [http://localhost:3003/docs](http://localhost:3003/docs)
 
 #### **Production Mode (Docker Compose, single container)**
+
 ```sh
 ./run_docker.sh prod
 ```
+
 - App: [http://localhost:3003](http://localhost:3003)
 
 #### **Local Backend (no Docker)**
+
 Runs backend using your local Python and connects to your local PostgreSQL:
+
 ```sh
 ./run_docker.sh local
 ```
+
 - The script will ensure `.env` uses `localhost` for the database host.
 - Make sure your local PostgreSQL is running and has a database named `etsydb`.
 
 #### **Other Commands**
+
 - Stop all containers: `./run_docker.sh stop`
 - Clean all containers/images/volumes: `./run_docker.sh clean`
 - Show logs: `./run_docker.sh logs`
@@ -69,10 +80,10 @@ Runs backend using your local Python and connects to your local PostgreSQL:
 
 ## DATABASE_URL Host Explained
 
-| How you run backend      | DATABASE_URL host | How to start backend         |
-|-------------------------|-------------------|-----------------------------|
-| Locally (not Docker)    | localhost         | `./run_docker.sh local`     |
-| Docker Compose          | db                | `./run_docker.sh dev`       |
+| How you run backend  | DATABASE_URL host | How to start backend    |
+| -------------------- | ----------------- | ----------------------- |
+| Locally (not Docker) | localhost         | `./run_docker.sh local` |
+| Docker Compose       | db                | `./run_docker.sh dev`   |
 
 - **Never use `db` as the host for local development.**
 - **Never use `localhost` as the host inside Docker Compose.**
@@ -80,6 +91,7 @@ Runs backend using your local Python and connects to your local PostgreSQL:
 ## Troubleshooting
 
 ### **Database Connection Errors**
+
 - **Error: `could not translate host name "db" to address: Name or service not known`**
   - You are running the backend locally but your `.env` uses `db` as the host. Use `./run_docker.sh local` to fix this automatically.
 
@@ -90,11 +102,13 @@ Runs backend using your local Python and connects to your local PostgreSQL:
   - You are running in Docker Compose but your `.env` uses `localhost`. Use `./run_docker.sh dev` to use the correct host.
 
 ### **General Tips**
+
 - Always use the `run_docker.sh` script to avoid host confusion.
 - If you switch between local and Docker Compose, the script will update your `.env` as needed.
 - For persistent data, Docker Compose uses a named volume for PostgreSQL.
 
 ## More Information
+
 - API documentation: [http://localhost:3003/docs](http://localhost:3003/docs)
 - For advanced configuration, see `docker-compose.yml` and `.env`.
 
@@ -130,7 +144,7 @@ The project includes a convenient script for managing Docker containers:
 - `docker-compose.yml` - Development environment with separate frontend/backend
 - `docker-compose.prod.yml` - Production environment with built frontend
 - `Dockerfile.backend` - Backend service container
-- `Dockerfile.frontend` - Frontend service container  
+- `Dockerfile.frontend` - Frontend service container
 - `Dockerfile.prod` - Production container with multi-stage build
 
 ## Testing
@@ -140,11 +154,13 @@ The project includes a comprehensive test suite for the backend:
 ### Running Tests
 
 **With Docker (Recommended):**
+
 ```bash
 ./run_docker.sh test
 ```
 
 **Locally:**
+
 ```bash
 # Install test dependencies
 pip install pytest pytest-asyncio httpx
@@ -174,12 +190,12 @@ server/tests/
 
 ### Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `CLIENT_ID` | Your Etsy API client ID | Yes |
-| `SHOP_NAME` | Your Etsy shop name | Yes |
-| `SHOP_URL` | Your Etsy shop URL | Yes |
-| `LOCAL_ROOT_PATH` | Path to your local design files | Yes |
+| Variable          | Description                     | Required |
+| ----------------- | ------------------------------- | -------- |
+| `CLIENT_ID`       | Your Etsy API client ID         | Yes      |
+| `SHOP_NAME`       | Your Etsy shop name             | Yes      |
+| `SHOP_URL`        | Your Etsy shop URL              | Yes      |
+| `LOCAL_ROOT_PATH` | Path to your local design files | Yes      |
 
 ### OAuth Configuration
 
@@ -197,12 +213,14 @@ The application uses OAuth 2.0 with PKCE for secure authentication. The redirect
 ### Features
 
 #### Dashboard
+
 - **Overview**: Welcome message and quick stats
 - **Analytics**: View top sellers by year with monthly breakdown
 - **Designs**: Browse Etsy listings and local PNG files
 - **Tools**: Access the mask creator
 
 #### Mask Creator
+
 1. Upload a mockup image
 2. Choose drawing mode (point or rectangle)
 3. Draw masks on the image
@@ -211,21 +229,25 @@ The application uses OAuth 2.0 with PKCE for secure authentication. The redirect
 ## API Endpoints
 
 ### OAuth
+
 - `GET /api/oauth-data` - Get OAuth configuration
 - `GET /oauth/redirect` - Handle OAuth token exchange
 - `POST /api/oauth-callback` - Alternative OAuth callback
 
 ### Shop Data
+
 - `GET /api/user-data` - Get user and shop information
 - `GET /api/top-sellers` - Get top selling items
 - `GET /api/shop-listings` - Get shop listings with images
 - `GET /api/monthly-analytics` - Get monthly sales breakdown
 
 ### Local Files
+
 - `GET /api/local-images` - List local PNG files
 - `GET /api/local-images/{filename}` - Serve local image file
 
 ### Tools
+
 - `POST /api/masks` - Save mask data
 - `GET /api/create-gang-sheets` - Create gang sheets
 
@@ -234,7 +256,7 @@ The application uses OAuth 2.0 with PKCE for secure authentication. The redirect
 ### Project Structure
 
 ```
-etsy_seller_automater/
+craftflow/
 ├── frontend/                 # React frontend
 │   ├── src/
 │   │   ├── components/       # React components
@@ -266,18 +288,21 @@ etsy_seller_automater/
 ### Building for Production
 
 1. **Build frontend**
+
    ```bash
    cd frontend
    npm run build
    ```
 
 2. **Start production server**
+
    ```bash
    source .venv/bin/activate
    python start_server.py
    ```
 
    Or use Docker:
+
    ```bash
    ./run_docker.sh prod
    ```
@@ -298,6 +323,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 For support and questions:
+
 - Check the troubleshooting section
 - Review the API documentation
-- Open an issue on GitHub 
+- Open an issue on GitHub

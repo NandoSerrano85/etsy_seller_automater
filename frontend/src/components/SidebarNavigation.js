@@ -284,11 +284,11 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-lavender-400 to-lavender-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">E</span>
+                <span className="text-white font-bold text-lg">C</span>
               </div>
               <div>
-                <h1 className="font-bold text-sage-900 text-lg leading-none">Etsy</h1>
-                <p className="text-sage-600 text-xs">Seller Automaker</p>
+                <h1 className="font-bold text-sage-900 text-lg leading-none">CraftFlow</h1>
+                <p className="text-sage-600 text-xs">Etsy Automation</p>
               </div>
             </Link>
 

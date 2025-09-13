@@ -18,7 +18,7 @@ const OnboardingFlow = ({ onComplete }) => {
       content: (
         <div className="text-center space-y-4">
           <div className="text-6xl mb-4">🎉</div>
-          <h3 className="text-xl font-semibold text-gray-900">Welcome to Etsy Seller Automaker!</h3>
+          <h3 className="text-xl font-semibold text-gray-900">Welcome to CraftFlow!</h3>
           <p className="text-gray-600 max-w-md mx-auto">
             This quick setup will help you connect your Etsy shop and start creating professional mockups for your
             designs.

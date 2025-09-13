@@ -1,5 +1,5 @@
 """
-Constants and configuration data for the Etsy Seller Automaker application.
+Constants and configuration data for the CraftFlow application.
 This file contains templates, default values, and other static configuration.
 """
 

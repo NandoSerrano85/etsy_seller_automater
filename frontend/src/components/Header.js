@@ -25,7 +25,7 @@ const Header = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link to="/" className="flex items-center space-x-2" onClick={closeMobileMenu}>
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900">Etsy Seller Automaker</h1>
+              <h1 className="text-lg sm:text-xl font-bold text-gray-900">CraftFlow</h1>
             </Link>
 
             {/* Desktop Navigation */}

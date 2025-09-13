@@ -1,7 +1,7 @@
 {
-  "name": "printer-automater-frontend",
+  "name": "craftflow-frontend",
   "version": "1.0.0",
-  "description": "React frontend for Printer Automater",
+  "description": "React frontend for CraftFlow",
   "private": true,
   "dependencies": {
     "@testing-library/jest-dom": "^5.16.4",
