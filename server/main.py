@@ -69,12 +69,51 @@ async def options_handler(path: str):
 register_routes(app)
 message.register_error_handlers(app)
 
+# Create required enums before table creation
+def create_required_enums():
+    """Create database enums that are required by SQLAlchemy entities."""
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            with conn.begin():
+                print("📋 Creating required database enums...")
+                
+                # Create file_type_enum
+                conn.execute(text("""
+                    DO $$ BEGIN
+                        CREATE TYPE file_type_enum AS ENUM (
+                            'original', 'design', 'mockup', 'print_file', 
+                            'watermark', 'template', 'export', 'other'
+                        );
+                    EXCEPTION
+                        WHEN duplicate_object THEN null;
+                    END $$;
+                """))
+                
+                # Create file_status_enum
+                conn.execute(text("""
+                    DO $$ BEGIN
+                        CREATE TYPE file_status_enum AS ENUM (
+                            'uploading', 'ready', 'processing', 'failed', 'archived'
+                        );
+                    EXCEPTION
+                        WHEN duplicate_object THEN null;
+                    END $$;
+                """))
+                
+                print("✅ Database enums created successfully")
+    except Exception as e:
+        print(f"⚠️  Warning: Enum creation failed: {e}")
+
+# Create enums first, then tables
+create_required_enums()
+
 # Create database tables with error handling
 try:
     Base.metadata.create_all(bind=engine)
-    print("Database tables created successfully")
+    print("✅ Database tables created successfully")
 except Exception as e:
-    print(f"Warning: Database table creation failed: {e}")
+    print(f"⚠️  Warning: Database table creation failed: {e}")
     # Continue running - tables might already exist
 
 # Run database migrations for new columns
@@ -123,32 +162,6 @@ def run_multi_tenant_migration(conn):
         
         if not result.fetchone():
             print("📋 Creating multi-tenant tables...")
-            
-            # Create required enums first
-            print("📋 Creating required enums...")
-            try:
-                conn.execute(text("""
-                    DO $$ BEGIN
-                        CREATE TYPE file_type_enum AS ENUM (
-                            'original', 'design', 'mockup', 'print_file', 
-                            'watermark', 'template', 'export', 'other'
-                        );
-                    EXCEPTION
-                        WHEN duplicate_object THEN null;
-                    END $$;
-                """))
-                conn.execute(text("""
-                    DO $$ BEGIN
-                        CREATE TYPE file_status_enum AS ENUM (
-                            'uploading', 'ready', 'processing', 'failed', 'archived'
-                        );
-                    EXCEPTION
-                        WHEN duplicate_object THEN null;
-                    END $$;
-                """))
-                print("✅ Created enum types")
-            except Exception as enum_error:
-                print(f"⚠️  Warning: Enum creation failed: {enum_error}")
             
             # Create organizations table
             conn.execute(text("""
