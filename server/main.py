@@ -141,17 +141,46 @@ def run_migrations():
 
                 # Check if role column exists
                 result = conn.execute(text("""
-                    SELECT column_name 
-                    FROM information_schema.columns 
+                    SELECT column_name
+                    FROM information_schema.columns
                     WHERE table_name = 'users' AND column_name = 'role'
                 """))
-                
+
                 if not result.fetchone():
                     # Add the role column
                     conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'member'"))
                     print("✅ Added role column to users table")
                 else:
                     print("✅ role column already exists")
+
+                # Check if dpi column exists in canvas_configs table
+                result = conn.execute(text("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'canvas_configs' AND column_name = 'dpi'
+                """))
+
+                if not result.fetchone():
+                    # Add the dpi column
+                    conn.execute(text("ALTER TABLE canvas_configs ADD COLUMN dpi INTEGER NOT NULL DEFAULT 300"))
+                    print("✅ Added dpi column to canvas_configs table")
+                else:
+                    print("✅ dpi column already exists in canvas_configs table")
+
+                # Check if spacing columns exist in canvas_configs table
+                result = conn.execute(text("""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'canvas_configs' AND column_name = 'spacing_width_inches'
+                """))
+
+                if not result.fetchone():
+                    # Add the spacing columns
+                    conn.execute(text("ALTER TABLE canvas_configs ADD COLUMN spacing_width_inches FLOAT NOT NULL DEFAULT 0.125"))
+                    conn.execute(text("ALTER TABLE canvas_configs ADD COLUMN spacing_height_inches FLOAT NOT NULL DEFAULT 0.125"))
+                    print("✅ Added spacing columns to canvas_configs table")
+                else:
+                    print("✅ spacing columns already exist in canvas_configs table")
 
                 # Run multi-tenant migration
                 run_multi_tenant_migration(conn)

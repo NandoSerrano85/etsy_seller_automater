@@ -40,7 +40,10 @@ def create_canvas_config(canvas_config: model.CanvasConfigCreate, product_templa
             height_inches=canvas_config.height_inches,
             description=canvas_config.description,
             is_active=canvas_config.is_active,
-            is_stretch=canvas_config.is_stretch
+            is_stretch=canvas_config.is_stretch,
+            dpi=canvas_config.dpi,
+            spacing_width_inches=canvas_config.spacing_width_inches,
+            spacing_height_inches=canvas_config.spacing_height_inches
         )
         
         db.add(db_canvas_config)
@@ -169,8 +172,8 @@ def get_default_canvas_config(
     if user_id is None:
         raise ValueError("User ID cannot be None")
     # Get the first active canvas config for this user and template
-    canvas_config = db.query(CanvasConfig).filter(
-        CanvasConfig.user_id == user_id,
+    canvas_config = db.query(CanvasConfig).join(EtsyProductTemplate).filter(
+        EtsyProductTemplate.user_id == user_id,
         CanvasConfig.product_template_id == product_template_id,
         CanvasConfig.is_active == True
     ).first()

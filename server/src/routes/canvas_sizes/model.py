@@ -10,6 +10,9 @@ class CanvasConfigCreate(BaseModel):
     description: Optional[str] = None
     is_active: bool
     is_stretch: bool
+    dpi: int = 300
+    spacing_width_inches: float = 0.125
+    spacing_height_inches: float = 0.125
 
 class CanvasConfigUpdate(CanvasConfigCreate):
     pass
