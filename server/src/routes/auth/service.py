@@ -103,13 +103,18 @@ def register_user_multi_tenant(register_user_request: RegisterUserRequest, db: S
             db.flush()  # Get the organization ID
             
             # Create user with organization reference
-            user = User(
-                email=register_user_request.email,
-                hashed_password=get_password_hash(register_user_request.password),
-                shop_name=register_user_request.shop_name,
-                org_id=organization.id,
-                role='owner'  # First user is owner
-            )
+            user_kwargs = {
+                'email': register_user_request.email,
+                'hashed_password': get_password_hash(register_user_request.password),
+                'shop_name': register_user_request.shop_name,
+                'role': 'owner'  # First user is owner
+            }
+            
+            # Only add org_id if the User class has this attribute
+            if hasattr(User, 'org_id'):
+                user_kwargs['org_id'] = organization.id
+                
+            user = User(**user_kwargs)
             db.add(user)
             db.flush()  # Get the user ID
             

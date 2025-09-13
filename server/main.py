@@ -13,6 +13,10 @@ sys.path.insert(0, project_root)
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+
+# Enable multi-tenant features early, before entity imports
+os.environ['ENABLE_MULTI_TENANT'] = 'true'
+
 from server.src.database.core import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 from server.src.api import register_routes
@@ -119,6 +123,32 @@ def run_multi_tenant_migration(conn):
         
         if not result.fetchone():
             print("📋 Creating multi-tenant tables...")
+            
+            # Create required enums first
+            print("📋 Creating required enums...")
+            try:
+                conn.execute(text("""
+                    DO $$ BEGIN
+                        CREATE TYPE file_type_enum AS ENUM (
+                            'original', 'design', 'mockup', 'print_file', 
+                            'watermark', 'template', 'export', 'other'
+                        );
+                    EXCEPTION
+                        WHEN duplicate_object THEN null;
+                    END $$;
+                """))
+                conn.execute(text("""
+                    DO $$ BEGIN
+                        CREATE TYPE file_status_enum AS ENUM (
+                            'uploading', 'ready', 'processing', 'failed', 'archived'
+                        );
+                    EXCEPTION
+                        WHEN duplicate_object THEN null;
+                    END $$;
+                """))
+                print("✅ Created enum types")
+            except Exception as enum_error:
+                print(f"⚠️  Warning: Enum creation failed: {enum_error}")
             
             # Create organizations table
             conn.execute(text("""
