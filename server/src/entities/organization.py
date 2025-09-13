@@ -30,11 +30,6 @@ class Organization(Base):
     if MULTI_TENANT_ENABLED:
         users = relationship("User", back_populates="organization")
         members = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
-        shops = relationship("Shop", back_populates="organization", cascade="all, delete-orphan")
-        printers = relationship("Printer", back_populates="organization", cascade="all, delete-orphan")
-        # files = relationship("File", back_populates="organization", cascade="all, delete-orphan")
-        # print_jobs = relationship("PrintJob", back_populates="organization", cascade="all, delete-orphan")  
-        # events = relationship("Event", back_populates="organization", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<Organization(id={self.id}, name={self.name})>"

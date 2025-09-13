@@ -43,8 +43,9 @@ class Shop(Base):
     )
     
     # Conditional relationships - only active when multi-tenant is enabled
-    if MULTI_TENANT_ENABLED:
-        organization = relationship("Organization", back_populates="shops")
+    # TODO: Re-enable after Organization entity relationships are stable
+    # if MULTI_TENANT_ENABLED:
+    #     organization = relationship("Organization", back_populates="shops")
     
     def __repr__(self):
         return f"<Shop(id={self.id}, provider={self.provider}, shop_id={self.provider_shop_id})>"

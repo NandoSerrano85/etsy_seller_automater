@@ -56,9 +56,9 @@ class File(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    # Relationships
-    organization = relationship("Organization", back_populates="files")
-    created_by_user = relationship("User", back_populates="files")
+    # Relationships (temporarily simplified to avoid circular dependencies)
+    # organization = relationship("Organization", back_populates="files")
+    # created_by_user = relationship("User", back_populates="files")
     
     def __repr__(self):
         return f"<File(id={self.id}, filename={self.filename}, type={self.file_type})>"

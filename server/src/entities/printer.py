@@ -34,7 +34,10 @@ class Printer(Base):
     # Primary identifiers
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False)
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     
     # Printer information
     name = Column(String(255), nullable=False, index=True)
@@ -62,9 +65,10 @@ class Printer(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Conditional relationships - only active when multi-tenant is enabled
-    if MULTI_TENANT_ENABLED:
-        user = relationship("User", back_populates="printers")
-        organization = relationship("Organization", back_populates="printers")
+    # TODO: Re-enable after Organization entity relationships are stable
+    # if MULTI_TENANT_ENABLED:
+    #     user = relationship("User", back_populates="printers")
+    #     organization = relationship("Organization", back_populates="printers")
     
     def __repr__(self):
         return f"<Printer(id={self.id}, name='{self.name}', type='{self.printer_type}', dpi={self.dpi})>"
