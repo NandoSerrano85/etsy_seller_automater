@@ -139,6 +139,20 @@ def run_migrations():
                 else:
                     print("✅ etsy_shop_id column already exists")
 
+                # Check if role column exists
+                result = conn.execute(text("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'users' AND column_name = 'role'
+                """))
+                
+                if not result.fetchone():
+                    # Add the role column
+                    conn.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'member'"))
+                    print("✅ Added role column to users table")
+                else:
+                    print("✅ role column already exists")
+
                 # Run multi-tenant migration
                 run_multi_tenant_migration(conn)
                     
@@ -202,6 +216,20 @@ def run_multi_tenant_migration(conn):
                     ADD COLUMN org_id UUID REFERENCES organizations(id) ON DELETE SET NULL
                 """))
                 print("✅ Added org_id column to users table")
+            
+            # Add role column to users table if it doesn't exist
+            result = conn.execute(text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'users' AND column_name = 'role'
+            """))
+            
+            if not result.fetchone():
+                conn.execute(text("""
+                    ALTER TABLE users 
+                    ADD COLUMN role VARCHAR(50) NOT NULL DEFAULT 'member'
+                """))
+                print("✅ Added role column to users table")
             
             print("✅ Basic multi-tenant tables created successfully")
             print("ℹ️  Other multi-tenant tables will be created by SQLAlchemy as needed")
