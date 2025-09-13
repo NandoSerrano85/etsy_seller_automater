@@ -99,30 +99,32 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
 
 def create_print_files(current_user, db):
     """Get item summary from Etsy and optionally create gang sheets."""
-    user_id = current_user.get_uuid()
-    etsy_api = EtsyAPI(user_id, db)
-    template = db.query(EtsyProductTemplate).filter(EtsyProductTemplate.user_id == user_id).first() if hasattr(db, 'query') else None
-    template_name = template.name if template else "UVDTF 16oz"
-    user = db.query(User).filter(User.id==user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    shop_name = user.shop_name
-    if not shop_name:
-        raise HTTPException(status_code=400, detail="User shop name not set")
-
-    # Use NAS-compatible version for production, fallback to local for development
-    if nas_storage.enabled:
-        logging.info("Using NAS storage - fetching design files from QNAP NAS")
-        # Use NAS-compatible method to get item summary with design files from NAS
-        item_summary = etsy_api.fetch_open_orders_items_nas(shop_name, template_name) if etsy_api else None
-    else:
-        # Fallback to local storage if NAS is not available (development mode)
-        local_root = os.getenv('LOCAL_ROOT_PATH')
-        if not local_root:
-            raise HTTPException(status_code=500, detail="Neither NAS storage nor LOCAL_ROOT_PATH are available")
-        item_summary = etsy_api.fetch_open_orders_items(f"{local_root}{shop_name}/", template_name) if etsy_api else None
     try:
+        user_id = current_user.get_uuid()
+        etsy_api = EtsyAPI(user_id, db)
+        template = db.query(EtsyProductTemplate).filter(EtsyProductTemplate.user_id == user_id).first() if hasattr(db, 'query') else None
+        template_name = template.name if template else "UVDTF 16oz"
+        user = db.query(User).filter(User.id==user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        shop_name = user.shop_name
+        if not shop_name:
+            raise HTTPException(status_code=400, detail="User shop name not set")
+
+        logging.info(f"Creating print files for user: {user_id}, shop: {shop_name}, template: {template_name}")
+
+        # Use NAS-compatible version for production, fallback to local for development
+        if nas_storage.enabled:
+            logging.info("Using NAS storage - fetching design files from QNAP NAS")
+            # Use NAS-compatible method to get item summary with design files from NAS
+            item_summary = etsy_api.fetch_open_orders_items_nas(shop_name, template_name) if etsy_api else None
+        else:
+            # Fallback to local storage if NAS is not available (development mode)
+            local_root = os.getenv('LOCAL_ROOT_PATH')
+            if not local_root:
+                raise HTTPException(status_code=500, detail="Neither NAS storage nor LOCAL_ROOT_PATH are available")
+            item_summary = etsy_api.fetch_open_orders_items(f"{local_root}{shop_name}/", template_name) if etsy_api else None
         if item_summary and isinstance(item_summary, dict):
             # Use temporary directory for gang sheet generation
             with tempfile.TemporaryDirectory() as temp_dir:

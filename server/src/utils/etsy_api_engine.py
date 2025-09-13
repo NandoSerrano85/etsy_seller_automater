@@ -583,16 +583,38 @@ class EtsyAPI:
 
         parts = search_name.split(" ")
         search_name = " ".join(parts[:2])
-        pattern = re.compile(re.escape(search_name), re.IGNORECASE)
+
+        # Create multiple patterns to try different matching approaches
+        patterns = []
+        # Exact match pattern
+        patterns.append(re.compile(re.escape(search_name), re.IGNORECASE))
+        # Pattern without spaces
+        patterns.append(re.compile(re.escape(search_name.replace(" ", "")), re.IGNORECASE))
+        # Pattern with underscores instead of spaces
+        patterns.append(re.compile(re.escape(search_name.replace(" ", "_")), re.IGNORECASE))
+        # Pattern with hyphens instead of spaces
+        patterns.append(re.compile(re.escape(search_name.replace(" ", "-")), re.IGNORECASE))
+        # Just the number part (for patterns like "UV 674" -> "674")
+        if len(parts) > 1 and parts[1].isdigit():
+            patterns.append(re.compile(re.escape(parts[1]), re.IGNORECASE))
 
         # List files in the template directory on NAS
         template_relative_path = f"{template_name}/"
         try:
             files = nas_storage.list_files(shop_name, template_relative_path)
+            logging.info(f"NAS Search: Looking for '{search_name}' in {len(files) if files else 0} files in {shop_name}/{template_relative_path}")
+            logging.info(f"Available files: {files}")
+
             for file in files:
-                if file.lower().endswith(extensions) and pattern.search(file):
-                    # Return the relative path that can be used for NAS operations
-                    return f"{template_name}/{file}"
+                if file.lower().endswith(extensions):
+                    # Try each pattern until we find a match
+                    for i, pattern in enumerate(patterns):
+                        if pattern.search(file):
+                            logging.info(f"NAS Search: Found match - {file} using pattern {i}")
+                            # Return the relative path that can be used for NAS operations
+                            return f"{template_name}/{file}"
+
+            logging.warning(f"NAS Search: No file found matching pattern '{search_name}' in {shop_name}/{template_relative_path}")
         except Exception as e:
             logging.error(f"Error searching NAS for images: {e}")
 
@@ -662,6 +684,16 @@ class EtsyAPI:
                     item_summary["Total QTY"] += quantity
                 else:
                     logging.warning(f"No design file found on NAS for order item: {title}")
+                    # Still add to item summary but with a placeholder path so gang sheets can be processed
+                    placeholder_path = f"{template_name}/MISSING_{title.split(' | ')[0].replace(' ', '_')}.png"
+                    i = self._find_index(item_summary[template_name]['Title'], placeholder_path)
+                    if i >= 0:
+                        item_summary[template_name]['Total'][i] += quantity
+                    else:
+                        item_summary[template_name]['Title'].append(placeholder_path)
+                        item_summary[template_name]['Size'].append("")
+                        item_summary[template_name]['Total'].append(quantity)
+                    item_summary["Total QTY"] += quantity
 
         print("\nOpen Orders Item Summary (NAS):")
         for k, v in item_summary[template_name].items():
