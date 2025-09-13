@@ -2,6 +2,7 @@
 Print Job Entity for Background Processing
 """
 
+import os
 from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Enum, ARRAY
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -10,6 +11,9 @@ import uuid
 import enum
 
 from ..database.core import Base
+
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
 class PrintJobStatus(enum.Enum):
     QUEUED = "queued"
@@ -29,8 +33,11 @@ class PrintJob(Base):
     __tablename__ = 'print_jobs'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=False)
     created_by = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     
     # Job configuration
     job_type = Column(Enum(PrintJobType), nullable=False)
@@ -51,9 +58,9 @@ class PrintJob(Base):
     completed_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
-    # Relationships
-    organization = relationship("Organization", back_populates="print_jobs")
-    created_by_user = relationship("User", back_populates="print_jobs")
+    # Relationships (temporarily simplified to avoid circular dependencies)
+    # organization = relationship("Organization", back_populates="print_jobs")
+    # created_by_user = relationship("User", back_populates="print_jobs")
     
     def __repr__(self):
         return f"<PrintJob(id={self.id}, type={self.job_type}, status={self.status})>"

@@ -1,8 +1,12 @@
+import os
 from sqlalchemy import ARRAY, JSON, Column, Float, Integer, String, Boolean, DateTime, func, ForeignKey
 from sqlalchemy.orm import relationship
 from server.src.database.core import Base
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
+
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
 class MockupMaskData(Base):
     """This table has the mask data that is associated to the mockup image"""
@@ -38,13 +42,17 @@ class Mockups(Base):
     __tablename__ = 'mockups'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)  # Added for multi-tenancy
     name = Column(String, nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     product_template_id = Column(UUID(as_uuid=True), ForeignKey('etsy_product_templates.id'), nullable=False)
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     starting_name = Column(Integer, default=100)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    organization = relationship('Organization', back_populates='mockups')
+    # Relationships (temporarily simplified to avoid circular dependencies)  
+    # organization = relationship('Organization', back_populates='mockups')
     user = relationship('User', back_populates='mockups')
     mockup_images = relationship('MockupImage', back_populates='mockups', cascade='all, delete-orphan')

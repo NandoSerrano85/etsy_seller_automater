@@ -1,8 +1,12 @@
+import os
 from sqlalchemy import Column, String, Boolean, DateTime, func, ForeignKey, Table
 from sqlalchemy.orm import relationship
 from server.src.database.core import Base
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
+
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
 # Association table for many-to-many relationship between DesignImages and EtsyProductTemplate
 design_template_association = Table(
@@ -16,8 +20,11 @@ class DesignImages(Base):
     __tablename__ = 'design_images'
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)  # Added for multi-tenancy
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     description = Column(String, nullable=True)
@@ -27,8 +34,8 @@ class DesignImages(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # Relationships
-    organization = relationship('Organization', back_populates='design_images')
+    # Relationships (temporarily simplified to avoid circular dependencies)
+    # organization = relationship('Organization', back_populates='design_images')
     user = relationship('User', back_populates='design_images')
     product_templates = relationship('EtsyProductTemplate', secondary=design_template_association, back_populates='design_images')
     canvas_config = relationship('CanvasConfig', back_populates='design_images')

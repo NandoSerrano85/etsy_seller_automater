@@ -2,6 +2,7 @@
 Event Entity for Audit Logging and System Events
 """
 
+import os
 from sqlalchemy import Column, String, DateTime, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
@@ -10,12 +11,18 @@ import uuid
 
 from ..database.core import Base
 
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
+
 class Event(Base):
     __tablename__ = 'events'
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'))
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id', ondelete='SET NULL'))
+    
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'))
     
     # Event information
     event_type = Column(String(100), nullable=False)  # 'user_login', 'file_upload', 'mockup_created', etc.
@@ -35,9 +42,9 @@ class Event(Base):
         Index('idx_events_entity', 'entity_type', 'entity_id'),
     )
     
-    # Relationships
-    organization = relationship("Organization", back_populates="events")
-    user = relationship("User", back_populates="events")
+    # Relationships (temporarily simplified to avoid circular dependencies)
+    # organization = relationship("Organization", back_populates="events")
+    # user = relationship("User", back_populates="events")
     
     def __repr__(self):
         return f"<Event(id={self.id}, type={self.event_type}, entity={self.entity_type})>"
