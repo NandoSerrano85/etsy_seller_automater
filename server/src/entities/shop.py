@@ -2,6 +2,7 @@
 Shop Entity for Marketplace Connections (Etsy, Shopify, etc.)
 """
 
+import os
 from sqlalchemy import Column, String, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -9,6 +10,9 @@ from datetime import datetime, timezone
 import uuid
 
 from ..database.core import Base
+
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
 class Shop(Base):
     __tablename__ = 'shops'
@@ -38,8 +42,9 @@ class Shop(Base):
         UniqueConstraint('org_id', 'provider', 'provider_shop_id'),
     )
     
-    # Relationships
-    organization = relationship("Organization", back_populates="shops")
+    # Conditional relationships - only active when multi-tenant is enabled
+    if MULTI_TENANT_ENABLED:
+        organization = relationship("Organization", back_populates="shops")
     
     def __repr__(self):
         return f"<Shop(id={self.id}, provider={self.provider}, shop_id={self.provider_shop_id})>"

@@ -3,12 +3,16 @@ Printer entity for user-specific printer configurations
 """
 
 import enum
+import os
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, ForeignKey, Text, ARRAY
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from server.src.database.core import Base
+
+# Check if multi-tenant is enabled
+MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
 class PrinterType(enum.Enum):
     """Types of printers supported"""
@@ -57,9 +61,10 @@ class Printer(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
-    user = relationship("User", back_populates="printers")
-    organization = relationship("Organization")
+    # Conditional relationships - only active when multi-tenant is enabled
+    if MULTI_TENANT_ENABLED:
+        user = relationship("User", back_populates="printers")
+        organization = relationship("Organization", back_populates="printers")
     
     def __repr__(self):
         return f"<Printer(id={self.id}, name='{self.name}', type='{self.printer_type}', dpi={self.dpi})>"

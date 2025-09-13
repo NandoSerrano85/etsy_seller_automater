@@ -45,10 +45,10 @@ class User(Base):
     if MULTI_TENANT_ENABLED:
         organization = relationship('Organization', back_populates='users')
         organization_memberships = relationship('OrganizationMember', back_populates='user')
-        shops = relationship('Shop', back_populates='user')
-        files = relationship('File', back_populates='created_by_user')
-        print_jobs = relationship('PrintJob', back_populates='created_by_user')
-        events = relationship('Event', back_populates='user')
+        # shops = relationship('Shop', back_populates='user')  # TODO: Enable after shop.py is updated
+        # files = relationship('File', back_populates='created_by_user')  # TODO: Enable after files.py is updated
+        # print_jobs = relationship('PrintJob', back_populates='created_by_user')  # TODO: Enable after print_job.py is updated
+        # events = relationship('Event', back_populates='user')  # TODO: Enable after event.py is updated
     
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"
