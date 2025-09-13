@@ -4,6 +4,7 @@ from dotenv import load_dotenv, set_key
 from urllib.parse import urlencode
 from collections import deque
 from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
+from server.src.utils.nas_storage import nas_storage
 
 # Get the project root directory (2 levels up from this file)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -564,6 +565,109 @@ class EtsyAPI:
                 if file.lower().endswith(extensions) and pattern.search(file):
                     full_path = os.path.join(root, file)
                     return full_path
+
+    def find_images_by_name_nas(self, search_name, shop_name, template_name, extensions=(".png")):
+        """
+        Search for design files on NAS that match search_name.
+        Returns the relative path if found, None if not found.
+
+        Args:
+            search_name: Name to search for in filenames
+            shop_name: Shop name for NAS path
+            template_name: Template name for NAS directory
+            extensions: File extensions to search for
+        """
+        if not nas_storage.enabled:
+            logging.warning("NAS storage not enabled, cannot search for images")
+            return None
+
+        parts = search_name.split(" ")
+        search_name = " ".join(parts[:2])
+        pattern = re.compile(re.escape(search_name), re.IGNORECASE)
+
+        # List files in the template directory on NAS
+        template_relative_path = f"{template_name}/"
+        try:
+            files = nas_storage.list_files(shop_name, template_relative_path)
+            for file in files:
+                if file.lower().endswith(extensions) and pattern.search(file):
+                    # Return the relative path that can be used for NAS operations
+                    return f"{template_name}/{file}"
+        except Exception as e:
+            logging.error(f"Error searching NAS for images: {e}")
+
+        return None
+
+    def fetch_open_orders_items_nas(self, shop_name, template_name):
+        """
+        NAS-compatible version of fetch_open_orders_items that uses QNAP NAS storage
+        instead of local file system to find design files.
+
+        Args:
+            shop_name: Shop name for NAS path
+            template_name: Template name (item_type) to use
+
+        Returns:
+            Dict: Item summary with design file information from NAS
+        """
+        self.ensure_valid_token()
+
+        if not nas_storage.enabled:
+            logging.error("NAS storage not enabled, cannot fetch orders with NAS support")
+            return None
+
+        print(f"\n--- Fetching Open Orders Items (NAS Mode) for {shop_name}/{template_name} ---")
+
+        receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false&was_canceled=false"
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}'
+        }
+
+        resp = self.session.get(receipts_url, headers=headers)
+        if resp.status_code != 200:
+            print(f"Failed to fetch open orders: {resp.text} with status code {resp.status_code}")
+            return None
+
+        receipts = resp.json().get('results', [])
+        item_summary = {}
+        item_summary[template_name] = {'Title': [], 'Size': [], 'Total': []}
+        item_summary["Total QTY"] = 0
+
+        for receipt in receipts:
+            receipt_id = receipt['receipt_id']
+            transactions_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts/{receipt_id}/transactions"
+            t_resp = self.session.get(transactions_url, headers=headers)
+
+            if t_resp.status_code != 200:
+                print(f"Failed to fetch transactions for receipt {receipt_id}: {t_resp.text} with status code {t_resp.status_code}")
+                continue
+
+            transactions = t_resp.json().get('results', [])
+            for t in transactions:
+                title = t.get('title', 'Unknown')
+                quantity = t.get('quantity', 0)
+
+                # Use NAS-compatible image search
+                design_file_path = self.find_images_by_name_nas(title.split(" | ")[0], shop_name, template_name)
+
+                if design_file_path:
+                    i = self._find_index(item_summary[template_name]['Title'], design_file_path)
+                    if i >= 0:
+                        item_summary[template_name]['Total'][i] += quantity
+                    else:
+                        item_summary[template_name]['Title'].append(design_file_path)
+                        item_summary[template_name]['Size'].append("")
+                        item_summary[template_name]['Total'].append(quantity)
+                    item_summary["Total QTY"] += quantity
+                else:
+                    logging.warning(f"No design file found on NAS for order item: {title}")
+
+        print("\nOpen Orders Item Summary (NAS):")
+        for k, v in item_summary[template_name].items():
+            print(f"{k}: {v}")
+
+        return item_summary
 
     def upload_listing_file(self, listing_id: int, file_path: str, file_name: str) -> dict:
         """

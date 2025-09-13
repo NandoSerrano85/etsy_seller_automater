@@ -111,11 +111,11 @@ def create_print_files(current_user, db):
     if not shop_name:
         raise HTTPException(status_code=400, detail="User shop name not set")
 
-    # For NAS-enabled production, we'll use database-driven gang sheet creation instead of file-based
+    # Use NAS-compatible version for production, fallback to local for development
     if nas_storage.enabled:
-        logging.info("Using NAS storage - switching to database-driven gang sheet creation")
-        # Use database-stored mockups instead of file-based approach
-        return create_gang_sheets_from_mockups(template_name, current_user, db)
+        logging.info("Using NAS storage - fetching design files from QNAP NAS")
+        # Use NAS-compatible method to get item summary with design files from NAS
+        item_summary = etsy_api.fetch_open_orders_items_nas(shop_name, template_name) if etsy_api else None
     else:
         # Fallback to local storage if NAS is not available (development mode)
         local_root = os.getenv('LOCAL_ROOT_PATH')
@@ -127,10 +127,45 @@ def create_print_files(current_user, db):
             # Use temporary directory for gang sheet generation
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_printfiles_dir = os.path.join(temp_dir, "Printfiles")
+                temp_designs_dir = os.path.join(temp_dir, "Designs")
                 os.makedirs(temp_printfiles_dir, exist_ok=True)
+                os.makedirs(temp_designs_dir, exist_ok=True)
+
+                # Download design files from NAS if using NAS storage
+                processed_item_data = item_summary[template_name] if template_name in item_summary else item_summary.get("UVDTF 16oz", {})
+
+                if nas_storage.enabled and processed_item_data.get('Title'):
+                    # Download design files from NAS to temp directory and update paths
+                    updated_titles = []
+                    for design_file_path in processed_item_data['Title']:
+                        if design_file_path:  # Skip empty paths
+                            # Design file path is relative to shop (e.g., "UVDTF 16oz/design.png")
+                            local_filename = os.path.basename(design_file_path)
+                            local_file_path = os.path.join(temp_designs_dir, local_filename)
+
+                            # Download from NAS
+                            success = nas_storage.download_file(
+                                shop_name=shop_name,
+                                relative_path=design_file_path,
+                                local_file_path=local_file_path
+                            )
+
+                            if success:
+                                updated_titles.append(local_file_path)
+                                logging.info(f"Downloaded design file from NAS: {design_file_path} -> {local_file_path}")
+                            else:
+                                logging.error(f"Failed to download design file from NAS: {design_file_path}")
+                                # Keep original path as fallback (though it might fail)
+                                updated_titles.append(design_file_path)
+                        else:
+                            updated_titles.append(design_file_path)
+
+                    # Update the processed data with local file paths
+                    processed_item_data = processed_item_data.copy()
+                    processed_item_data['Title'] = updated_titles
 
                 result = create_gang_sheets(
-                    item_summary[template_name] if template_name in item_summary else item_summary.get("UVDTF 16oz", {}),
+                    processed_item_data,
                     template_name,
                     temp_printfiles_dir + "/",
                     item_summary["Total QTY"] if "Total QTY" in item_summary else 0
