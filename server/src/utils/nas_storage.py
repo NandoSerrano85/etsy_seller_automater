@@ -31,7 +31,7 @@ class NASStorage:
         self.port = int(os.getenv('QNAP_PORT', '22'))
         self.username = os.getenv('QNAP_USERNAME')
         self.password = os.getenv('QNAP_PASSWORD')
-        self.base_path = '/share/Graphics'
+        self.base_path = os.getenv('NAS_BASE_PATH', '/share/Graphics')
         
         if not all([self.host, self.username, self.password]):
             logging.warning("QNAP NAS credentials not fully configured. NAS storage will be disabled.")

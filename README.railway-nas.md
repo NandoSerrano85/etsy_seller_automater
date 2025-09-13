@@ -165,8 +165,8 @@ chmod 755 /share/Graphics
 # From your local machine, test SFTP connection
 sftp your-nas-username@your-nas-ip
 > cd /share/Graphics
-> mkdir test
-> rmdir test
+> mkdir test_shop
+> rmdir test_shop
 > quit
 ```
 
@@ -177,12 +177,8 @@ Your QNAP NAS will store files in this structure:
 ```
 /share/Graphics/
 └── {shop_name}/
-    ├── Designs/
-    │   └── {template_name}/
-    │       └── design_files.png
-    ├── Digital/
-    │   └── {template_name}/
-    │       └── digital_files.png
+    ├── {template_name}/
+    │   └── design_files.png
     ├── Mockups/
     │   └── BaseMockups/
     │       ├── {template_name}/
