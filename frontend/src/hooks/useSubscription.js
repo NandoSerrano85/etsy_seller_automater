@@ -17,6 +17,7 @@ export const useSubscription = () => {
     getFeatureLimit,
     getRemainingUsage,
     getTierConfig,
+    getAllTierConfigs,
     getUpgradeRecommendation,
     incrementMockupUsage,
     setCurrentUsage,
@@ -83,6 +84,10 @@ export const useSubscription = () => {
     canUseFeature,
     canCreateMockups,
     isFeatureLocked,
+
+    // Configuration helpers
+    getTierConfig,
+    getAllTierConfigs,
 
     // Upgrade helpers
     getUpgradeForFeature,
