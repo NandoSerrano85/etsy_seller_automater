@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useSubscription } from '../hooks/useSubscription';
+import { FeatureGate, UsageIndicator } from '../components/subscription';
 import ViewMockupModal from '../components/ViewMockupModal';
 import EditMockupModal from '../components/EditMockupModal';
 import DeleteMockupModal from '../components/DeleteMockupModal';
@@ -7,6 +9,7 @@ import DeleteMockupModal from '../components/DeleteMockupModal';
 const MockupCreator = () => {
   const api = useApi();
   const canvasRef = useRef(null);
+  const { canCreateMockups, trackMockupCreation, remainingMockups, isFreeTier, FEATURES } = useSubscription();
 
   // Workflow state
   const [currentStep, setCurrentStep] = useState(1); // 1: Template, 2: Images, 3: Masks, 4: Final
@@ -366,6 +369,14 @@ const MockupCreator = () => {
       return;
     }
 
+    // Check if user can create mockups
+    if (!canCreateMockups) {
+      setMessage(
+        `You've reached your monthly mockup limit. ${isFreeTier ? 'Upgrade to Pro for unlimited mockups!' : 'Please check your subscription status.'}`
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       // Create mockup group
@@ -444,6 +455,7 @@ const MockupCreator = () => {
       }
 
       setMessage('Mockup created successfully!');
+      trackMockupCreation(); // Track usage for subscription limits
       setShowModal(false);
       loadExistingMockups(); // Refresh the mockups list
     } catch (error) {
@@ -773,12 +785,28 @@ const MockupCreator = () => {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-4">Mockup Creator</h1>
           <p className="text-gray-600 mb-6">Create professional mockups with custom masks and templates</p>
-          <button
-            onClick={startWorkflow}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-          >
-            Add New Base Mockup
-          </button>
+
+          {/* Usage Indicator for Free Tier */}
+          {isFreeTier && (
+            <div className="max-w-md mx-auto mb-6">
+              <UsageIndicator feature={FEATURES.MOCKUP_GENERATOR} size="default" />
+            </div>
+          )}
+
+          <FeatureGate feature={FEATURES.MOCKUP_GENERATOR} showUpgradePrompt={false}>
+            <button
+              onClick={startWorkflow}
+              disabled={!canCreateMockups}
+              className={`px-6 py-3 rounded-lg transition-colors font-medium ${
+                canCreateMockups
+                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Add New Base Mockup
+              {!canCreateMockups && isFreeTier && <span className="block text-xs mt-1">Monthly limit reached</span>}
+            </button>
+          </FeatureGate>
         </div>
 
         {/* Existing Mockups Section */}

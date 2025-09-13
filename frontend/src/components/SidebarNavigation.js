@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useSubscription } from '../hooks/useSubscription';
+import { TierBadge } from './subscription';
 import OrganizationSelector from './OrganizationSelector';
 import useOrganizationStore from '../stores/organizationStore';
 
 const SidebarNavigation = ({ isOpen, onToggle }) => {
   const { user, isUserAuthenticated, logout } = useAuth();
   const { hasAdminAccess } = useOrganizationStore();
+  const { currentTier } = useSubscription();
   const location = useLocation();
   const navigate = useNavigate();
   const [expandedSections, setExpandedSections] = useState({});
@@ -171,6 +174,7 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
       gradient: 'from-sage-100 to-sage-200',
       submenu: [
         { label: 'Profile', path: '/account?tab=profile' },
+        { label: 'Subscription', path: '/subscription' },
         { label: 'Integrations', path: '/account?tab=integrations' },
         { label: 'Preferences', path: '/account?tab=preferences' },
       ],
@@ -365,7 +369,10 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sage-900 font-medium text-sm truncate">{user?.shop_name || 'User'}</p>
-                <p className="text-sage-600 text-xs truncate">{user.email || 'user@example.com'}</p>
+                <div className="flex items-center space-x-2">
+                  <p className="text-sage-600 text-xs truncate">{user.email || 'user@example.com'}</p>
+                  <TierBadge size="small" />
+                </div>
               </div>
               <button
                 onClick={handleLogout}

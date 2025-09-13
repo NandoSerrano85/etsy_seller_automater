@@ -85,14 +85,50 @@ def register_user(register_user_request: RegisterUserRequest, db: Session) -> Us
 def register_user_multi_tenant(register_user_request: RegisterUserRequest, db: Session) -> User | bool:
     """Handle multi-tenant user registration."""
     from server.src.entities.organization import Organization, OrganizationMember
-    
+
     try:
+        # Check if user already exists
+        existing_user = db.query(User).filter(User.email == register_user_request.email).first()
+        if existing_user:
+            logging.info(f"User {register_user_request.email} already exists. Checking if they need organization assignment...")
+
+            # If user exists but doesn't have an organization, assign them to one
+            if hasattr(existing_user, 'org_id') and existing_user.org_id is None:
+                if register_user_request.registration_mode == 'create' and register_user_request.organization_name:
+                    # Create organization and assign user to it
+                    organization = Organization(
+                        name=register_user_request.organization_name,
+                        description=f"Organization for {register_user_request.organization_name}",
+                        settings={}
+                    )
+                    db.add(organization)
+                    db.flush()
+
+                    # Update existing user with organization
+                    existing_user.org_id = organization.id
+                    existing_user.role = 'owner'
+
+                    # Create organization membership
+                    membership = OrganizationMember(
+                        organization_id=organization.id,
+                        user_id=existing_user.id,
+                        role='owner'
+                    )
+                    db.add(membership)
+                    db.commit()
+
+                    logging.info(f"Assigned existing user {existing_user.email} to new organization {organization.name}")
+                    return existing_user
+
+            logging.info(f"User {existing_user.email} already exists and has organization. Returning existing user.")
+            return existing_user
+
         if register_user_request.registration_mode == 'create':
             # Create new organization
             if not register_user_request.organization_name:
                 logging.error("Organization name is required for creating new organization")
                 return False
-                
+
             # Create organization
             organization = Organization(
                 name=register_user_request.organization_name,

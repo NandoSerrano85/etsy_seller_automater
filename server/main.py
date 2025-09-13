@@ -160,6 +160,128 @@ def run_migrations():
         print(f"⚠️  Warning: Migration failed: {e}")
         # Continue running - the column might exist or the migration might not be critical
 
+def run_org_id_migration(conn):
+    """Add missing org_id columns to tables that need multi-tenant support."""
+    try:
+        from sqlalchemy import text
+
+        print("🔄 Checking for missing org_id columns...")
+
+        # Tables that need org_id columns for multi-tenant support
+        tables_needing_org_id = [
+            'design_images',
+            'mockups',
+            'etsy_product_templates'
+        ]
+
+        for table_name in tables_needing_org_id:
+            # Check if table exists
+            table_result = conn.execute(text(f"""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_name = '{table_name}' AND table_schema = 'public'
+            """))
+
+            if not table_result.fetchone():
+                print(f"⚠️  Table {table_name} does not exist, skipping")
+                continue
+
+            # Check if org_id column exists
+            result = conn.execute(text(f"""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = '{table_name}' AND column_name = 'org_id'
+            """))
+
+            if not result.fetchone():
+                # Add the org_id column
+                conn.execute(text(f"""
+                    ALTER TABLE {table_name}
+                    ADD COLUMN org_id UUID REFERENCES organizations(id) ON DELETE CASCADE
+                """))
+                print(f"✅ Added org_id column to {table_name}")
+
+                # Update existing records with org_id from their user
+                if table_name in ['design_images', 'mockups', 'etsy_product_templates']:
+                    conn.execute(text(f"""
+                        UPDATE {table_name}
+                        SET org_id = users.org_id
+                        FROM users
+                        WHERE {table_name}.user_id = users.id
+                        AND {table_name}.org_id IS NULL
+                        AND users.org_id IS NOT NULL
+                    """))
+                    print(f"✅ Updated existing records in {table_name} with org_id")
+            else:
+                print(f"✅ org_id column already exists in {table_name}")
+
+    except Exception as e:
+        print(f"❌ Error adding org_id columns: {e}")
+
+def create_organizations_for_existing_users(conn):
+    """Create organizations for existing users that don't have them."""
+    try:
+        from sqlalchemy import text
+
+        print("🔄 Creating organizations for existing users...")
+
+        # Check if we have users without org_id
+        result = conn.execute(text("""
+            SELECT COUNT(*) as count FROM users WHERE org_id IS NULL
+        """))
+        users_without_org = result.fetchone()[0]
+
+        if users_without_org == 0:
+            print("✅ All users already have organizations assigned")
+            return
+
+        print(f"🔄 Found {users_without_org} users without organizations. Creating organizations...")
+
+        # Create organizations for users that don't have them
+        conn.execute(text("""
+            WITH user_orgs AS (
+                SELECT DISTINCT
+                    gen_random_uuid() as org_id,
+                    u.id as user_id,
+                    COALESCE(u.shop_name, u.email || '''s Organization') as org_name,
+                    'Auto-generated organization for existing user' as org_description
+                FROM users u
+                WHERE u.org_id IS NULL
+            ),
+            new_orgs AS (
+                INSERT INTO organizations (id, name, description, settings, created_at, updated_at)
+                SELECT
+                    uo.org_id,
+                    uo.org_name,
+                    uo.org_description,
+                    '{}',
+                    NOW(),
+                    NOW()
+                FROM user_orgs uo
+                RETURNING id, name
+            ),
+            updated_users AS (
+                UPDATE users
+                SET org_id = uo.org_id, role = 'owner'
+                FROM user_orgs uo
+                WHERE users.id = uo.user_id
+                RETURNING users.id, users.org_id
+            )
+            INSERT INTO organization_members (id, organization_id, user_id, role, joined_at)
+            SELECT
+                gen_random_uuid(),
+                uu.org_id,
+                uu.id,
+                'owner',
+                NOW()
+            FROM updated_users uu;
+        """))
+
+        print("✅ Created organizations for existing users")
+
+    except Exception as e:
+        print(f"❌ Error creating organizations for existing users: {e}")
+
 def run_multi_tenant_migration(conn):
     """Run the multi-tenant schema migration."""
     try:
@@ -243,6 +365,12 @@ def run_multi_tenant_migration(conn):
             print("✅ Multi-tenant schema already exists")
             # Check if multi-tenant features should be enabled
             enable_multi_tenant_features()
+
+            # Run the org_id migration for existing tables
+            run_org_id_migration(conn)
+
+            # Create organizations for existing users
+            create_organizations_for_existing_users(conn)
             
     except Exception as e:
         print(f"❌ Multi-tenant migration failed: {e}")

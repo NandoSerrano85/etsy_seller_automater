@@ -3,12 +3,15 @@ import MockupsGallery from '../../components/MockupsGallery';
 import DesignFilesGallery from '../../components/DesignFilesGallery';
 import DesignUploadModal from '../../components/DesignUploadModal';
 import BackToTop from '../../components/BackToTop';
+import { FeatureGate, TierBadge } from '../../components/subscription';
+import { useSubscription } from '../../hooks/useSubscription';
 import { useSearchParams } from 'react-router-dom';
 
 const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, defaultTab = 'gallery' }) => {
   const [showDesignUploadModal, setShowDesignUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [designsTab, setDesignsTab] = useState('mockups');
+  const { hasFeature, FEATURES } = useSubscription();
   // const [searchParams] = useSearchParams();
   // const activeSubTab = searchParams.get('subtab') || defaultTab;
 

@@ -14,6 +14,7 @@ import OrganizationManagement from './pages/OrganizationManagement';
 import PrinterManagement from './pages/PrinterManagement';
 import AdminDashboard from './pages/AdminDashboard';
 import OrganizationSelection from './pages/OrganizationSelection';
+import SubscriptionPage from './pages/SubscriptionPage';
 import NotificationSystem, { useNotifications } from './components/NotificationSystem';
 import DesignsTab from './pages/HomeTabs/DesignsTab';
 import AnalyticsTab from './pages/HomeTabs/AnalyticsTab';
@@ -201,6 +202,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Subscription Management */}
+          <Route
+            path="/subscription"
+            element={
+              <ProtectedRoute>
+                <SubscriptionPage />
               </ProtectedRoute>
             }
           />
