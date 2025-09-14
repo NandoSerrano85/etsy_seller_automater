@@ -10,7 +10,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from sqlalchemy.orm import Session
-from src.entities.shopify_store import ShopifyStore
+from server.src.entities.shopify_store import ShopifyStore
 
 logger = logging.getLogger(__name__)
 
