@@ -116,10 +116,12 @@ export const useCachedApi = () => {
   const fetchDesigns = useCallback(
     async (forceRefresh = false) => {
       return makeCachedApiCall(
-        'designs',
+        'designGallery',
         async () => {
           // Use new gallery endpoint that returns both Etsy mockups and QNAP design files
+          console.log('🎨 Fetching designs from /designs/gallery...');
           const response = await makeAuthenticatedRequest('/designs/gallery');
+          console.log('🎨 Designs API response:', response);
           return response || { mockups: [], files: [] };
         },
         forceRefresh
