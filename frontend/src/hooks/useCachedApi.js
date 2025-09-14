@@ -190,8 +190,7 @@ export const useCachedApi = () => {
           totalOrders: orders.status === 'fulfilled' ? orders.value?.length || 0 : 0,
           totalDesigns:
             designs.status === 'fulfilled' ? designs.value?.total_files || designs.value?.files?.length || 0 : 0,
-          totalMockups:
-            designs.status === 'fulfilled' ? designs.value?.total_mockups || designs.value?.mockups?.length || 0 : 0,
+          totalMockups: mockups.status === 'fulfilled' ? mockups.value?.length || 0 : 0, // Use /mockups/ endpoint for dashboard
         };
 
         // Cache dashboard stats

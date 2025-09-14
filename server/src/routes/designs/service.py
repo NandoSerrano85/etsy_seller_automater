@@ -532,6 +532,17 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
             for template in templates:
                 logging.info(f"Template: {template.name} (ID: {template.id})")
 
+            # If no templates found, let's check what's in the database
+            if len(templates) == 0:
+                all_templates = db.query(EtsyProductTemplate).all()
+                logging.info(f"Total templates in database: {len(all_templates)}")
+                for template in all_templates[:5]:  # Show first 5
+                    logging.info(f"DB Template: {template.name} (User: {template.user_id}, Org: {getattr(template, 'org_id', 'N/A')})")
+
+                # Check user's org_id
+                logging.info(f"User org_id: {getattr(user, 'org_id', 'N/A')}")
+                logging.info(f"User attributes: {[attr for attr in dir(user) if not attr.startswith('_')]}")
+
             if nas_storage.enabled and user.shop_name:
                 logging.info(f"NAS storage enabled, fetching design files for shop: {user.shop_name}")
                 for template in templates:
