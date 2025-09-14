@@ -14,6 +14,7 @@ const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, 
   const { hasFeature, FEATURES } = useSubscription();
   // const [searchParams] = useSearchParams();
   // const activeSubTab = searchParams.get('subtab') || defaultTab;
+  console.log(designs);
 
   if (!isConnected) {
     return (
