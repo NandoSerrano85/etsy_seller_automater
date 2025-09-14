@@ -835,11 +835,13 @@ class EtsyAPI:
             dict: Response containing listings data with images
         """
         self.ensure_valid_token()
+        logging.info(f"Using shop_id: {self.shop_id}")
+        logging.info(f"OAuth token exists: {bool(self.oauth_token)}")
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}',
         }
-        
+
         url = f"{self.base_url}/application/shops/{self.shop_id}/listings"
         params = {
             'limit': min(limit, 100),  # Etsy max is 100
@@ -852,18 +854,37 @@ class EtsyAPI:
             params['includes'] = 'Images'
         
         try:
+            logging.info(f"Making Etsy API request: {url} with params: {params}")
             response = self.session.get(url, headers=headers, params=params)
+            logging.info(f"Etsy API response status: {response.status_code}")
             response.raise_for_status()
             listings_data = response.json()
-            
+
+            results_count = len(listings_data.get('results', []))
+            total_count = listings_data.get('count', 0)
+            logging.info(f"Etsy API returned {results_count} listings out of {total_count} total")
+
+            if results_count > 0:
+                first_listing = listings_data.get('results', [{}])[0]
+                logging.info(f"First listing keys: {list(first_listing.keys()) if isinstance(first_listing, dict) else 'Not a dict'}")
+                if 'Images' in first_listing:
+                    logging.info(f"First listing has {len(first_listing['Images'])} images")
+                elif 'images' in first_listing:
+                    logging.info(f"First listing has {len(first_listing['images'])} images")
+                else:
+                    logging.info("First listing has no Images or images key")
+
             # If images are included, they should be in the response
             # If not included via the includes parameter, we need to fetch them separately
             if include_images and 'includes' not in params:
+                logging.info("Adding images to listings separately...")
                 self._add_images_to_listings(listings_data.get('results', []), headers)
-            
+
             return listings_data
         except Exception as e:
             logging.error(f"Failed to fetch shop listings: {e}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
             raise Exception(f"Failed to fetch shop listings: {e}")
 
     def get_listing_by_id(self, listing_id: int) -> dict:
@@ -1012,22 +1033,42 @@ class EtsyAPI:
             list: List of listings with images formatted for gallery display
         """
         try:
+            logging.info("Calling get_all_shop_listings...")
             response = self.get_all_shop_listings(state="active", include_images=True)
+            logging.info(f"get_all_shop_listings returned: {type(response)} with keys: {response.keys() if isinstance(response, dict) else 'N/A'}")
+
+            results = response.get('results', [])
+            logging.info(f"Found {len(results)} listings in response")
+
             listings_with_images = []
 
-            for listing in response.get('results', []):
+            for i, listing in enumerate(results):
                 if isinstance(listing, dict):
                     listing_id = listing.get('listing_id')
-                    images = listing.get('Images', [])
+                    listing_title = listing.get('title', 'Untitled')
+
+                    # Check both 'Images' and 'images' keys
+                    images = listing.get('Images', []) or listing.get('images', [])
+
+                    logging.info(f"Listing {i+1}: ID={listing_id}, Title='{listing_title}', Images count={len(images)}")
+                    logging.info(f"Listing keys: {list(listing.keys())}")
 
                     if images:  # Only include listings that have images
                         listings_with_images.append({
                             'listing_id': listing_id,
-                            'title': listing.get('title', ''),
+                            'title': listing_title,
                             'images': images
                         })
+                        logging.info(f"Added listing {listing_id} with {len(images)} images")
+                    else:
+                        logging.info(f"Skipped listing {listing_id} - no images found")
+                else:
+                    logging.warning(f"Listing {i+1} is not a dict: {type(listing)}")
 
+            logging.info(f"Returning {len(listings_with_images)} listings with images")
             return listings_with_images
         except Exception as e:
             logging.error(f"Failed to fetch active listings with images: {e}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
             return []
