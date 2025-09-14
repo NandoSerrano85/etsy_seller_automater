@@ -11,6 +11,8 @@ from server.src.routes.orders.controller import router as order_router
 from server.src.routes.designs.controller import router as design_router
 from server.src.routes.mockups.controller import router as mockup_router
 from server.src.routes.third_party_listings.controller import router as third_party_listings_router
+from server.src.routes.shopify.shopify_oauth import router as shopify_router
+from server.src.routes.template_editor.controller import router as template_editor_router
 
 # Multi-tenant routes - conditionally imported if multi-tenant is enabled
 def get_multi_tenant_routers():
@@ -96,7 +98,9 @@ def register_routes(app: FastAPI):
     app.include_router(design_router)
     app.include_router(mockup_router)
     app.include_router(third_party_listings_router)
-    
+    app.include_router(shopify_router)
+    app.include_router(template_editor_router, prefix="/api")
+
     # Multi-tenant routes - only enabled if multi-tenant is enabled
     multi_tenant_routers = get_multi_tenant_routers()
     for router in multi_tenant_routers:

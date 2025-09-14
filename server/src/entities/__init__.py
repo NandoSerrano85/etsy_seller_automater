@@ -12,6 +12,8 @@ from .size_config import SizeConfig
 from .designs import DesignImages, design_template_association
 from .mockup import Mockups, MockupImage, MockupMaskData
 from .third_party_oauth import ThirdPartyOAuthToken
+from .shopify_store import ShopifyStore
+from .shopify_product import ShopifyProduct
 
 # Multi-tenant entities (conditionally imported)
 if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
@@ -42,9 +44,11 @@ __all__ = [
     'DesignImages',
     'design_template_association',
     'Mockups',
-    'MockupImage', 
+    'MockupImage',
     'MockupMaskData',
     'ThirdPartyOAuthToken',
+    'ShopifyStore',
+    'ShopifyProduct',
     'File',
     'PrintJob',
     'Event',
