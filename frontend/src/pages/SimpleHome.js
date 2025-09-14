@@ -88,7 +88,7 @@ const Home = () => {
   };
   const topSellers = storeData.topSellers || [];
   const monthlyAnalytics = storeData.monthlyAnalytics;
-  const designs = storeData.designs || [];
+  const designs = storeData.designs || { mockups: [], files: [] };
   const orders = storeData.orders || [];
   // const mockups = storeData.mockups || [];
 

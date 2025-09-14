@@ -450,12 +450,50 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
 
         logging.info(f"Found user: {user.shop_name}")
 
-        # Return empty results for now to test basic functionality
+        # Return test data to verify frontend display
+        test_mockups = [
+            model.EtsyMockupImage(
+                filename="test_listing_123_image_1.jpg",
+                url="https://via.placeholder.com/400x400/FF6B6B/ffffff?text=Etsy+Mockup+1",
+                path="https://via.placeholder.com/400x400/FF6B6B/ffffff?text=Etsy+Mockup+1",
+                etsy_listing_id="123",
+                image_id="1"
+            ),
+            model.EtsyMockupImage(
+                filename="test_listing_456_image_2.jpg",
+                url="https://via.placeholder.com/400x400/4ECDC4/ffffff?text=Etsy+Mockup+2",
+                path="https://via.placeholder.com/400x400/4ECDC4/ffffff?text=Etsy+Mockup+2",
+                etsy_listing_id="456",
+                image_id="2"
+            )
+        ]
+
+        test_files = [
+            model.DesignFile(
+                filename="test_design_1.png",
+                path="/nas/test_shop/UVDTF 16oz/test_design_1.png",
+                url="/api/designs/nas-file/test_shop/UVDTF 16oz/test_design_1.png",
+                template_name="UVDTF 16oz",
+                nas_path="UVDTF 16oz/test_design_1.png",
+                file_size=1024000,
+                last_modified=None
+            ),
+            model.DesignFile(
+                filename="test_design_2.png",
+                path="/nas/test_shop/Digital/UVDTF 16oz/test_design_2.png",
+                url="/api/designs/nas-file/test_shop/Digital/UVDTF 16oz/test_design_2.png",
+                template_name="UVDTF 16oz",
+                nas_path="Digital/UVDTF 16oz/test_design_2.png",
+                file_size=2048000,
+                last_modified=None
+            )
+        ]
+
         return model.DesignGalleryResponse(
-            mockups=[],
-            files=[],
-            total_mockups=0,
-            total_files=0
+            mockups=test_mockups,
+            files=test_files,
+            total_mockups=len(test_mockups),
+            total_files=len(test_files)
         )
 
     except Exception as e:
