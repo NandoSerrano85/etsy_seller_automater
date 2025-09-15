@@ -1189,6 +1189,11 @@ async def upload_mockup_files_to_etsy(
         )
 
         print(result)
+        # Defensive check: if the call returned None or an unexpected structure, log and fail cleanly
+        if not result or not hasattr(result, "__getitem__") or len(result) == 0:
+            logging.error("upload_mockup_files_to_etsy: expected shop info from Etsy, got %r", result)
+            # return or raise a FastAPI HTTPException so caller gets a clear error
+            raise HTTPException(status_code=502, detail="Failed to retrieve shop information from Etsy")
         shop_name = result[0]
         template = result[1]
         mockup = result[2]
