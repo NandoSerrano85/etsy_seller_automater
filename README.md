@@ -206,16 +206,20 @@ For Railway deployment, configure the following additional variables:
 | `QNAP_HOST`             | QNAP NAS hostname             | No       | `your-nas.domain.com` |
 | `QNAP_USERNAME`         | QNAP NAS username             | No       | `admin`               |
 | `QNAP_PASSWORD`         | QNAP NAS password             | No       | `your-password`       |
-| `QNAP_PORT`             | QNAP web interface port       | No       | `8080` (default)      |
-| `QNAP_USE_HTTPS`        | Use HTTPS for QNAP connection | No       | `false` (default)     |
+| `QNAP_PORT`             | QNAP SFTP port (SSH)          | No       | `22` (default)        |
+| `QNAP_HTTP_PORT`        | QNAP web interface port       | No       | `8080` (default)      |
+| `QNAP_USE_HTTPS`        | Use HTTPS for web connections | No       | `false` (default)     |
 | `SHOPIFY_CLIENT_ID`     | Shopify app client ID         | No       | Your Shopify app ID   |
 | `SHOPIFY_CLIENT_SECRET` | Shopify app client secret     | No       | Your Shopify secret   |
 
 **QNAP Configuration Notes:**
 
-- Use the web interface port (usually 8080) not SSH port (22)
+- The app uses **two connection methods**:
+  - **SFTP** (port 22): For file uploads and directory operations
+  - **HTTP** (port 8080): For file downloads during mockup generation
+- Set both `QNAP_PORT=22` and `QNAP_HTTP_PORT=8080` in Railway
 - Start with HTTP (`QNAP_USE_HTTPS=false`) as many QNAP devices use self-signed certificates
-- Ensure QNAP web interface is accessible from the internet for Railway deployment
+- Ensure both SSH and web interface are accessible from the internet for Railway deployment
 - Path format: `/share/Graphics/...` will be converted to web-accessible paths automatically
 
 ### OAuth Configuration

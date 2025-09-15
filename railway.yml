@@ -51,9 +51,11 @@ environments:
       
       # QNAP NAS Storage
       - QNAP_HOST
-      - QNAP_USERNAME 
+      - QNAP_USERNAME
       - QNAP_PASSWORD
-      - QNAP_PORT=22
+      - QNAP_PORT=22          # For SFTP connections
+      - QNAP_HTTP_PORT=8080   # For HTTP/web connections
+      - QNAP_USE_HTTPS=false  # Use HTTP for better compatibility
       - NAS_BASE_PATH=/share/Graphics
       
       # Application Settings
@@ -79,7 +81,9 @@ environments:
       - QNAP_HOST
       - QNAP_USERNAME
       - QNAP_PASSWORD
-      - QNAP_PORT=22
+      - QNAP_PORT=22          # For SFTP connections
+      - QNAP_HTTP_PORT=8080   # For HTTP/web connections
+      - QNAP_USE_HTTPS=false  # Use HTTP for better compatibility
       - NAS_BASE_PATH=/share/Graphics
       - JWT_SECRET_KEY
       - CLIENT_ID

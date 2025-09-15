@@ -6,7 +6,7 @@ import os
 import logging
 import requests
 import io
-from typing import Optional, BinaryIO
+from typing import Optional
 import cv2
 import numpy as np
 from PIL import Image
@@ -20,7 +20,8 @@ class QNAPClient:
         self.qnap_host = os.getenv('QNAP_HOST')
         self.qnap_username = os.getenv('QNAP_USERNAME')
         self.qnap_password = os.getenv('QNAP_PASSWORD')
-        self.qnap_port = os.getenv('QNAP_PORT', '8080')  # Default QNAP web port
+        # Use separate port for HTTP client (default 8080) vs SFTP (port 22)
+        self.qnap_port = os.getenv('QNAP_HTTP_PORT', os.getenv('QNAP_WEB_PORT', '8080'))
         self.use_https = os.getenv('QNAP_USE_HTTPS', 'false').lower() == 'true'  # Default to HTTP
         self.session = requests.Session()
         self.authenticated = False
@@ -36,7 +37,8 @@ class QNAPClient:
         else:
             self.enabled = True
             protocol = 'https' if self.use_https else 'http'
-            logger.info(f"QNAP client initialized for {protocol}://{self.qnap_host}:{self.qnap_port}")
+            logger.info(f"QNAP HTTP client initialized for {protocol}://{self.qnap_host}:{self.qnap_port}")
+            logger.info(f"QNAP environment: HOST={self.qnap_host}, HTTP_PORT={self.qnap_port}, HTTPS={self.use_https}")
 
     def _authenticate(self) -> bool:
         """Authenticate with QNAP NAS"""
