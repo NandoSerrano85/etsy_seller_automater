@@ -1146,7 +1146,7 @@ async def upload_mockup_files_to_etsy(
     This function replicates the functionality of the original upload_mockup endpoint.
     """
     try:
-        ten_seconds_ago = datetime.utcnow() - timedelta(seconds=120)
+        ten_seconds_ago = datetime.utcnow() - timedelta(seconds=200)
 
         mockup_with_images = (
             db.query(Mockups)

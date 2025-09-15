@@ -11,6 +11,7 @@ MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'tru
 class MockupMaskData(Base):
     """This table has the mask data that is associated to the mockup image"""
     __tablename__ = 'mockup_mask_data'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mockup_image_id = Column(UUID(as_uuid=True), ForeignKey('mockup_images.id'), nullable=False)
@@ -25,6 +26,7 @@ class MockupMaskData(Base):
 class MockupImage(Base):
     """This table has the mockup image and mask information for the mockups"""
     __tablename__ = 'mockup_images'
+    __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mockups_id = Column(UUID(as_uuid=True), ForeignKey('mockups.id'), nullable=False)
@@ -40,6 +42,7 @@ class MockupImage(Base):
 class Mockups(Base):
     """This table holds the base mockup information."""
     __tablename__ = 'mockups'
+    __table_args__ = {'extend_existing': True}
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)

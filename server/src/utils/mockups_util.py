@@ -22,7 +22,40 @@ class MockupTemplateCache:
     
     def get_mockup(self, path):
         if path not in self.mockups:
-            self.mockups[path] = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+            import os
+            import logging
+            logger = logging.getLogger(__name__)
+
+            # Check if path exists and log details for debugging
+            if not os.path.exists(path):
+                logger.error(f"QNAP NAS: File does not exist: {path}")
+                return None
+
+            logger.info(f"QNAP NAS: Loading mockup from path: {path}")
+            mockup_image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+            if mockup_image is None:
+                logger.error(f"QNAP NAS: Failed to read image with cv2.imread: {path}")
+                # Try alternative method if cv2 fails
+                try:
+                    from PIL import Image
+                    import numpy as np
+                    pil_image = Image.open(path)
+                    if pil_image.mode == 'RGBA':
+                        mockup_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGBA2BGRA)
+                    else:
+                        mockup_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                    logger.info(f"QNAP NAS: Successfully loaded with PIL fallback: {path}")
+                except Exception as e:
+                    logger.error(f"QNAP NAS: PIL fallback also failed: {path}, error: {e}")
+                    return None
+            else:
+                logger.info(f"QNAP NAS: Successfully loaded with cv2: {path}")
+
+            self.mockups[path] = mockup_image
+
+        if self.mockups[path] is None:
+            return None
         return self.mockups[path].copy()
     
     def get_watermark(self, path):
