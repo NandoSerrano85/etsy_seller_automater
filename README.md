@@ -197,6 +197,27 @@ server/tests/
 | `SHOP_URL`        | Your Etsy shop URL              | Yes      |
 | `LOCAL_ROOT_PATH` | Path to your local design files | Yes      |
 
+### Railway Production Environment Variables
+
+For Railway deployment, configure the following additional variables:
+
+| Variable                | Description                   | Required | Example               |
+| ----------------------- | ----------------------------- | -------- | --------------------- |
+| `QNAP_HOST`             | QNAP NAS hostname             | No       | `your-nas.domain.com` |
+| `QNAP_USERNAME`         | QNAP NAS username             | No       | `admin`               |
+| `QNAP_PASSWORD`         | QNAP NAS password             | No       | `your-password`       |
+| `QNAP_PORT`             | QNAP web interface port       | No       | `8080` (default)      |
+| `QNAP_USE_HTTPS`        | Use HTTPS for QNAP connection | No       | `false` (default)     |
+| `SHOPIFY_CLIENT_ID`     | Shopify app client ID         | No       | Your Shopify app ID   |
+| `SHOPIFY_CLIENT_SECRET` | Shopify app client secret     | No       | Your Shopify secret   |
+
+**QNAP Configuration Notes:**
+
+- Use the web interface port (usually 8080) not SSH port (22)
+- Start with HTTP (`QNAP_USE_HTTPS=false`) as many QNAP devices use self-signed certificates
+- Ensure QNAP web interface is accessible from the internet for Railway deployment
+- Path format: `/share/Graphics/...` will be converted to web-accessible paths automatically
+
 ### OAuth Configuration
 
 The application uses OAuth 2.0 with PKCE for secure authentication. The redirect URI is automatically set to `http://localhost:3000/oauth/redirect` and does not need to be configured in the `.env` file.

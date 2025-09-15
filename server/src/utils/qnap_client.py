@@ -20,17 +20,23 @@ class QNAPClient:
         self.qnap_host = os.getenv('QNAP_HOST')
         self.qnap_username = os.getenv('QNAP_USERNAME')
         self.qnap_password = os.getenv('QNAP_PASSWORD')
-        self.qnap_port = os.getenv('QNAP_PORT', '443')  # HTTPS by default
-        self.use_https = os.getenv('QNAP_USE_HTTPS', 'true').lower() == 'true'
+        self.qnap_port = os.getenv('QNAP_PORT', '8080')  # Default QNAP web port
+        self.use_https = os.getenv('QNAP_USE_HTTPS', 'false').lower() == 'true'  # Default to HTTP
         self.session = requests.Session()
         self.authenticated = False
+
+        # Disable SSL verification for QNAP (often uses self-signed certs)
+        self.session.verify = False
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         if not all([self.qnap_host, self.qnap_username, self.qnap_password]):
             logger.warning("QNAP credentials not configured. QNAP file access will be disabled.")
             self.enabled = False
         else:
             self.enabled = True
-            logger.info(f"QNAP client initialized for host: {self.qnap_host}")
+            protocol = 'https' if self.use_https else 'http'
+            logger.info(f"QNAP client initialized for {protocol}://{self.qnap_host}:{self.qnap_port}")
 
     def _authenticate(self) -> bool:
         """Authenticate with QNAP NAS"""
@@ -38,24 +44,47 @@ class QNAPClient:
             return self.authenticated
 
         protocol = 'https' if self.use_https else 'http'
-        auth_url = f"{protocol}://{self.qnap_host}:{self.qnap_port}/cgi-bin/authLogin.cgi"
 
-        auth_data = {
-            'user': self.qnap_username,
-            'pwd': self.qnap_password
-        }
+        # Try multiple authentication endpoints (QNAP has different APIs)
+        auth_endpoints = [
+            f"{protocol}://{self.qnap_host}:{self.qnap_port}/cgi-bin/authLogin.cgi",
+            f"{protocol}://{self.qnap_host}:{self.qnap_port}/cgi-bin/login.cgi",
+            f"{protocol}://{self.qnap_host}:{self.qnap_port}/api/auth/login"
+        ]
+
+        auth_data_variants = [
+            {'user': self.qnap_username, 'pwd': self.qnap_password},
+            {'username': self.qnap_username, 'password': self.qnap_password},
+            {'account': self.qnap_username, 'pwd': self.qnap_password}
+        ]
 
         try:
-            logger.info("Authenticating with QNAP NAS...")
-            response = self.session.post(auth_url, data=auth_data, timeout=30, verify=False)
+            logger.info(f"Authenticating with QNAP NAS at {self.qnap_host}:{self.qnap_port}...")
 
-            if response.status_code == 200 and 'authPassed' in response.text:
-                self.authenticated = True
-                logger.info("QNAP authentication successful")
-                return True
-            else:
-                logger.error(f"QNAP authentication failed: {response.status_code}")
-                return False
+            for auth_url in auth_endpoints:
+                for auth_data in auth_data_variants:
+                    try:
+                        logger.info(f"Trying auth URL: {auth_url}")
+                        response = self.session.post(auth_url, data=auth_data, timeout=15)
+
+                        if response.status_code == 200:
+                            response_text = response.text.lower()
+                            # Check for various success indicators
+                            if any(indicator in response_text for indicator in ['authpassed', 'success', 'true', 'ok']):
+                                self.authenticated = True
+                                logger.info("QNAP authentication successful")
+                                return True
+                            elif 'sid' in response.cookies or 'NAS_SID' in response.cookies:
+                                self.authenticated = True
+                                logger.info("QNAP authentication successful (got session cookie)")
+                                return True
+
+                    except Exception as e:
+                        logger.debug(f"Auth attempt failed for {auth_url}: {e}")
+                        continue
+
+            logger.error("All QNAP authentication methods failed")
+            return False
 
         except Exception as e:
             logger.error(f"QNAP authentication error: {e}")
@@ -71,33 +100,68 @@ class QNAPClient:
             logger.error("QNAP authentication failed - cannot download file")
             return None
 
-        # Convert local path to QNAP web path
-        # /share/Graphics/... -> /share_name/Graphics/...
-        web_path = qnap_path.replace('/share/', '/')
+        # Convert local path to web accessible path
+        # /share/Graphics/... -> /Graphics/... or /share/Graphics/...
+        web_path = qnap_path
+        if web_path.startswith('/share/'):
+            web_path = web_path[6:]  # Remove '/share' prefix
 
         protocol = 'https' if self.use_https else 'http'
-        download_url = f"{protocol}://{self.qnap_host}:{self.qnap_port}/cgi-bin/filemanager/utilRequest.cgi"
 
-        params = {
-            'func': 'download',
-            'path': web_path,
-            'sid': self.session.cookies.get('NAS_SID', '')
-        }
+        # Try multiple download methods for QNAP
+        download_methods = [
+            # Method 1: File Manager API
+            {
+                'url': f"{protocol}://{self.qnap_host}:{self.qnap_port}/cgi-bin/filemanager/utilRequest.cgi",
+                'params': {
+                    'func': 'download',
+                    'path': web_path,
+                    'sid': self.session.cookies.get('NAS_SID', self.session.cookies.get('sid', ''))
+                }
+            },
+            # Method 2: Direct file access
+            {
+                'url': f"{protocol}://{self.qnap_host}:{self.qnap_port}{web_path}",
+                'params': {}
+            },
+            # Method 3: Share access
+            {
+                'url': f"{protocol}://{self.qnap_host}:{self.qnap_port}/share{web_path}",
+                'params': {}
+            },
+            # Method 4: Alternative file manager
+            {
+                'url': f"{protocol}://{self.qnap_host}:{self.qnap_port}/cgi-bin/file_download.cgi",
+                'params': {
+                    'file_path': web_path,
+                    'sid': self.session.cookies.get('NAS_SID', self.session.cookies.get('sid', ''))
+                }
+            }
+        ]
 
-        try:
-            logger.info(f"Downloading from QNAP: {qnap_path}")
-            response = self.session.get(download_url, params=params, timeout=60, verify=False)
+        for i, method in enumerate(download_methods):
+            try:
+                logger.info(f"Downloading attempt {i+1}: {method['url']} -> {qnap_path}")
+                response = self.session.get(
+                    method['url'],
+                    params=method['params'],
+                    timeout=30
+                )
 
-            if response.status_code == 200:
-                logger.info(f"Successfully downloaded: {qnap_path} ({len(response.content)} bytes)")
-                return response.content
-            else:
-                logger.error(f"QNAP download failed: {response.status_code} for {qnap_path}")
-                return None
+                if response.status_code == 200 and len(response.content) > 0:
+                    # Verify it's actually an image file (not an error page)
+                    if response.content.startswith(b'\x89PNG') or response.content.startswith(b'\xff\xd8\xff'):
+                        logger.info(f"Successfully downloaded: {qnap_path} ({len(response.content)} bytes)")
+                        return response.content
+                    else:
+                        logger.debug(f"Download method {i+1} returned non-image content")
 
-        except Exception as e:
-            logger.error(f"QNAP download error for {qnap_path}: {e}")
-            return None
+            except Exception as e:
+                logger.debug(f"Download method {i+1} failed: {e}")
+                continue
+
+        logger.error(f"All QNAP download methods failed for: {qnap_path}")
+        return None
 
     def load_image_cv2(self, qnap_path: str) -> Optional[np.ndarray]:
         """Load image from QNAP NAS as CV2 array"""
