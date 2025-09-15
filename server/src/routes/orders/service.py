@@ -141,6 +141,12 @@ def create_print_files(current_user, db):
                     updated_titles = []
                     for design_file_path in processed_item_data['Title']:
                         if design_file_path:  # Skip empty paths
+                            # Skip placeholder files that don't actually exist
+                            if "MISSING_" in design_file_path:
+                                logging.warning(f"Skipping download of placeholder file: {design_file_path}")
+                                updated_titles.append(design_file_path)  # Keep placeholder path
+                                continue
+
                             # Design file path is relative to shop (e.g., "UVDTF 16oz/design.png")
                             local_filename = os.path.basename(design_file_path)
                             local_file_path = os.path.join(temp_designs_dir, local_filename)

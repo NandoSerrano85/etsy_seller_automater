@@ -160,9 +160,12 @@ class EtsyAPI:
 
             # Also update .env file as fallback (will be lost on container restart but helps locally)
             try:
-                set_key(dotenv_path, "ETSY_OAUTH_TOKEN", self.oauth_token)
-                set_key(dotenv_path, "ETSY_REFRESH_TOKEN", self.refresh_token)
-                set_key(dotenv_path, "ETSY_OAUTH_TOKEN_EXPIRY", str(self.token_expiry))
+                if self.oauth_token:
+                    set_key(dotenv_path, "ETSY_OAUTH_TOKEN", self.oauth_token)
+                if self.refresh_token:
+                    set_key(dotenv_path, "ETSY_REFRESH_TOKEN", self.refresh_token)
+                if self.token_expiry:
+                    set_key(dotenv_path, "ETSY_OAUTH_TOKEN_EXPIRY", str(self.token_expiry))
             except Exception as e:
                 logging.warning(f"Could not update .env file: {e}")
 
@@ -641,33 +644,66 @@ class EtsyAPI:
 
         # Create multiple patterns to try different matching approaches
         patterns = []
-        # Exact match pattern
+
+        logging.info(f"Creating search patterns for: '{search_name}' (parts: {parts})")
+
+        # Pattern 1: Exact match
         patterns.append(re.compile(re.escape(search_name), re.IGNORECASE))
-        # Pattern without spaces
-        patterns.append(re.compile(re.escape(search_name.replace(" ", "")), re.IGNORECASE))
-        # Pattern with underscores instead of spaces
-        patterns.append(re.compile(re.escape(search_name.replace(" ", "_")), re.IGNORECASE))
-        # Pattern with hyphens instead of spaces
-        patterns.append(re.compile(re.escape(search_name.replace(" ", "-")), re.IGNORECASE))
-        # Just the number part (for patterns like "UV 674" -> "674")
+
+        # Pattern 2: Without spaces
+        no_space = search_name.replace(" ", "")
+        if no_space != search_name:
+            patterns.append(re.compile(re.escape(no_space), re.IGNORECASE))
+
+        # Pattern 3: With underscores instead of spaces
+        with_underscores = search_name.replace(" ", "_")
+        if with_underscores != search_name:
+            patterns.append(re.compile(re.escape(with_underscores), re.IGNORECASE))
+
+        # Pattern 4: With hyphens instead of spaces
+        with_hyphens = search_name.replace(" ", "-")
+        if with_hyphens != search_name:
+            patterns.append(re.compile(re.escape(with_hyphens), re.IGNORECASE))
+
+        # Pattern 5: Just the number part (for patterns like "UV 674" -> "674")
         if len(parts) > 1 and parts[1].isdigit():
             patterns.append(re.compile(re.escape(parts[1]), re.IGNORECASE))
+            # Also try with leading zeros
+            padded_number = parts[1].zfill(3)  # e.g., "674" -> "674", "74" -> "074"
+            if padded_number != parts[1]:
+                patterns.append(re.compile(re.escape(padded_number), re.IGNORECASE))
+
+        # Pattern 6: More flexible matching - allow word boundaries
+        # This helps match "UV604" in filename when searching for "UV 604"
+        flexible_pattern = search_name.replace(" ", r"[\s_-]*")
+        patterns.append(re.compile(flexible_pattern, re.IGNORECASE))
+
+        logging.info(f"Created {len(patterns)} search patterns")
 
         # List files in the template directory on NAS
-        template_relative_path = f"{template_name}/"
+        template_relative_path = template_name  # Remove trailing slash - might cause issues
         try:
             files = nas_storage.list_files(shop_name, template_relative_path)
             logging.info(f"NAS Search: Looking for '{search_name}' in {len(files) if files else 0} files in {shop_name}/{template_relative_path}")
-            logging.info(f"Available files: {files}")
+            if files:
+                filenames = [f.get('filename', '') if isinstance(f, dict) else str(f) for f in files]
+                logging.info(f"Available filenames: {filenames}")
+            else:
+                logging.warning(f"No files found in {shop_name}/{template_relative_path}")
 
-            for file in files:
-                if file.lower().endswith(extensions):
+            for file_info in files:
+                # Extract filename from the file info dictionary
+                filename = file_info.get('filename', '') if isinstance(file_info, dict) else str(file_info)
+
+                if filename.lower().endswith(extensions):
                     # Try each pattern until we find a match
                     for i, pattern in enumerate(patterns):
-                        if pattern.search(file):
-                            logging.info(f"NAS Search: Found match - {file} using pattern {i}")
+                        if pattern.search(filename):
+                            logging.info(f"NAS Search: Found match - {filename} using pattern {i}: {pattern.pattern}")
                             # Return the relative path that can be used for NAS operations
-                            return f"{template_name}/{file}"
+                            return f"{template_name}/{filename}"
+                    # Log why this file didn't match
+                    logging.debug(f"NAS Search: File '{filename}' didn't match any patterns for '{search_name}'")
 
             logging.warning(f"NAS Search: No file found matching pattern '{search_name}' in {shop_name}/{template_relative_path}")
         except Exception as e:
