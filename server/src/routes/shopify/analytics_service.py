@@ -6,9 +6,9 @@ from datetime import datetime, timedelta, timezone
 from collections import defaultdict, Counter
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from src.utils.shopify_client import ShopifyClient, ShopifyAPIError, ShopifyAuthError
-from src.entities.shopify_store import ShopifyStore
-from src.entities.shopify_product import ShopifyProduct
+from server.src.utils.shopify_client import ShopifyClient, ShopifyAPIError, ShopifyAuthError
+from server.src.entities.shopify_store import ShopifyStore
+from server.src.entities.shopify_product import ShopifyProduct
 
 logger = logging.getLogger(__name__)
 
