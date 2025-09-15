@@ -25,9 +25,7 @@ def test_environment_variables():
         'QNAP_USERNAME',
         'QNAP_PASSWORD',
         'QNAP_PORT',
-        'QNAP_HTTP_PORT',
-        'QNAP_WEB_PORT',
-        'QNAP_USE_HTTPS'
+        'NAS_BASE_PATH'
     ]
 
     for var in qnap_vars:
@@ -59,37 +57,44 @@ def test_sftp_connection():
         logger.error(f"SFTP connection failed: {e}")
         return False
 
-def test_http_connection():
-    """Test HTTP connection (qnap_client.py)"""
-    logger.info("\n=== Testing HTTP Connection (qnap_client.py) ===")
+def test_mockup_loading():
+    """Test mockup image loading (mockups_util.py)"""
+    logger.info("\n=== Testing Mockup Image Loading ===")
 
     try:
-        from server.src.utils.qnap_client import qnap_client
-        if not qnap_client.enabled:
-            logger.warning("QNAP HTTP client is disabled")
+        from server.src.utils.nas_storage import nas_storage
+        if not nas_storage.enabled:
+            logger.warning("NAS storage is disabled")
             return False
 
-        # Try to authenticate
-        auth_result = qnap_client._authenticate()
-        if auth_result:
-            logger.info("QNAP HTTP authentication successful")
+        # Test mockup file download using the same path that was failing
+        shop_name = "NookTransfers"
+        relative_path = "Mockups/BaseMockups/UVDTF 16oz/mockup_52f0959b-5358-4684-80b5-90b8e89d559b_2.png"
 
-            # Try to download a test file
-            test_path = "/share/Graphics/NookTransfers/Mockups/BaseMockups/UVDTF 16oz/mockup_52f0959b-5358-4684-80b5-90b8e89d559b_2.png"
-            file_data = qnap_client.download_file(test_path)
+        # Try to download the mockup file to memory
+        file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
 
-            if file_data:
-                logger.info(f"HTTP download successful. File size: {len(file_data)} bytes")
+        if file_content:
+            logger.info(f"Mockup download successful. File size: {len(file_content)} bytes")
+
+            # Try to decode as image (same as mockups_util.py)
+            import numpy as np
+            import cv2
+            nparr = np.frombuffer(file_content, np.uint8)
+            image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+
+            if image is not None:
+                logger.info(f"Image decode successful. Shape: {image.shape}")
                 return True
             else:
-                logger.error("HTTP download failed - no data returned")
+                logger.error("Image decode failed")
                 return False
         else:
-            logger.error("QNAP HTTP authentication failed")
+            logger.error("Mockup download failed - no data returned")
             return False
 
     except Exception as e:
-        logger.error(f"HTTP connection failed: {e}")
+        logger.error(f"Mockup loading failed: {e}")
         return False
 
 def main():
@@ -102,20 +107,20 @@ def main():
         logger.error("Required QNAP environment variables are missing!")
         return False
 
-    # Test both connection methods
+    # Test SFTP connection and mockup loading
     sftp_ok = test_sftp_connection()
-    http_ok = test_http_connection()
+    mockup_ok = test_mockup_loading()
 
     logger.info("\n=== Test Results ===")
     logger.info(f"Environment Variables: {'✓' if env_ok else '✗'}")
     logger.info(f"SFTP Connection: {'✓' if sftp_ok else '✗'}")
-    logger.info(f"HTTP Connection: {'✓' if http_ok else '✗'}")
+    logger.info(f"Mockup Loading: {'✓' if mockup_ok else '✗'}")
 
-    if sftp_ok and http_ok:
-        logger.info("✓ All QNAP connections working correctly!")
+    if sftp_ok and mockup_ok:
+        logger.info("✓ All QNAP operations working correctly!")
         return True
     else:
-        logger.error("✗ Some QNAP connections failed. Check logs above.")
+        logger.error("✗ Some QNAP operations failed. Check logs above.")
         return False
 
 if __name__ == "__main__":

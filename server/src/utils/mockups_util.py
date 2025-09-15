@@ -32,20 +32,40 @@ class MockupTemplateCache:
             is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
 
             if is_production and path.startswith('/share/'):
-                # Use QNAP HTTP client for Railway production
+                # Use QNAP SFTP client for Railway production (consistent with other NAS operations)
                 try:
-                    from server.src.utils.qnap_client import qnap_client
-                    logger.info(f"Railway production: Loading via QNAP HTTP client: {path}")
-                    mockup_image = qnap_client.load_image_cv2(path)
+                    from server.src.utils.nas_storage import nas_storage
+                    logger.info(f"Railway production: Loading via QNAP SFTP client: {path}")
 
-                    if mockup_image is None:
-                        logger.error(f"QNAP HTTP client failed to load: {path}")
-                        return None
+                    # Extract shop_name and relative_path from full path
+                    # Path format: /share/Graphics/ShopName/RelativePath
+                    path_parts = path.split('/')
+                    if len(path_parts) >= 4 and path_parts[2] == 'Graphics':
+                        shop_name = path_parts[3]
+                        relative_path = '/'.join(path_parts[4:])
+
+                        # Download file to memory
+                        file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                        if file_content:
+                            # Convert bytes to CV2 image
+                            import numpy as np
+                            nparr = np.frombuffer(file_content, np.uint8)
+                            mockup_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+
+                            if mockup_image is not None:
+                                logger.info(f"Successfully loaded via QNAP SFTP: {path} ({len(file_content)} bytes)")
+                            else:
+                                logger.error(f"Failed to decode image data from QNAP SFTP: {path}")
+                                return None
+                        else:
+                            logger.error(f"QNAP SFTP download failed: {path}")
+                            return None
                     else:
-                        logger.info(f"Successfully loaded via QNAP HTTP client: {path}")
+                        logger.error(f"Invalid QNAP path format: {path}")
+                        return None
 
                 except Exception as e:
-                    logger.error(f"QNAP HTTP client error for {path}: {e}")
+                    logger.error(f"QNAP SFTP client error for {path}: {e}")
                     return None
             else:
                 # Local development - use direct file access

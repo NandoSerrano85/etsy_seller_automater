@@ -201,26 +201,22 @@ server/tests/
 
 For Railway deployment, configure the following additional variables:
 
-| Variable                | Description                   | Required | Example               |
-| ----------------------- | ----------------------------- | -------- | --------------------- |
-| `QNAP_HOST`             | QNAP NAS hostname             | No       | `your-nas.domain.com` |
-| `QNAP_USERNAME`         | QNAP NAS username             | No       | `admin`               |
-| `QNAP_PASSWORD`         | QNAP NAS password             | No       | `your-password`       |
-| `QNAP_PORT`             | QNAP SFTP port (SSH)          | No       | `22` (default)        |
-| `QNAP_HTTP_PORT`        | QNAP web interface port       | No       | `8080` (default)      |
-| `QNAP_USE_HTTPS`        | Use HTTPS for web connections | No       | `false` (default)     |
-| `SHOPIFY_CLIENT_ID`     | Shopify app client ID         | No       | Your Shopify app ID   |
-| `SHOPIFY_CLIENT_SECRET` | Shopify app client secret     | No       | Your Shopify secret   |
+| Variable                | Description               | Required | Example               |
+| ----------------------- | ------------------------- | -------- | --------------------- |
+| `QNAP_HOST`             | QNAP NAS hostname         | No       | `your-nas.domain.com` |
+| `QNAP_USERNAME`         | QNAP NAS username         | No       | `admin`               |
+| `QNAP_PASSWORD`         | QNAP NAS password         | No       | `your-password`       |
+| `QNAP_PORT`             | QNAP SFTP port (SSH)      | No       | `22` (default)        |
+| `SHOPIFY_CLIENT_ID`     | Shopify app client ID     | No       | Your Shopify app ID   |
+| `SHOPIFY_CLIENT_SECRET` | Shopify app client secret | No       | Your Shopify secret   |
 
 **QNAP Configuration Notes:**
 
-- The app uses **two connection methods**:
-  - **SFTP** (port 22): For file uploads and directory operations
-  - **HTTP** (port 8080): For file downloads during mockup generation
-- Set both `QNAP_PORT=22` and `QNAP_HTTP_PORT=8080` in Railway
-- Start with HTTP (`QNAP_USE_HTTPS=false`) as many QNAP devices use self-signed certificates
-- Ensure both SSH and web interface are accessible from the internet for Railway deployment
-- Path format: `/share/Graphics/...` will be converted to web-accessible paths automatically
+- The app uses **SFTP** (port 22) for all NAS operations including file uploads, downloads, and mockup image loading
+- Only `QNAP_PORT=22` is required for Railway deployment
+- Ensure SSH access is enabled and accessible from the internet for Railway deployment
+- Path format: `/share/Graphics/ShopName/RelativePath` is used for all file operations
+- The SFTP client handles both paramiko-based operations and in-memory file transfers for mockup processing
 
 ### OAuth Configuration
 

@@ -49,13 +49,11 @@ environments:
       - DATABASE_URL
       - REDIS_URL
       
-      # QNAP NAS Storage
+      # QNAP NAS Storage (SFTP only)
       - QNAP_HOST
       - QNAP_USERNAME
       - QNAP_PASSWORD
-      - QNAP_PORT=22          # For SFTP connections
-      - QNAP_HTTP_PORT=8080   # For HTTP/web connections
-      - QNAP_USE_HTTPS=false  # Use HTTP for better compatibility
+      - QNAP_PORT=22
       - NAS_BASE_PATH=/share/Graphics
       
       # Application Settings
@@ -78,12 +76,11 @@ environments:
     variables:
       - DATABASE_URL
       - REDIS_URL
+      # QNAP NAS Storage (SFTP only)
       - QNAP_HOST
       - QNAP_USERNAME
       - QNAP_PASSWORD
-      - QNAP_PORT=22          # For SFTP connections
-      - QNAP_HTTP_PORT=8080   # For HTTP/web connections
-      - QNAP_USE_HTTPS=false  # Use HTTP for better compatibility
+      - QNAP_PORT=22
       - NAS_BASE_PATH=/share/Graphics
       - JWT_SECRET_KEY
       - CLIENT_ID
