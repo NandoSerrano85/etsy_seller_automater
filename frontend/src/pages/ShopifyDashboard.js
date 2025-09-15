@@ -4,6 +4,7 @@ import { useNotifications } from '../components/NotificationSystem';
 import { useNavigate } from 'react-router-dom';
 import ShopifyStoreManager from '../components/ShopifyStoreManager';
 import ShopifyAnalytics from '../components/ShopifyAnalytics';
+import apiCache, { CACHE_KEYS } from '../utils/apiCache';
 import {
   BuildingStorefrontIcon,
   ChartBarIcon,
@@ -26,6 +27,8 @@ const ShopifyDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [storeConnected, setStoreConnected] = useState(false);
+  const [loadingStore, setLoadingStore] = useState(true);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
 
   useEffect(() => {
     loadDashboardData();
@@ -33,39 +36,100 @@ const ShopifyDashboard = () => {
 
   const loadDashboardData = async () => {
     try {
-      setLoading(true);
+      // Show cached data immediately if available
+      const cachedStore = apiCache.getValid(CACHE_KEYS.SHOPIFY_STORE, 30);
+      const cachedAnalytics = apiCache.getValid(CACHE_KEYS.SHOPIFY_ANALYTICS, 60);
 
-      // Check store connection
-      const storeResponse = await fetch('/api/shopify/store', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (storeResponse.ok) {
+      if (cachedStore) {
         setStoreConnected(true);
-
-        // Load analytics summary
-        const analyticsResponse = await fetch('/api/shopify/analytics/summary', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (analyticsResponse.ok) {
-          const analyticsData = await analyticsResponse.json();
-          setDashboardData(analyticsData);
-        }
-      } else {
-        setStoreConnected(false);
+        setLoadingStore(false);
       }
+
+      if (cachedAnalytics) {
+        setDashboardData(cachedAnalytics);
+        setLoadingAnalytics(false);
+      }
+
+      // If we have all cached data, show it immediately
+      if (cachedStore && cachedAnalytics) {
+        setLoading(false);
+      }
+
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+
+      const fetchWithTimeout = (url, options, timeout = 5000) => {
+        return Promise.race([
+          fetch(url, options),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Request timeout')), timeout)
+          )
+        ]);
+      };
+
+      // Make parallel API calls for better performance
+      const requests = [];
+
+      // Only fetch store data if not cached
+      if (!cachedStore) {
+        requests.push({ key: 'store', promise: fetchWithTimeout('/api/shopify/store', { headers }) });
+      }
+
+      // Only fetch analytics if not cached
+      if (!cachedAnalytics) {
+        requests.push({ key: 'analytics', promise: fetchWithTimeout('/api/shopify/analytics/summary', { headers }) });
+      }
+
+      if (requests.length > 0) {
+        const results = await Promise.allSettled(requests.map(req => req.promise));
+
+        requests.forEach((request, index) => {
+          const result = results[index];
+
+          if (request.key === 'store') {
+            setLoadingStore(false);
+            if (result.status === 'fulfilled' && result.value.ok) {
+              setStoreConnected(true);
+              // Cache store connection status
+              apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: true }, 30);
+            } else {
+              setStoreConnected(false);
+              if (result.status === 'rejected') {
+                console.warn('Store API timeout or error:', result.reason);
+              }
+            }
+          }
+
+          if (request.key === 'analytics') {
+            setLoadingAnalytics(false);
+            if (result.status === 'fulfilled' && result.value.ok) {
+              result.value.json().then(analyticsData => {
+                setDashboardData(analyticsData);
+                // Cache analytics data for 1 minute
+                apiCache.set(CACHE_KEYS.SHOPIFY_ANALYTICS, analyticsData, 60);
+              }).catch(jsonError => {
+                console.error('Error parsing analytics data:', jsonError);
+                setDashboardData(null);
+              });
+            } else {
+              if (result.status === 'rejected') {
+                console.warn('Analytics API timeout or error:', result.reason);
+              }
+              setDashboardData(null);
+            }
+          }
+        });
+      }
+
     } catch (error) {
       console.error('Error loading dashboard data:', error);
       addNotification('Failed to load dashboard data', 'error');
     } finally {
       setLoading(false);
+      setLoadingStore(false);
+      setLoadingAnalytics(false);
     }
   };
 
@@ -139,7 +203,24 @@ const ShopifyDashboard = () => {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Quick Stats */}
-            {storeConnected && dashboardData && (
+            {storeConnected && (loadingAnalytics ? (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="bg-white rounded-lg shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="p-3 rounded-lg bg-gray-100">
+                        <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                      </div>
+                      <div className="ml-4 flex-1">
+                        <div className="h-4 bg-gray-200 rounded animate-pulse mb-2"></div>
+                        <div className="h-8 bg-gray-200 rounded animate-pulse mb-1"></div>
+                        <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : dashboardData && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white rounded-lg shadow-lg p-6">
                   <div className="flex items-center">
@@ -218,7 +299,25 @@ const ShopifyDashboard = () => {
             )}
 
             {/* Store Connection Status */}
-            <ShopifyStoreManager />
+            {loadingStore ? (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 bg-gray-200 rounded animate-pulse mr-4"></div>
+                    <div>
+                      <div className="h-5 bg-gray-200 rounded animate-pulse mb-2 w-32"></div>
+                      <div className="h-4 bg-gray-200 rounded animate-pulse w-48"></div>
+                    </div>
+                  </div>
+                  <div className="flex space-x-3">
+                    <div className="h-8 bg-gray-200 rounded animate-pulse w-24"></div>
+                    <div className="h-8 bg-gray-200 rounded animate-pulse w-20"></div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <ShopifyStoreManager />
+            )}
 
             {/* Recent Activity */}
             {storeConnected && (

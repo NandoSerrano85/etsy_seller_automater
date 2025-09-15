@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from './NotificationSystem';
 import { useNavigate } from 'react-router-dom';
+import apiCache, { CACHE_KEYS } from '../utils/apiCache';
 import {
   BuildingStorefrontIcon,
   CheckCircleIcon,
@@ -34,30 +35,56 @@ const ShopifyStoreManager = () => {
 
   const loadStoreInfo = async () => {
     try {
+      // Show cached data immediately if available
+      const cachedStore = apiCache.getValid(CACHE_KEYS.SHOPIFY_STORE, 30);
+      if (cachedStore) {
+        if (cachedStore.connected && cachedStore.store) {
+          setStore(cachedStore.store);
+          setConnectionStatus('connected');
+          setLoading(false);
+          return; // Use cache and skip API call
+        }
+      }
+
       setLoading(true);
+
+      // Fetch with timeout
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch('/api/shopify/store', {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       if (response.ok) {
         const storeData = await response.json();
         setStore(storeData);
         setConnectionStatus('connected');
+        // Cache the store data
+        apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: true, store: storeData }, 30);
       } else if (response.status === 404) {
         // No store connected
         setStore(null);
         setConnectionStatus('disconnected');
+        apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: false }, 30);
       } else {
         throw new Error('Failed to load store information');
       }
     } catch (error) {
-      console.error('Error loading store info:', error);
+      if (error.name === 'AbortError') {
+        console.warn('Store info request timed out');
+        addNotification('Request timed out. Please check your connection.', 'warning');
+      } else {
+        console.error('Error loading store info:', error);
+        addNotification('Failed to load store information', 'error');
+      }
       setConnectionStatus('error');
-      addNotification('Failed to load store information', 'error');
     } finally {
       setLoading(false);
     }
