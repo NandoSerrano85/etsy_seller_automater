@@ -27,7 +27,7 @@ ENV DOCKER_ENV=true
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (Railway production compatible)
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
@@ -48,7 +48,7 @@ COPY start_server.py .
 # Copy built frontend from the frontend-builder stage
 COPY --from=frontend-builder /app/frontend/build ./server/static
 
-# Create a non-root user
+# Create a non-root user (Railway compatible)
 RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app

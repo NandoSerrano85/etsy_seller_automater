@@ -26,31 +26,53 @@ class MockupTemplateCache:
             import logging
             logger = logging.getLogger(__name__)
 
-            # Check if path exists and log details for debugging
-            if not os.path.exists(path):
-                logger.error(f"QNAP NAS: File does not exist: {path}")
-                return None
+            logger.info(f"Loading mockup from path: {path}")
 
-            logger.info(f"QNAP NAS: Loading mockup from path: {path}")
-            mockup_image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+            # Check if running in Railway/Docker environment
+            is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
 
-            if mockup_image is None:
-                logger.error(f"QNAP NAS: Failed to read image with cv2.imread: {path}")
-                # Try alternative method if cv2 fails
+            if is_production and path.startswith('/share/'):
+                # Use QNAP HTTP client for Railway production
                 try:
-                    from PIL import Image
-                    import numpy as np
-                    pil_image = Image.open(path)
-                    if pil_image.mode == 'RGBA':
-                        mockup_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGBA2BGRA)
+                    from server.src.utils.qnap_client import qnap_client
+                    logger.info(f"Railway production: Loading via QNAP HTTP client: {path}")
+                    mockup_image = qnap_client.load_image_cv2(path)
+
+                    if mockup_image is None:
+                        logger.error(f"QNAP HTTP client failed to load: {path}")
+                        return None
                     else:
-                        mockup_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-                    logger.info(f"QNAP NAS: Successfully loaded with PIL fallback: {path}")
+                        logger.info(f"Successfully loaded via QNAP HTTP client: {path}")
+
                 except Exception as e:
-                    logger.error(f"QNAP NAS: PIL fallback also failed: {path}, error: {e}")
+                    logger.error(f"QNAP HTTP client error for {path}: {e}")
                     return None
             else:
-                logger.info(f"QNAP NAS: Successfully loaded with cv2: {path}")
+                # Local development - use direct file access
+                if not os.path.exists(path):
+                    logger.error(f"Local file does not exist: {path}")
+                    return None
+
+                logger.info(f"Local development: Loading from file system: {path}")
+                mockup_image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+                if mockup_image is None:
+                    logger.error(f"Failed to read image with cv2.imread: {path}")
+                    # Try alternative method if cv2 fails
+                    try:
+                        from PIL import Image
+                        import numpy as np
+                        pil_image = Image.open(path)
+                        if pil_image.mode == 'RGBA':
+                            mockup_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGBA2BGRA)
+                        else:
+                            mockup_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                        logger.info(f"Successfully loaded with PIL fallback: {path}")
+                    except Exception as e:
+                        logger.error(f"PIL fallback also failed: {path}, error: {e}")
+                        return None
+                else:
+                    logger.info(f"Successfully loaded with cv2: {path}")
 
             self.mockups[path] = mockup_image
 
@@ -130,6 +152,12 @@ class MockupImageProcessor:
             design_img = cv2.imread(f"{self.design_image_path}{image}", cv2.IMREAD_UNCHANGED)
         
         background = self.get_background(index)
+        if background is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load background mockup image at index {index}. Mockup path: {self.mockup_image_paths[index] if index < len(self.mockup_image_paths) else 'INDEX_OUT_OF_RANGE'}")
+            raise ValueError(f"Background mockup image could not be loaded from QNAP NAS. Check file path: {self.mockup_image_paths[index] if index < len(self.mockup_image_paths) else 'INDEX_OUT_OF_RANGE'}")
+
         if background.shape[2] == 3:
             background = cv2.cvtColor(background, cv2.COLOR_BGR2BGRA)
 
@@ -404,19 +432,20 @@ def create_mockup_images(
         raise FileNotFoundError(f"No mockup files found in {mockup_path}")
     
     # Process the design image
+    temp_design_dir = f"{root_path}Temp/"
+    os.makedirs(temp_design_dir, exist_ok=True)
+    temp_design_filename = None
 
     for design_file_path in design_file_paths:
-        
+
         # Process the design image
         if not os.path.exists(design_file_path):
             raise FileNotFoundError(f"Design file not found: {design_file_path}")
-        
+
         # Resize and crop the design image
         resized_image = process_design_image(design_file_path, template_name)
-    
+
         # Create temporary design file for mockup processing
-        temp_design_dir = f"{root_path}Temp/"
-        os.makedirs(temp_design_dir, exist_ok=True)
         temp_design_filename = f"temp_design_{mockup_id}_{os.path.basename(design_file_path)}"
         temp_design_path = f"{temp_design_dir}{temp_design_filename}"
         temp_design_path_list.append(temp_design_path)
@@ -434,13 +463,13 @@ def create_mockup_images(
     for i, mockup_file_path in enumerate(mockup_file_paths):
         # Create mockup
         assembled_mockup = mockup_processor.create_mockup(
-            mask_points_list, 
-            points_list, 
-            image_type=template_name, 
-            image=temp_design_filename, 
+            mask_points_list,
+            points_list,
+            image_type=template_name,
+            image=temp_design_filename,
             index=i,
-            is_cropped=is_cropped,
-            alignment=alignment
+            is_cropped_list=[is_cropped],
+            alignment_list=[alignment]
         )
         
         # Add watermark
@@ -484,11 +513,12 @@ def create_mockup_images(
             'color': color
         })
     
-    # Clean up temporary design file
-    try:
-        os.remove(temp_design_path)
-    except OSError:
-        pass
+    # Clean up temporary design files
+    for temp_design_path in temp_design_path_list:
+        try:
+            os.remove(temp_design_path)
+        except OSError:
+            pass
     
     return generated_mockups
 
@@ -524,20 +554,23 @@ def create_mockups_for_etsy(
     design_filenames = list()
     design_image_path_list = list()
     for design_image in designs:
-        if design_image.file_path:
+        if hasattr(design_image, 'file_path') and design_image.file_path is not None:
             split_path = design_image.file_path.split('/')
             split_path.pop()  # Remove filename
             split_path = ['/'.join(split_path)]+['/']
             design_file_paths.add(''.join(split_path))
-        if design_image.filename:
+        if hasattr(design_image, 'filename') and design_image.filename is not None:
             design_filenames.append(design_image.filename)
-        if design_image.is_digital:
+        if hasattr(design_image, 'is_digital') and design_image.is_digital is True:
             design_image_path_list.append(design_image.file_path)
     if len(design_file_paths) > 1:
         raise ValueError(f"More than one design file path {design_file_paths}")
     design_file_paths = str(design_file_paths.pop())
 
     mockup_processor = MockupImageProcessor(mockup_file_paths, design_file_paths)
+
+    # Initialize current_id_number
+    current_id_number = str(id_number).zfill(3)
 
     for n, filename in enumerate(design_filenames):
         current_id_number = str(n + id_number).zfill(3)
