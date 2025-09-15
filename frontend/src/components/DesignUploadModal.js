@@ -7,6 +7,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [stage, setStage] = useState('template'); // 'template', 'mockup', 'canvas', 'size', 'upload'
   const [canvasConfigs, setCanvasConfigs] = useState([]);
   const [selectedCanvasConfig, setSelectedCanvasConfig] = useState(null);
@@ -151,6 +152,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       if (files.length === 0) return;
 
       setUploading(true);
+      setUploadProgress('Preparing design data...');
       try {
         // First, save the design information
         const designData = {
@@ -168,7 +170,10 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
           uploadFormData.append('files', file);
         });
         uploadFormData.append('design_data', JSON.stringify(designData));
-        const designResponse = await api.postFormData('/designs/', uploadFormData);
+
+        setUploadProgress('Uploading design files...');
+        // Use retry logic for file uploads
+        const designResponse = await api.postFormDataWithRetry('/designs/', uploadFormData);
 
         const productData = {
           product_template_id: selectedTemplate.id,
@@ -182,7 +187,8 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         mockupFormData.append('product_data', JSON.stringify(productData));
 
-        const result = await api.postFormData('/mockups/upload-mockup', mockupFormData);
+        setUploadProgress('Creating mockups...');
+        const result = await api.postFormDataWithRetry('/mockups/upload-mockup', mockupFormData);
 
         let successMessage = 'Design saved and files uploaded successfully!';
         if (result.result?.digital_message) {
@@ -202,9 +208,20 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         onClose();
       } catch (err) {
         console.error('Upload error:', err);
-        alert(`Upload failed: ${err.message || 'Unknown error'}`);
+
+        // Provide specific feedback for connection reset errors
+        let errorMessage = err.message || 'Unknown error';
+        if (err.message && err.message.includes('ERR_CONNECTION_RESET')) {
+          errorMessage =
+            "Connection was reset during upload. The upload may have completed successfully on the server, but we couldn't confirm it. Please check your designs list to see if the upload succeeded, or try uploading again.";
+        } else if (err.message && err.message.includes('Failed to fetch')) {
+          errorMessage = 'Network error during upload. Please check your internet connection and try again.';
+        }
+
+        alert(`Upload failed: ${errorMessage}`);
       } finally {
         setUploading(false);
+        setUploadProgress('');
       }
     };
     input.click();
@@ -434,7 +451,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
                 }`}
               >
                 {uploading
-                  ? 'Uploading...'
+                  ? uploadProgress || 'Uploading...'
                   : stage === 'template'
                     ? 'Continue'
                     : stage === 'mockup'

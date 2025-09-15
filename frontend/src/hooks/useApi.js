@@ -31,16 +31,35 @@ export const apiCall = async (url, options = {}, token = null) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(fullUrl, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(fullUrl, {
+      ...options,
+      headers,
+      // Add timeout for large uploads
+      signal: options.signal || (options.timeout ? AbortSignal.timeout(options.timeout) : undefined),
+    });
 
-  console.log('📡 API Response:', {
-    url,
-    status: response.status,
-    ok: response.ok,
-  });
+    console.log('📡 API Response:', {
+      url,
+      status: response.status,
+      ok: response.ok,
+    });
+  } catch (networkError) {
+    console.error('🌐 Network Error:', {
+      url,
+      fullUrl,
+      error: networkError.message,
+      type: networkError.name,
+    });
+
+    // Special handling for connection reset during uploads
+    if (networkError.message.includes('ERR_CONNECTION_RESET') && options.method === 'POST') {
+      console.warn('⚠️ Connection reset during POST - request may have succeeded on server');
+    }
+
+    throw networkError;
+  }
 
   if (!response.ok) {
     // Get the response as text first to see if it's HTML
@@ -90,11 +109,43 @@ export const useApi = () => {
       method: 'POST',
       body: JSON.stringify(data),
     });
-  const postFormData = (url, formData) =>
+  const postFormData = (url, formData, options = {}) =>
     authenticatedApiCall(url, {
       method: 'POST',
       body: formData,
+      timeout: 120000, // 2 minutes for file uploads
+      ...options,
     });
+
+  // Enhanced form data post with retry logic for connection reset errors
+  const postFormDataWithRetry = async (url, formData, maxRetries = 2) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 Upload attempt ${attempt}/${maxRetries} for ${url}`);
+        const result = await postFormData(url, formData);
+        console.log(`✅ Upload successful on attempt ${attempt}`);
+        return result;
+      } catch (error) {
+        console.log(`❌ Upload attempt ${attempt} failed:`, error.message);
+
+        // Check if it's a connection reset error
+        const isConnectionReset =
+          error.message.includes('ERR_CONNECTION_RESET') ||
+          error.message.includes('Failed to fetch') ||
+          error.name === 'TypeError';
+
+        // If it's the last attempt or not a retryable error, throw
+        if (attempt === maxRetries || !isConnectionReset) {
+          throw error;
+        }
+
+        // Wait before retrying (exponential backoff)
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`⏳ Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  };
   const put = (url, data) =>
     authenticatedApiCall(url, {
       method: 'PUT',
@@ -111,6 +162,7 @@ export const useApi = () => {
     get,
     post,
     postFormData,
+    postFormDataWithRetry,
     put,
     putFormData,
     delete: del,
