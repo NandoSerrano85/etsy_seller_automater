@@ -19,11 +19,25 @@ def get_multi_tenant_routers():
     """Import multi-tenant routers only if multi-tenant is enabled"""
     routers = []
     if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
+        print("🔄 Multi-tenant enabled, attempting to import routers...")
         try:
+            print("📋 Importing organization router...")
             from server.src.routes.organizations.routes import router as organization_router
             routers.append(organization_router)
+            print("✅ Organization router imported successfully")
+
+            print("📋 Importing printer router...")
+            from server.src.routes.printers.routes import router as printer_router
+            routers.append(printer_router)
+            print("✅ Printer router imported successfully")
+
+            print(f"✅ Successfully imported {len(routers)} multi-tenant routers")
         except ImportError as e:
-            print(f"Warning: Could not import organization router: {e}")
+            print(f"❌ Warning: Could not import multi-tenant routers: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("⚠️  Multi-tenant features disabled")
     return routers
 import os
 import time

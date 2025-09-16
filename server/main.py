@@ -477,9 +477,9 @@ def run_server():
     print(f"Starting CraftFlow server on http://{host}:{port}")
     print(f"Debug mode: {debug}")
     
-    # Open browser only if not running in Docker and debug is enabled
-    if not os.getenv('DOCKER_ENV') and not debug:
-        Timer(2, open_browser).start()
+    # Disable automatic browser opening to prevent unwanted redirects
+    # if not os.getenv('DOCKER_ENV') and not debug:
+    #     Timer(2, open_browser).start()
     
     uvicorn.run(
         app, 

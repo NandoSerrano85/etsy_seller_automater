@@ -36,7 +36,7 @@ class PrinterService {
   // Get user's printers
   async getUserPrinters() {
     try {
-      const response = await this.api.get('/printers');
+      const response = await this.api.get('/printers/');
       return {
         success: true,
         data: response.data,
@@ -70,7 +70,7 @@ class PrinterService {
   // Create new printer
   async createPrinter(printerData) {
     try {
-      const response = await this.api.post('/printers', printerData);
+      const response = await this.api.post('/printers/', printerData);
       return {
         success: true,
         data: response.data,

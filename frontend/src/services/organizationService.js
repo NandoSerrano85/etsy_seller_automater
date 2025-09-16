@@ -37,7 +37,7 @@ class OrganizationService {
   // Get user's organizations
   async getUserOrganizations() {
     try {
-      const response = await this.api.get('/organizations');
+      const response = await this.api.get('/organizations/');
       return {
         success: true,
         data: response.data,

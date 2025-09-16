@@ -311,10 +311,10 @@ const ShopifyDashboard = () => {
                   analytics to grow your business.
                 </p>
                 <button
-                  onClick={() => navigate('/shopify/connect')}
+                  onClick={() => navigate('/account?tab=integrations')}
                   className="bg-sage-600 text-white px-6 py-3 rounded-lg hover:bg-sage-700"
                 >
-                  Connect Shopify Store
+                  Go to Integrations
                 </button>
               </div>
             )}

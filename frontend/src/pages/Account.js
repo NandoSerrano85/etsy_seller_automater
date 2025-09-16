@@ -5,6 +5,9 @@ import SettingsTab from './AccountTabs/SettingsTab';
 import TemplatesTab from './AccountTabs/TemplatesTab';
 import ResizingTab from './AccountTabs/ResizingTab';
 import IntegrationsTab from './AccountTabs/IntegrationsTab';
+import OrganizationTab from './AccountTabs/OrganizationTab';
+import PrinterTab from './AccountTabs/PrinterTab';
+import SubscriptionTab from './AccountTabs/SubscriptionTab';
 
 const Account = () => {
   const { isUserAuthenticated } = useAuth();
@@ -35,6 +38,12 @@ const Account = () => {
         return <IntegrationsTab />;
       case 'preferences':
         return <ResizingTab />;
+      case 'organizations':
+        return <OrganizationTab />;
+      case 'printers':
+        return <PrinterTab />;
+      case 'subscription':
+        return <SubscriptionTab />;
       default:
         return <SettingsTab />;
     }
