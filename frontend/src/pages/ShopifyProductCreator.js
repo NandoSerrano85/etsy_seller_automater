@@ -60,7 +60,7 @@ const ShopifyProductCreator = () => {
     };
 
     fetchTemplates();
-  }, [token, addNotification]);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleTemplateSelect = template => {
     setSelectedTemplate(template);

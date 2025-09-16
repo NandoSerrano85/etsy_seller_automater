@@ -160,17 +160,17 @@ const ShopifyAnalytics = () => {
     }
   }, [token, getDateRange, groupBy, addNotification]);
 
-  // Initial load and auto-refresh
+  // Initial load (only run once)
   useEffect(() => {
     fetchAnalytics();
-  }, [fetchAnalytics]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (autoRefresh) {
       const interval = setInterval(fetchAnalytics, 60000); // Refresh every minute
       return () => clearInterval(interval);
     }
-  }, [autoRefresh, fetchAnalytics]);
+  }, [autoRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Chart configurations
   const getLineChartData = () => {

@@ -20,7 +20,7 @@ os.environ['ENABLE_MULTI_TENANT'] = 'true'
 from server.src.database.core import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 from server.src.api import register_routes
-from server.src.logging import config_logging, LogLevels
+from server.src.app_logging import config_logging, LogLevels
 from server.src import message
 from threading import Timer
 from dotenv import load_dotenv

@@ -33,7 +33,7 @@ const ShopifyDashboard = () => {
     if (isConnected) {
       loadAllAnalytics();
     }
-  }, [isConnected, loadAllAnalytics]);
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tabs = [
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },

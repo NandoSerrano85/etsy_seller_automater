@@ -98,7 +98,7 @@ export const useShopify = () => {
   // Load store on hook initialization
   useEffect(() => {
     loadStore();
-  }, [loadStore]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     store,
@@ -196,10 +196,10 @@ export const useShopifyProducts = () => {
     [api, addNotification, loadProducts]
   );
 
-  // Load products on hook initialization
+  // Load products on hook initialization (only run once)
   useEffect(() => {
     loadProducts();
-  }, [loadProducts]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     products,
@@ -235,10 +235,10 @@ export const useShopifyOrders = () => {
     }
   }, [api, addNotification]);
 
-  // Load orders on hook initialization
+  // Load orders on hook initialization (only run once)
   useEffect(() => {
     loadOrders();
-  }, [loadOrders]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     orders,

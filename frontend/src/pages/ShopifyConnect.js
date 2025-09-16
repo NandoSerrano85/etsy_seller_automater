@@ -50,7 +50,7 @@ const ShopifyConnect = () => {
       loadStore();
       navigate('/shopify/connect', { replace: true });
     }
-  }, [searchParams, addNotification, navigate, loadStore]);
+  }, [searchParams, addNotification, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initiateConnection = async () => {
     try {

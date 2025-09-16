@@ -20,9 +20,9 @@ router = APIRouter(
 
 @router.post('/start-upload')
 async def start_upload(
-    files: List[UploadFile] = File(None),
-    current_user: CurrentUser = Depends(),
-    db: Session = Depends(get_db)
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    files: List[UploadFile] = File(None)
 ):
     """Start a new upload session with file size estimation for progress tracking"""
     user_id = current_user.get_uuid()
