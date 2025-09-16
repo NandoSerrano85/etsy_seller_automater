@@ -197,27 +197,28 @@ def run_startup_migrations():
         "server.migrations.import_nas_designs",
     ]
 
-    with engine.connect() as conn:
-        with conn.begin():
-            for mod_name in migrations:
-                try:
-                    mod = importlib.import_module(mod_name)
-                except Exception as e:
-                    print(f"ℹ️  Migration module {mod_name} not found or failed to import: {e}")
-                    continue
+    for mod_name in migrations:
+        try:
+            mod = importlib.import_module(mod_name)
+        except Exception as e:
+            print(f"ℹ️  Migration module {mod_name} not found or failed to import: {e}")
+            continue
 
-                upgrade = getattr(mod, "upgrade", None)
-                if not callable(upgrade):
-                    print(f"ℹ️  No upgrade() in {mod_name}, skipping")
-                    continue
+        upgrade = getattr(mod, "upgrade", None)
+        if not callable(upgrade):
+            print(f"ℹ️  No upgrade() in {mod_name}, skipping")
+            continue
 
-                try:
+        # Run each migration in its own transaction to prevent failure cascades
+        try:
+            with engine.connect() as conn:
+                with conn.begin():
                     print(f"🔄 Applying migration {mod_name}...")
                     upgrade(conn)
                     print(f"✅ {mod_name} applied")
-                except Exception as e:
-                    # Migration should be idempotent; log and continue
-                    print(f"⚠️  {mod_name} upgrade failed or already applied: {e}")
+        except Exception as e:
+            # Migration should be idempotent; log and continue
+            print(f"⚠️  {mod_name} upgrade failed or already applied: {e}")
 
 # Call migrations before app startup (safe, non-blocking)
 try:
