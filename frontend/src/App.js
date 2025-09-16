@@ -22,6 +22,13 @@ import AnalyticsTab from './pages/HomeTabs/AnalyticsTab';
 import OrdersTab from './pages/HomeTabs/OrdersTab';
 import ToolsTab from './pages/HomeTabs/ToolsTab';
 
+// Shopify components
+import ShopifyConnect from './pages/ShopifyConnect';
+import ShopifyProducts from './pages/ShopifyProducts';
+import ShopifyOrders from './pages/ShopifyOrders';
+import ShopifyDashboard from './pages/ShopifyDashboard';
+import ShopifyProductCreator from './pages/ShopifyProductCreator';
+
 const AppLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
@@ -172,6 +179,56 @@ function App() {
             element={
               <ProtectedRoute>
                 <ConnectEtsy />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Shopify Routes */}
+          <Route
+            path="/shopify/connect"
+            element={
+              <ProtectedRoute>
+                <ShopifyConnect />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/shopify/dashboard"
+            element={
+              <ProtectedRoute>
+                <ShopifyDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/shopify/products"
+            element={
+              <ProtectedRoute>
+                <ShopifyProducts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/shopify/products/create"
+            element={
+              <ProtectedRoute>
+                <ShopifyProductCreator />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/shopify/orders"
+            element={
+              <ProtectedRoute>
+                <ShopifyOrders />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/shopify/analytics"
+            element={
+              <ProtectedRoute>
+                <ShopifyDashboard />
               </ProtectedRoute>
             }
           />

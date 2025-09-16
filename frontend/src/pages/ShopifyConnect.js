@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useShopify } from '../hooks/useShopify';
 import {
   BuildingStorefrontIcon,
   LinkIcon,
@@ -19,9 +20,19 @@ const ShopifyConnect = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
+  // Use Shopify hook
+  const {
+    store: connectedStore,
+    isConnected,
+    loading,
+    error,
+    loadStore,
+    connectStore,
+    disconnectStore,
+    testConnection,
+  } = useShopify();
+
   const [connecting, setConnecting] = useState(false);
-  const [connectedStore, setConnectedStore] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [testingConnection, setTestingConnection] = useState(false);
 
   // Check for OAuth callback parameters
@@ -36,75 +47,23 @@ const ShopifyConnect = () => {
     } else if (code && state) {
       // OAuth callback received - this is handled by the backend
       addNotification('Store connected successfully!', 'success');
-      loadStoreInfo();
+      loadStore();
       navigate('/shopify/connect', { replace: true });
     }
-  }, [searchParams, addNotification, navigate]);
-
-  useEffect(() => {
-    loadStoreInfo();
-  }, []);
-
-  const loadStoreInfo = async () => {
-    try {
-      setLoading(true);
-
-      const response = await fetch('/api/shopify/store', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (response.ok) {
-        const storeData = await response.json();
-        setConnectedStore(storeData);
-      } else if (response.status === 404) {
-        // No store connected
-        setConnectedStore(null);
-      } else {
-        throw new Error('Failed to load store information');
-      }
-    } catch (error) {
-      console.error('Error loading store info:', error);
-      addNotification('Failed to load store information', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [searchParams, addNotification, navigate, loadStore]);
 
   const initiateConnection = async () => {
     try {
       setConnecting(true);
-
-      const response = await fetch('/api/shopify/connect', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          shop_domain: null, // Will be provided in OAuth flow
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to initiate connection');
-      }
-
-      const data = await response.json();
-
-      // Redirect to Shopify OAuth
-      window.location.href = data.auth_url;
+      await connectStore(null); // Will prompt for shop domain in OAuth flow
     } catch (error) {
       console.error('Error connecting to Shopify:', error);
-      addNotification(`Failed to connect to Shopify: ${error.message}`, 'error');
+    } finally {
       setConnecting(false);
     }
   };
 
-  const disconnectStore = async () => {
+  const handleDisconnectStore = async () => {
     if (
       !window.confirm(
         'Are you sure you want to disconnect your Shopify store? This will remove access to your products and orders.'
@@ -113,54 +72,13 @@ const ShopifyConnect = () => {
       return;
     }
 
-    try {
-      const response = await fetch('/api/shopify/disconnect', {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to disconnect store');
-      }
-
-      setConnectedStore(null);
-      addNotification('Store disconnected successfully', 'success');
-    } catch (error) {
-      console.error('Error disconnecting store:', error);
-      addNotification('Failed to disconnect store', 'error');
-    }
+    await disconnectStore();
   };
 
-  const testConnection = async () => {
-    try {
-      setTestingConnection(true);
-
-      const response = await fetch('/api/shopify/test-connection', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Connection test failed');
-      }
-
-      const data = await response.json();
-
-      if (data.status === 'connected') {
-        addNotification('Connection test successful', 'success');
-      } else {
-        addNotification('Connection test failed - please reconnect your store', 'error');
-      }
-    } catch (error) {
-      console.error('Error testing connection:', error);
-      addNotification('Connection test failed', 'error');
-    } finally {
-      setTestingConnection(false);
-    }
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    await testConnection();
+    setTestingConnection(false);
   };
 
   if (loading) {
@@ -199,7 +117,7 @@ const ShopifyConnect = () => {
                 </div>
                 <div className="flex space-x-2">
                   <button
-                    onClick={testConnection}
+                    onClick={handleTestConnection}
                     disabled={testingConnection}
                     className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                   >
@@ -211,7 +129,7 @@ const ShopifyConnect = () => {
                     Test Connection
                   </button>
                   <button
-                    onClick={disconnectStore}
+                    onClick={handleDisconnectStore}
                     className="flex items-center px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
                   >
                     <XCircleIcon className="w-4 h-4 mr-2" />

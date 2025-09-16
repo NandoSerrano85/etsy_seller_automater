@@ -1,8 +1,11 @@
 import os
 import stat
 import logging
+import threading
+import time
+import queue
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 from contextlib import contextmanager
 from io import BytesIO
 from datetime import datetime
@@ -16,6 +19,118 @@ except ImportError:
     PARAMIKO_AVAILABLE = False
     logging.warning("paramiko not installed. NAS storage functionality will be disabled.")
 
+class SFTPConnectionPool:
+    """
+    Connection pool for SFTP connections to improve concurrent access performance
+    """
+    def __init__(self, host: str, port: int, username: str, password: str, max_connections: int = 5):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.max_connections = max_connections
+        self.pool = queue.Queue(maxsize=max_connections)
+        self.active_connections = 0
+        self.lock = threading.Lock()
+
+    def _create_connection(self):
+        """Create a new SFTP connection"""
+        if not PARAMIKO_AVAILABLE:
+            raise Exception("paramiko not available")
+
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(
+            hostname=self.host,
+            port=self.port,
+            username=self.username,
+            password=self.password,
+            timeout=30
+        )
+        sftp = ssh.open_sftp()
+        return ssh, sftp
+
+    @contextmanager
+    def get_connection(self):
+        """Get an SFTP connection from the pool"""
+        ssh = None
+        sftp = None
+        from_pool = False
+
+        try:
+            # Try to get a connection from the pool
+            try:
+                ssh, sftp = self.pool.get_nowait()
+                from_pool = True
+
+                # Test the connection by doing a simple operation
+                try:
+                    sftp.getcwd()
+                except Exception:
+                    # Connection is stale, close it and create a new one
+                    try:
+                        sftp.close()
+                        ssh.close()
+                    except:
+                        pass
+                    ssh, sftp = self._create_connection()
+                    from_pool = False
+
+            except queue.Empty:
+                # No connections available, create a new one if we're under the limit
+                with self.lock:
+                    if self.active_connections < self.max_connections:
+                        ssh, sftp = self._create_connection()
+                        self.active_connections += 1
+                        from_pool = False
+                    else:
+                        # Wait for a connection to become available
+                        ssh, sftp = self.pool.get(timeout=30)
+                        from_pool = True
+
+            yield sftp
+
+        except Exception as e:
+            # If there was an error, don't return a potentially broken connection to the pool
+            if ssh:
+                try:
+                    sftp.close()
+                    ssh.close()
+                except:
+                    pass
+                if from_pool:
+                    with self.lock:
+                        self.active_connections -= 1
+            raise
+        else:
+            # Return the connection to the pool if it's healthy
+            if ssh and sftp:
+                try:
+                    # Put it back in the pool for reuse
+                    self.pool.put_nowait((ssh, sftp))
+                except queue.Full:
+                    # Pool is full, close the connection
+                    try:
+                        sftp.close()
+                        ssh.close()
+                    except:
+                        pass
+                    if not from_pool:
+                        with self.lock:
+                            self.active_connections -= 1
+
+    def close_all(self):
+        """Close all connections in the pool"""
+        with self.lock:
+            while not self.pool.empty():
+                try:
+                    ssh, sftp = self.pool.get_nowait()
+                    sftp.close()
+                    ssh.close()
+                except:
+                    pass
+            self.active_connections = 0
+
 class NASStorage:
     """
     Utility class for connecting to QNAP NAS via SFTP and managing file operations.
@@ -26,54 +141,45 @@ class NASStorage:
         # Check if paramiko is available first
         if not PARAMIKO_AVAILABLE:
             self.enabled = False
+            self.connection_pool = None
             logging.warning("NAS storage disabled: paramiko module not available")
             return
-            
+
         self.host = os.getenv('QNAP_HOST')
         self.port = int(os.getenv('QNAP_PORT', '22'))
         self.username = os.getenv('QNAP_USERNAME')
         self.password = os.getenv('QNAP_PASSWORD')
         self.base_path = os.getenv('NAS_BASE_PATH', '/share/Graphics')
-        
+
         if not all([self.host, self.username, self.password]):
             logging.warning("QNAP NAS credentials not fully configured. NAS storage will be disabled.")
             self.enabled = False
+            self.connection_pool = None
         else:
             self.enabled = True
-            logging.info(f"NAS storage configured for host: {self.host}")
+            # Initialize connection pool for better concurrent access
+            max_connections = int(os.getenv('NAS_MAX_CONNECTIONS', '10'))
+            self.connection_pool = SFTPConnectionPool(
+                host=self.host,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                max_connections=max_connections
+            )
+            logging.info(f"NAS storage configured for host: {self.host} with {max_connections} max connections")
     
     @contextmanager
     def get_sftp_connection(self):
         """Context manager for SFTP connections with automatic cleanup"""
-        if not self.enabled or not PARAMIKO_AVAILABLE:
+        if not self.enabled or not PARAMIKO_AVAILABLE or not self.connection_pool:
             raise Exception("NAS storage is not enabled. Check QNAP configuration or paramiko installation.")
-        
-        ssh = None
-        sftp = None
+
         try:
-            # Create SSH connection
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(
-                hostname=self.host,
-                port=self.port,
-                username=self.username,
-                password=self.password,
-                timeout=30
-            )
-            
-            # Create SFTP connection
-            sftp = ssh.open_sftp()
-            yield sftp
-            
+            with self.connection_pool.get_connection() as sftp:
+                yield sftp
         except Exception as e:
-            logging.error(f"Failed to connect to NAS: {e}")
+            logging.error(f"Failed to get NAS connection from pool: {e}")
             raise
-        finally:
-            if sftp:
-                sftp.close()
-            if ssh:
-                ssh.close()
     
     def ensure_directory(self, sftp, directory_path: str) -> bool:
         """
@@ -356,6 +462,15 @@ class NASStorage:
         except Exception as e:
             logging.error(f"Failed to delete {relative_path} from NAS: {e}")
             return False
+
+    def cleanup(self):
+        """Cleanup connection pool resources"""
+        if self.connection_pool:
+            self.connection_pool.close_all()
+
+    def __del__(self):
+        """Ensure cleanup on object destruction"""
+        self.cleanup()
 
 # Global instance
 nas_storage = NASStorage()

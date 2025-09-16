@@ -1,15 +1,9 @@
 import requests, os,  hashlib, base64, secrets, time, re, logging
 from typing import List, Dict, Optional
-from dotenv import load_dotenv, set_key
 from urllib.parse import urlencode
 from collections import deque
 from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
 from server.src.utils.nas_storage import nas_storage
-
-# Get the project root directory (2 levels up from this file)
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-dotenv_path = os.path.join(project_root, '.env')
-load_dotenv(dotenv_path)
 
 class EtsyAPI:
     def __init__(self, user_id=None, db=None):
@@ -41,22 +35,46 @@ class EtsyAPI:
                 self.oauth_token = token_obj.access_token
                 self.refresh_token = token_obj.refresh_token
                 self.token_expiry = token_obj.expires_at.timestamp() if token_obj.expires_at else 0
-        # Fallback to .env if not found in DB
-        if not self.oauth_token:
-            self.oauth_token = os.getenv('ETSY_OAUTH_TOKEN')
-            self.refresh_token = os.getenv('ETSY_REFRESH_TOKEN')
-            self.token_expiry = float(os.getenv('ETSY_OAUTH_TOKEN_EXPIRY', '0'))
-        # Authenticate with correct scopes if needed
-        self.authenticate_with_scopes()
-        # Get shop ID from environment or fetch it automatically
-        self.shop_id = self.fetch_user_shop_id()
-        if self.shop_id:
-            print(f"Using shop ID: {self.shop_id}")
+                logging.info(f"Loaded Etsy tokens from database for user {user_id}")
+            else:
+                logging.warning(f"No Etsy tokens found in database for user {user_id}. User needs to connect their Etsy account.")
         else:
-            raise Exception("Could not fetch shop ID from Etsy API. Please reconnect your Etsy account in the application settings.")
-        self.taxonomy_id = self.fetch_taxonomies()
-        self.shipping_profile_id = self.fetch_shipping_profiles()
-        self.shop_section_id = self.fetch_shop_sections()
+            logging.error("Cannot load Etsy tokens: user_id or database session not provided")
+        # Only proceed if we have valid tokens
+        if self.oauth_token:
+            # Authenticate with correct scopes if needed
+            self.authenticate_with_scopes()
+            # Get shop ID from environment or fetch it automatically
+            self.shop_id = self.fetch_user_shop_id()
+            if self.shop_id:
+                print(f"Using shop ID: {self.shop_id}")
+            else:
+                raise Exception("Could not fetch shop ID from Etsy API. Please reconnect your Etsy account in the application settings.")
+        else:
+            logging.warning("No Etsy access token available. API operations will not be possible until user connects their Etsy account.")
+            self.shop_id = None
+            self.taxonomy_id = None
+            self.shipping_profile_id = None
+            self.shop_section_id = None
+
+        # Only fetch additional data if we have valid tokens and shop_id
+        if self.oauth_token and self.shop_id:
+            self.taxonomy_id = self.fetch_taxonomies()
+            self.shipping_profile_id = self.fetch_shipping_profiles()
+            self.shop_section_id = self.fetch_shop_sections()
+        else:
+            self.taxonomy_id = None
+            self.shipping_profile_id = None
+            self.shop_section_id = None
+
+    def is_authenticated(self) -> bool:
+        """Check if the engine has valid Etsy authentication"""
+        return bool(self.oauth_token and self.shop_id)
+
+    def require_authentication(self):
+        """Raise an exception if not authenticated"""
+        if not self.is_authenticated():
+            raise Exception("Etsy account not connected. Please connect your Etsy account first.")
 
     def _find_index(self, lst, element):
         try:
@@ -158,16 +176,7 @@ class EtsyAPI:
                     self.db.rollback()
                     # Continue anyway - token refresh succeeded
 
-            # Also update .env file as fallback (will be lost on container restart but helps locally)
-            try:
-                if self.oauth_token:
-                    set_key(dotenv_path, "ETSY_OAUTH_TOKEN", self.oauth_token)
-                if self.refresh_token:
-                    set_key(dotenv_path, "ETSY_REFRESH_TOKEN", self.refresh_token)
-                if self.token_expiry:
-                    set_key(dotenv_path, "ETSY_OAUTH_TOKEN_EXPIRY", str(self.token_expiry))
-            except Exception as e:
-                logging.warning(f"Could not update .env file: {e}")
+            # Note: Tokens are now stored only in database - .env file updating removed
 
             logging.info("Access token refreshed successfully")
         else:
@@ -723,6 +732,7 @@ class EtsyAPI:
         Returns:
             Dict: Item summary with design file information from NAS
         """
+        self.require_authentication()
         self.ensure_valid_token()
 
         if not nas_storage.enabled:

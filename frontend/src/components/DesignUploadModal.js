@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useSSEProgress } from '../hooks/useSSEProgress';
 
 const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const api = useApi();
@@ -7,7 +8,26 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState('');
+
+  // SSE Progress tracking
+  const {
+    sessionId,
+    progress,
+    isConnected,
+    error: progressError,
+    startProgressSession,
+    connectToProgressStream,
+    disconnectFromProgressStream,
+    resetProgress,
+  } = useSSEProgress();
+
+  // Define upload steps for progress tracking
+  const uploadSteps = [
+    'Checking for duplicates',
+    'Processing and formatting images',
+    'Creating product mockups',
+    'Uploading to Etsy store',
+  ];
   const [stage, setStage] = useState('template'); // 'template', 'mockup', 'canvas', 'size', 'upload'
   const [canvasConfigs, setCanvasConfigs] = useState([]);
   const [selectedCanvasConfig, setSelectedCanvasConfig] = useState(null);
@@ -151,9 +171,40 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       const files = Array.from(e.target.files);
       if (files.length === 0) return;
 
+      // Check file sizes to warn about potential timeouts
+      const maxFileSize = 50 * 1024 * 1024; // 50MB limit
+      const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+      const largeFiles = files.filter(file => file.size > maxFileSize);
+
+      if (largeFiles.length > 0) {
+        const fileNames = largeFiles.map(f => f.name).join(', ');
+        if (
+          !confirm(
+            `Warning: Some files are very large (${fileNames}). This may cause upload timeouts. Continue anyway?`
+          )
+        ) {
+          return;
+        }
+      }
+
+      if (totalSize > 100 * 1024 * 1024) {
+        // 100MB total
+        if (
+          !confirm(
+            `Warning: Total upload size is ${(totalSize / 1024 / 1024).toFixed(1)}MB. This may take a long time and could timeout. Continue anyway?`
+          )
+        ) {
+          return;
+        }
+      }
+
       setUploading(true);
-      setUploadProgress('Preparing design data...');
+
       try {
+        // Start SSE progress session
+        const newSessionId = await startProgressSession();
+        connectToProgressStream(newSessionId);
+
         // First, save the design information
         const designData = {
           product_template_id: selectedTemplate.id,
@@ -164,14 +215,14 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
           is_digital: false,
         };
 
-        // Then proceed with file upload
+        // Then proceed with file upload with session ID for progress tracking
         const uploadFormData = new FormData();
         files.forEach(file => {
           uploadFormData.append('files', file);
         });
         uploadFormData.append('design_data', JSON.stringify(designData));
+        uploadFormData.append('session_id', newSessionId);
 
-        setUploadProgress('Uploading design files...');
         // Use retry logic for file uploads
         const designResponse = await api.postFormDataWithRetry('/designs/', uploadFormData);
 
@@ -187,7 +238,6 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         mockupFormData.append('product_data', JSON.stringify(productData));
 
-        setUploadProgress('Creating mockups...');
         const result = await api.postFormDataWithRetry('/mockups/upload-mockup', mockupFormData);
 
         let successMessage = 'Design saved and files uploaded successfully!';
@@ -209,7 +259,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       } catch (err) {
         console.error('Upload error:', err);
 
-        // Provide specific feedback for connection reset errors
+        // Provide specific feedback for different types of errors
         let errorMessage = err.message || 'Unknown error';
         if (err.message && err.message.includes('ERR_CONNECTION_RESET')) {
           errorMessage =
@@ -221,7 +271,11 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         alert(`Upload failed: ${errorMessage}`);
       } finally {
         setUploading(false);
-        setUploadProgress('');
+        disconnectFromProgressStream();
+        // Reset progress after a short delay to allow final updates
+        setTimeout(() => {
+          resetProgress();
+        }, 2000);
       }
     };
     input.click();
@@ -450,15 +504,83 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
                     : 'bg-blue-500 text-white hover:bg-blue-600'
                 }`}
               >
-                {uploading
-                  ? uploadProgress || 'Uploading...'
-                  : stage === 'template'
-                    ? 'Continue'
-                    : stage === 'mockup'
-                      ? 'Continue to Canvas'
-                      : stage === 'canvas'
-                        ? 'Continue to Size'
-                        : 'Upload Images'}
+                {uploading ? (
+                  <div className="flex flex-col items-center">
+                    {/* Connection status indicator */}
+                    {sessionId && (
+                      <div className="flex items-center mb-2 text-xs">
+                        <div
+                          className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}
+                        ></div>
+                        <span className="text-gray-600">
+                          {isConnected ? 'Connected to progress stream' : 'Connecting...'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Step indicators */}
+                    <div className="flex justify-between w-full mb-3 text-xs">
+                      {uploadSteps.map((step, index) => (
+                        <div
+                          key={index}
+                          className={`flex-1 text-center px-1 ${
+                            index < progress.step
+                              ? 'text-blue-600 font-medium'
+                              : index === progress.step - 1
+                                ? 'text-blue-500 font-medium'
+                                : 'text-gray-400'
+                          }`}
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-full mx-auto mb-1 flex items-center justify-center text-xs ${
+                              index < progress.step
+                                ? 'bg-blue-600 text-white'
+                                : index === progress.step - 1
+                                  ? 'bg-blue-500 text-white'
+                                  : 'bg-gray-200 text-gray-500'
+                            }`}
+                          >
+                            {index + 1}
+                          </div>
+                          <div className="leading-tight">{step}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Progress message and bar */}
+                    <div className="text-sm mb-2 text-center">
+                      {progress.message || 'Starting upload...'}
+                      {progress.elapsedTime > 0 && (
+                        <span className="text-gray-500 ml-2">({Math.round(progress.elapsedTime)}s)</span>
+                      )}
+                    </div>
+
+                    <div className="w-64 bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${progress.progressPercent || 0}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="text-xs text-gray-600 mt-1">
+                      Step {progress.step || 1} of {progress.totalSteps || 4} (
+                      {Math.round(progress.progressPercent || 0)}%)
+                    </div>
+
+                    {/* Error display */}
+                    {progressError && (
+                      <div className="text-xs text-red-600 mt-2">Progress tracking error: {progressError}</div>
+                    )}
+                  </div>
+                ) : stage === 'template' ? (
+                  'Continue'
+                ) : stage === 'mockup' ? (
+                  'Continue to Canvas'
+                ) : stage === 'canvas' ? (
+                  'Continue to Size'
+                ) : (
+                  'Upload Images'
+                )}
               </button>
             </div>
           </>

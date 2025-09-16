@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
 import { useNavigate } from 'react-router-dom';
+import { useShopify, useShopifyProducts } from '../hooks/useShopify';
 import {
   BuildingStorefrontIcon,
   MagnifyingGlassIcon,
@@ -24,76 +25,21 @@ const ShopifyProducts = () => {
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Use Shopify hooks
+  const { isConnected, store } = useShopify();
+  const { products, loading, error, loadProducts, deleteProduct } = useShopifyProducts();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [storeConnected, setStoreConnected] = useState(true);
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const loadProducts = async () => {
-    try {
-      setLoading(true);
-
-      const response = await fetch('/api/shopify/products', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          // No store connected
-          setStoreConnected(false);
-          return;
-        }
-        throw new Error('Failed to load products');
-      }
-
-      const data = await response.json();
-      setProducts(data.products || []);
-      setStoreConnected(true);
-    } catch (error) {
-      console.error('Error loading products:', error);
-      if (error.message.includes('store')) {
-        setStoreConnected(false);
-      } else {
-        addNotification('Failed to load products', 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const deleteProduct = async productId => {
+  const handleDeleteProduct = async productId => {
     if (!window.confirm('Are you sure you want to delete this product from Shopify?')) {
       return;
     }
 
-    try {
-      const response = await fetch(`/api/shopify/products/${productId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete product');
-      }
-
-      addNotification('Product deleted successfully', 'success');
-      loadProducts(); // Reload products
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      addNotification('Failed to delete product', 'error');
-    }
+    await deleteProduct(productId);
   };
 
   const openInShopify = product => {
@@ -117,7 +63,7 @@ const ShopifyProducts = () => {
     return matchesSearch && matchesStatus;
   });
 
-  if (!storeConnected) {
+  if (!isConnected) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
@@ -329,7 +275,7 @@ const ShopifyProducts = () => {
                             <LinkIcon className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => deleteProduct(product.id)}
+                            onClick={() => handleDeleteProduct(product.id)}
                             className="text-red-600 hover:text-red-900"
                             title="Delete Product"
                           >

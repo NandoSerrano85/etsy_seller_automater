@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
 import { useNavigate } from 'react-router-dom';
+import { useShopify, useShopifyAnalytics } from '../hooks/useShopify';
 import ShopifyStoreManager from '../components/ShopifyStoreManager';
 import ShopifyAnalytics from '../components/ShopifyAnalytics';
-import apiCache, { CACHE_KEYS } from '../utils/apiCache';
 import {
   BuildingStorefrontIcon,
   ChartBarIcon,
@@ -23,16 +23,23 @@ const ShopifyDashboard = () => {
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 
+  // Use Shopify hooks
+  const { store, isConnected, loading: storeLoading } = useShopify();
+  const {
+    analytics,
+    orderStats,
+    topProducts,
+    loading: analyticsLoading,
+    loadAllAnalytics
+  } = useShopifyAnalytics();
+
   const [activeTab, setActiveTab] = useState('overview');
-  const [dashboardData, setDashboardData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [storeConnected, setStoreConnected] = useState(false);
-  const [loadingStore, setLoadingStore] = useState(true);
-  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (isConnected) {
+      loadAllAnalytics();
+    }
+  }, [isConnected, loadAllAnalytics]);
 
   const loadDashboardData = async () => {
     try {
@@ -163,7 +170,7 @@ const ShopifyDashboard = () => {
             <p className="text-gray-600">Manage your Shopify store and track performance</p>
           </div>
 
-          {storeConnected && (
+          {isConnected && (
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => navigate('/shopify/create')}
@@ -203,7 +210,7 @@ const ShopifyDashboard = () => {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Quick Stats */}
-            {storeConnected && (loadingAnalytics ? (
+            {isConnected && (analyticsLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {[...Array(4)].map((_, i) => (
                   <div key={i} className="bg-white rounded-lg shadow-lg p-6">
@@ -299,7 +306,7 @@ const ShopifyDashboard = () => {
             )}
 
             {/* Store Connection Status */}
-            {loadingStore ? (
+            {storeLoading ? (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">
@@ -320,7 +327,7 @@ const ShopifyDashboard = () => {
             )}
 
             {/* Recent Activity */}
-            {storeConnected && (
+            {isConnected && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Quick Actions */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
@@ -399,7 +406,7 @@ const ShopifyDashboard = () => {
             )}
 
             {/* Getting Started */}
-            {!storeConnected && (
+            {!isConnected && (
               <div className="bg-white rounded-lg shadow-lg p-8 text-center">
                 <BuildingStorefrontIcon className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Connect Your Shopify Store</h3>
@@ -420,7 +427,7 @@ const ShopifyDashboard = () => {
 
         {activeTab === 'analytics' && (
           <div>
-            {storeConnected ? (
+            {isConnected ? (
               <ShopifyAnalytics />
             ) : (
               <div className="bg-white rounded-lg shadow-lg p-8 text-center">

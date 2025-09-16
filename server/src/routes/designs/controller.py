@@ -1,33 +1,108 @@
 from fastapi import APIRouter, status, Query, UploadFile, File, Depends, Form
+from fastapi.responses import StreamingResponse
 from typing import List
 from uuid import UUID
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
 from server.src.routes.auth.service import CurrentUser
 from server.src.message import InvalidUserToken
+from server.src.utils.progress_manager import progress_manager
 from . import model
 from . import service
 import json
+import asyncio
+import logging
 
 router = APIRouter(
     prefix='/designs',
     tags=['Designs']
 )
 
+@router.post('/start-upload')
+async def start_upload(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Start a new upload session and return session ID for progress tracking"""
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+
+    session_id = progress_manager.create_session()
+    return {"session_id": session_id}
+
+@router.get('/progress/{session_id}')
+async def get_upload_progress(
+    session_id: str,
+    token: str = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Get upload progress via Server-Sent Events"""
+    # For SSE, we need to handle auth via query param since EventSource doesn't support custom headers
+    if token:
+        # Manually validate the token for SSE
+        from server.src.routes.auth.service import verify_token
+        try:
+            current_user = verify_token(token)
+            user_id = current_user.get_uuid() if current_user else None
+        except Exception as e:
+            logging.error(f"SSE auth error: {e}")
+            user_id = None
+    else:
+        user_id = None
+
+    if not user_id:
+        raise InvalidUserToken()
+
+    async def event_generator():
+        async for data in progress_manager.subscribe(session_id):
+            yield data
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
+
 @router.post('/', response_model=model.DesignImageListResponse, status_code=status.HTTP_201_CREATED)
 async def create_design(
     current_user: CurrentUser,
-    design_data:str = Form(...),
+    design_data: str = Form(...),
     files: List[UploadFile] = File(...),
+    session_id: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Create a new design for the current user"""
+    """Create a new design for the current user with optional progress tracking"""
     user_id = current_user.get_uuid()
     design_data_dict = json.loads(design_data)
     design_model = model.DesignImageCreate(**design_data_dict)
     if not user_id:
         raise InvalidUserToken()
-    return await service.create_design(db, user_id, design_model, files)
+
+    # Create progress callback if session_id is provided
+    progress_callback = None
+    if session_id:
+        def progress_callback(step: int, message: str, total_steps: int = 4):
+            progress_manager.update_progress(session_id, step + 1, total_steps, message)
+
+    try:
+        result = await service.create_design(db, user_id, design_model, files, progress_callback)
+
+        # Mark session as completed if using progress tracking
+        if session_id:
+            progress_manager.complete_session(session_id, success=True, final_message="Upload completed successfully")
+
+        return result
+    except Exception as e:
+        # Mark session as failed if using progress tracking
+        if session_id:
+            progress_manager.complete_session(session_id, success=False, final_message=f"Upload failed: {str(e)}")
+        raise
 
 @router.get('/list', response_model=model.DesignImageListResponse)
 async def get_designs(

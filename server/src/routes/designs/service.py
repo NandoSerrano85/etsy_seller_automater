@@ -56,7 +56,7 @@ def _validate_size_config(db: Session, product_template_id: UUID, size_config_id
     return size_config is not None
 
 
-async def create_design(db: Session, user_id: UUID, design_data: model.DesignImageCreate, files: List[UploadFile]) -> model.DesignImageListResponse:
+async def create_design(db: Session, user_id: UUID, design_data: model.DesignImageCreate, files: List[UploadFile], progress_callback=None) -> model.DesignImageListResponse:
     try:
         # Validate canvas config if provided
         if design_data.canvas_config_id:
@@ -261,44 +261,92 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 logging.error(f"Error processing digital image: {str(e)}")
                 return None, None
         
+        # Step 1: Check for duplicates before any processing
+        if progress_callback:
+            progress_callback(0, "Checking for duplicates")
+
         # Build hash database of existing designs in the directory
         existing_hash_db = build_hash_db(designs_path)
-        
-        design_results = []
+
+        # Check for duplicates in uploaded files before processing
+        non_duplicate_files = []
         duplicate_count = 0
-        
+
         for i, file in enumerate(files):
-            logging.info(f"Processing file: {file.filename}")
+            logging.info(f"Checking file for duplicates: {file.filename}")
+
+            # Read file content to create hash
+            contents = await file.read()
+            await file.seek(0)  # Reset file pointer for later use
+
+            # Create hash from uploaded content
+            try:
+                nparr = np.frombuffer(contents, np.uint8)
+                temp_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+
+                if temp_image is not None:
+                    # Convert to PIL for hash calculation
+                    if len(temp_image.shape) == 3:
+                        # BGR to RGB conversion for OpenCV->PIL
+                        temp_image_rgb = cv2.cvtColor(temp_image, cv2.COLOR_BGR2RGB)
+                        pil_image = Image.fromarray(temp_image_rgb)
+                    else:
+                        pil_image = Image.fromarray(temp_image)
+
+                    # Calculate hash
+                    file_hash = imagehash.phash(pil_image)
+
+                    # Check against existing hashes
+                    is_duplicate = False
+                    for existing_path, existing_hash in existing_hash_db.items():
+                        hash_diff = file_hash - existing_hash
+                        if hash_diff <= 5:  # threshold
+                            logging.warning(f"Skipping duplicate file: {file.filename} (matches existing {os.path.basename(existing_path)})")
+                            duplicate_count += 1
+                            is_duplicate = True
+                            break
+
+                    if not is_duplicate:
+                        # Check against other uploaded files to avoid processing duplicates within the same upload
+                        for j, (other_file, other_hash) in enumerate(non_duplicate_files):
+                            hash_diff = file_hash - other_hash
+                            if hash_diff <= 5:  # threshold
+                                logging.warning(f"Skipping duplicate file within upload: {file.filename} (matches {other_file.filename})")
+                                duplicate_count += 1
+                                is_duplicate = True
+                                break
+
+                        if not is_duplicate:
+                            non_duplicate_files.append((file, file_hash))
+                            existing_hash_db[f"temp_{i}"] = file_hash  # Add to prevent future duplicates in this batch
+                else:
+                    logging.error(f"Failed to decode image for duplicate check: {file.filename}")
+                    # Still process files that can't be decoded for duplicate checking
+                    non_duplicate_files.append((file, None))
+
+            except Exception as e:
+                logging.error(f"Error checking duplicates for {file.filename}: {str(e)}")
+                # Still process files that fail duplicate checking
+                non_duplicate_files.append((file, None))
+
+        design_results = []
+
+        # Step 2: Process only non-duplicate files
+        for i, (file, file_hash) in enumerate(non_duplicate_files):
+            if progress_callback:
+                progress_callback(1, f"Processing and formatting images ({i+1}/{len(non_duplicate_files)})")
+
+            logging.info(f"Processing non-duplicate file: {file.filename}")
             if design_data.is_digital:
                 file_path, filename = await process_image_digital(i, file, design_data.starting_name)
             else:
                 file_path, filename = await process_image_physical(i, file, design_data.starting_name)
-            
+
             logging.info(f"filename: {filename}, file_path: {file_path}, is_digital: {design_data.is_digital}")
             if not file_path or not filename:
                 logging.error(f"Failed to process image for user ID: {user_id}")
                 raise DesignCreateError()
-            
-            # Check for duplicates before storing in database
-            duplicate_match = check_for_duplicate(file_path, existing_hash_db, threshold=5)
-            if duplicate_match:
-                logging.warning(f"Skipping duplicate image: {filename} (matches existing {os.path.basename(duplicate_match)})")
-                # Remove the processed duplicate file
-                try:
-                    os.remove(file_path)
-                except Exception as e:
-                    logging.error(f"Error removing duplicate file {file_path}: {str(e)}")
-                duplicate_count += 1
-                continue
-            
-            # Add the new image hash to the database for subsequent duplicate checks
-            try:
-                with Image.open(file_path) as img:
-                    img_hash = imagehash.phash(img)
-                    existing_hash_db[file_path] = img_hash
-            except Exception as e:
-                logging.error(f"Error adding hash to database for {file_path}: {str(e)}")
-            
+
             design_data.file_path = file_path
             design_data.filename = filename
             design = DesignImages(

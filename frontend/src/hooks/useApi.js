@@ -36,7 +36,7 @@ export const apiCall = async (url, options = {}, token = null) => {
     response = await fetch(fullUrl, {
       ...options,
       headers,
-      // Add timeout for large uploads
+      // Only add timeout if specifically requested (uploads should have no timeout)
       signal: options.signal || (options.timeout ? AbortSignal.timeout(options.timeout) : undefined),
     });
 
@@ -109,13 +109,16 @@ export const useApi = () => {
       method: 'POST',
       body: JSON.stringify(data),
     });
-  const postFormData = (url, formData, options = {}) =>
-    authenticatedApiCall(url, {
+  const postFormData = (url, formData, options = {}) => {
+    // Remove timeout for uploads - let them run as long as needed
+    const { timeout, ...restOptions } = options;
+    return authenticatedApiCall(url, {
       method: 'POST',
       body: formData,
-      timeout: 120000, // 2 minutes for file uploads
-      ...options,
+      // No timeout - uploads can take as long as needed
+      ...restOptions,
     });
+  };
 
   // Enhanced form data post with retry logic for connection reset errors
   const postFormDataWithRetry = async (url, formData, maxRetries = 2) => {
@@ -128,14 +131,14 @@ export const useApi = () => {
       } catch (error) {
         console.log(`❌ Upload attempt ${attempt} failed:`, error.message);
 
-        // Check if it's a connection reset error
-        const isConnectionReset =
+        // Check if it's a retryable error (network issues, not timeouts since we removed them)
+        const isRetryableError =
           error.message.includes('ERR_CONNECTION_RESET') ||
           error.message.includes('Failed to fetch') ||
           error.name === 'TypeError';
 
         // If it's the last attempt or not a retryable error, throw
-        if (attempt === maxRetries || !isConnectionReset) {
+        if (attempt === maxRetries || !isRetryableError) {
           throw error;
         }
 

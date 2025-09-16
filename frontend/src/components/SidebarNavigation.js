@@ -158,6 +158,24 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
       gradient: 'from-orange-100 to-orange-200',
     },
     {
+      id: 'shopify',
+      label: 'Shopify',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      ),
+      hasSubmenu: true,
+      gradient: 'from-green-100 to-green-200',
+      submenu: [
+        { label: 'Connect Store', path: '/shopify/connect' },
+        { label: 'Dashboard', path: '/shopify/dashboard' },
+        { label: 'Products', path: '/shopify/products' },
+        { label: 'Orders', path: '/shopify/orders' },
+        { label: 'Analytics', path: '/shopify/analytics' },
+      ],
+    },
+    {
       id: 'account',
       label: 'Settings',
       icon: (
