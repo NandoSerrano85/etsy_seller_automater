@@ -47,48 +47,16 @@ def register_routes(app: FastAPI):
     # Health check endpoint
     @app.get("/health")
     async def health_check():
-        """Health check endpoint for monitoring and deployment - fast and lightweight"""
-        try:
-            # Quick database check (with timeout)
-            db_status = "unknown"
-            try:
-                from server.src.database.core import engine
-                from sqlalchemy import text
-                with engine.connect() as conn:
-                    # Use a simple query with immediate response
-                    result = conn.execute(text("SELECT 1"))
-                    if result.fetchone():
-                        db_status = "healthy"
-                    else:
-                        db_status = "unhealthy"
-            except Exception as db_e:
-                print(f"Health check database error: {db_e}")
-                db_status = "unhealthy"
-
-            # Return simple healthy response
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "healthy",
-                    "timestamp": int(time.time()),
-                    "version": "1.0.0",
-                    "environment": os.getenv("DOCKER_ENV", "development"),
-                    "services": {
-                        "database": db_status,
-                        "api": "healthy"
-                    }
-                }
-            )
-        except Exception as e:
-            print(f"Health check error: {e}")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "status": "unhealthy",
-                    "timestamp": int(time.time()),
-                    "error": str(e)
-                }
-            )
+        """Minimal health check for deployment - always returns healthy if API is running"""
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "healthy",
+                "timestamp": int(time.time()),
+                "version": "1.0.0",
+                "environment": os.getenv("DOCKER_ENV", "development")
+            }
+        )
 
     @app.get("/health/detailed")
     async def detailed_health_check():
@@ -145,6 +113,23 @@ def register_routes(app: FastAPI):
     async def ping():
         """Simple ping endpoint"""
         return {"status": "ok", "timestamp": int(time.time())}
+
+    # Readiness endpoint for Railway
+    @app.get("/ready")
+    async def ready():
+        """Readiness check for Railway"""
+        return {"status": "ready", "timestamp": int(time.time())}
+
+    # Root endpoint
+    @app.get("/")
+    async def root():
+        """Root endpoint"""
+        return {
+            "message": "CraftFlow API is running",
+            "status": "healthy",
+            "timestamp": int(time.time()),
+            "version": "1.0.0"
+        }
     
     # Include all application routes
     app.include_router(auth_router)

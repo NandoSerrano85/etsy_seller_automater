@@ -35,12 +35,20 @@ SERVER_CONFIG = {
 
 config_logging(LogLevels.info)
 
+print("🔄 Starting CraftFlow application...")
+print(f"🌍 Environment: {os.getenv('DOCKER_ENV', 'development')}")
+print(f"🚀 Railway Environment: {os.getenv('RAILWAY_ENVIRONMENT', 'not-set')}")
+print(f"🗄️  Database URL: {os.getenv('DATABASE_URL', 'not-set')[:50]}...")
+print(f"🔧 Multi-tenant: {os.getenv('ENABLE_MULTI_TENANT', 'false')}")
+
 
 # Load environment variables
 dotenv_path = os.path.join(project_root, '.env')
 load_dotenv(dotenv_path)
 
+print("📋 Creating FastAPI application...")
 app = FastAPI()
+print("✅ FastAPI application created")
 
 # Get frontend URL from environment variable
 frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
@@ -66,8 +74,13 @@ app.add_middleware(
 async def options_handler(path: str):
     return {"message": "OK"}
 
+print("📋 Registering routes...")
 register_routes(app)
+print("✅ Routes registered")
+
+print("📋 Registering error handlers...")
 message.register_error_handlers(app)
+print("✅ Error handlers registered")
 
 # Create required enums before table creation
 def create_required_enums():
@@ -112,13 +125,16 @@ except Exception as e:
     print(f"⚠️  Warning: Enum creation failed: {e}")
     # Continue - enums might already exist
 
-# Create database tables with error handling
-try:
-    Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created successfully")
-except Exception as e:
-    print(f"⚠️  Warning: Database table creation failed: {e}")
-    # Continue running - tables might already exist
+# Create database tables with error handling (skip in production)
+if os.getenv('RAILWAY_ENVIRONMENT') != 'production':
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"⚠️  Warning: Database table creation failed: {e}")
+        # Continue running - tables might already exist
+else:
+    print("ℹ️  Skipping database table creation in production")
 
 # Run database migrations for new columns
 def run_migrations():
@@ -230,16 +246,21 @@ def run_startup_migrations():
                 import traceback
                 print(f"Migration error details: {traceback.format_exc()}")
 
-# Call migrations before app startup (safe, non-blocking)
-try:
-    print("🔄 Running startup migrations...")
-    run_startup_migrations()
-    print("✅ Startup migrations completed")
-except Exception as e:
-    print(f"⚠️  Failed running startup migrations: {e}")
-    import traceback
-    print(f"Migration error details: {traceback.format_exc()}")
-    # Continue - the app should still start even if migrations fail
+# Skip migrations in production/Railway to ensure fast startup
+if os.getenv('RAILWAY_ENVIRONMENT') != 'production' and os.getenv('SKIP_MIGRATIONS') != 'true':
+    # Call migrations before app startup (safe, non-blocking)
+    try:
+        print("🔄 Running startup migrations...")
+        run_startup_migrations()
+        print("✅ Startup migrations completed")
+    except Exception as e:
+        print(f"⚠️  Failed running startup migrations: {e}")
+        import traceback
+        print(f"Migration error details: {traceback.format_exc()}")
+        # Continue - the app should still start even if migrations fail
+else:
+    print("ℹ️  Skipping migrations in production/Railway environment for fast startup")
+    print("ℹ️  Run migrations manually if needed")
 
 def run_org_id_migration(conn):
     """Add missing org_id columns to tables that need multi-tenant support."""
@@ -465,10 +486,14 @@ def enable_multi_tenant_features():
     os.environ['ENABLE_MULTI_TENANT'] = 'true'
     print("✅ Multi-tenant features enabled")
 
-try:
-    run_migrations()
-except Exception as e:
-    print(f"⚠️  Migration error: {e}")
+# Skip complex migrations in production
+if os.getenv('RAILWAY_ENVIRONMENT') != 'production':
+    try:
+        run_migrations()
+    except Exception as e:
+        print(f"⚠️  Migration error: {e}")
+else:
+    print("ℹ️  Skipping complex migrations in production")
 
 # Serve static files from the frontend public directory
 frontend_public_dir = os.path.join(project_root, "frontend", "public")
