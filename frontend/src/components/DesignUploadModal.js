@@ -179,7 +179,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       if (largeFiles.length > 0) {
         const fileNames = largeFiles.map(f => f.name).join(', ');
         if (
-          !confirm(
+          !window.confirm(
             `Warning: Some files are very large (${fileNames}). This may cause upload timeouts. Continue anyway?`
           )
         ) {
@@ -190,7 +190,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       if (totalSize > 100 * 1024 * 1024) {
         // 100MB total
         if (
-          !confirm(
+          !window.confirm(
             `Warning: Total upload size is ${(totalSize / 1024 / 1024).toFixed(1)}MB. This may take a long time and could timeout. Continue anyway?`
           )
         ) {

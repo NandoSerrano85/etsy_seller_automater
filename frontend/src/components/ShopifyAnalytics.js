@@ -18,10 +18,10 @@ import {
   ChartBarIcon,
   CurrencyDollarIcon,
   ShoppingBagIcon,
-  TrendingUpIcon,
-  TrendingDownIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
   CalendarIcon,
-  FilterIcon,
+  FunnelIcon,
   ExclamationTriangleIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
@@ -368,7 +368,7 @@ const ShopifyAnalytics = () => {
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-            <FilterIcon className="w-5 h-5 mr-2" />
+            <FunnelIcon className="w-5 h-5 mr-2" />
             Filters
           </h3>
         </div>
@@ -567,9 +567,9 @@ const SummaryCard = ({ title, value, growth, icon: Icon, color }) => {
           {growth !== undefined && (
             <div className="flex items-center mt-1">
               {growth >= 0 ? (
-                <TrendingUpIcon className="w-4 h-4 text-green-500 mr-1" />
+                <ArrowTrendingUpIcon className="w-4 h-4 text-green-500 mr-1" />
               ) : (
-                <TrendingDownIcon className="w-4 h-4 text-red-500 mr-1" />
+                <ArrowTrendingDownIcon className="w-4 h-4 text-red-500 mr-1" />
               )}
               <span className={`text-sm font-medium ${growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {growth >= 0 ? '+' : ''}

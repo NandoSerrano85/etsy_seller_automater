@@ -25,13 +25,7 @@ const ShopifyDashboard = () => {
 
   // Use Shopify hooks
   const { store, isConnected, loading: storeLoading } = useShopify();
-  const {
-    analytics,
-    orderStats,
-    topProducts,
-    loading: analyticsLoading,
-    loadAllAnalytics
-  } = useShopifyAnalytics();
+  const { analytics, orderStats, topProducts, loading: analyticsLoading, loadAllAnalytics } = useShopifyAnalytics();
 
   const [activeTab, setActiveTab] = useState('overview');
 
@@ -41,112 +35,13 @@ const ShopifyDashboard = () => {
     }
   }, [isConnected, loadAllAnalytics]);
 
-  const loadDashboardData = async () => {
-    try {
-      // Show cached data immediately if available
-      const cachedStore = apiCache.getValid(CACHE_KEYS.SHOPIFY_STORE, 30);
-      const cachedAnalytics = apiCache.getValid(CACHE_KEYS.SHOPIFY_ANALYTICS, 60);
-
-      if (cachedStore) {
-        setStoreConnected(true);
-        setLoadingStore(false);
-      }
-
-      if (cachedAnalytics) {
-        setDashboardData(cachedAnalytics);
-        setLoadingAnalytics(false);
-      }
-
-      // If we have all cached data, show it immediately
-      if (cachedStore && cachedAnalytics) {
-        setLoading(false);
-      }
-
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      };
-
-      const fetchWithTimeout = (url, options, timeout = 5000) => {
-        return Promise.race([
-          fetch(url, options),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Request timeout')), timeout)
-          )
-        ]);
-      };
-
-      // Make parallel API calls for better performance
-      const requests = [];
-
-      // Only fetch store data if not cached
-      if (!cachedStore) {
-        requests.push({ key: 'store', promise: fetchWithTimeout('/api/shopify/store', { headers }) });
-      }
-
-      // Only fetch analytics if not cached
-      if (!cachedAnalytics) {
-        requests.push({ key: 'analytics', promise: fetchWithTimeout('/api/shopify/analytics/summary', { headers }) });
-      }
-
-      if (requests.length > 0) {
-        const results = await Promise.allSettled(requests.map(req => req.promise));
-
-        requests.forEach((request, index) => {
-          const result = results[index];
-
-          if (request.key === 'store') {
-            setLoadingStore(false);
-            if (result.status === 'fulfilled' && result.value.ok) {
-              setStoreConnected(true);
-              // Cache store connection status
-              apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: true }, 30);
-            } else {
-              setStoreConnected(false);
-              if (result.status === 'rejected') {
-                console.warn('Store API timeout or error:', result.reason);
-              }
-            }
-          }
-
-          if (request.key === 'analytics') {
-            setLoadingAnalytics(false);
-            if (result.status === 'fulfilled' && result.value.ok) {
-              result.value.json().then(analyticsData => {
-                setDashboardData(analyticsData);
-                // Cache analytics data for 1 minute
-                apiCache.set(CACHE_KEYS.SHOPIFY_ANALYTICS, analyticsData, 60);
-              }).catch(jsonError => {
-                console.error('Error parsing analytics data:', jsonError);
-                setDashboardData(null);
-              });
-            } else {
-              if (result.status === 'rejected') {
-                console.warn('Analytics API timeout or error:', result.reason);
-              }
-              setDashboardData(null);
-            }
-          }
-        });
-      }
-
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
-      addNotification('Failed to load dashboard data', 'error');
-    } finally {
-      setLoading(false);
-      setLoadingStore(false);
-      setLoadingAnalytics(false);
-    }
-  };
-
   const tabs = [
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'analytics', name: 'Analytics', icon: ArrowTrendingUpIcon },
     { id: 'store', name: 'Store Settings', icon: CogIcon },
   ];
 
-  if (loading) {
+  if (storeLoading && analyticsLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -210,100 +105,101 @@ const ShopifyDashboard = () => {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Quick Stats */}
-            {isConnected && (analyticsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="bg-white rounded-lg shadow-lg p-6">
+            {isConnected &&
+              (analyticsLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="bg-white rounded-lg shadow-lg p-6">
+                      <div className="flex items-center">
+                        <div className="p-3 rounded-lg bg-gray-100">
+                          <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                        </div>
+                        <div className="ml-4 flex-1">
+                          <div className="h-4 bg-gray-200 rounded animate-pulse mb-2"></div>
+                          <div className="h-8 bg-gray-200 rounded animate-pulse mb-1"></div>
+                          <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : analytics || orderStats ? (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div className="bg-white rounded-lg shadow-lg p-6">
                     <div className="flex items-center">
-                      <div className="p-3 rounded-lg bg-gray-100">
-                        <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                      <div className="p-3 rounded-lg bg-blue-100">
+                        <ShoppingBagIcon className="w-6 h-6 text-blue-600" />
                       </div>
-                      <div className="ml-4 flex-1">
-                        <div className="h-4 bg-gray-200 rounded animate-pulse mb-2"></div>
-                        <div className="h-8 bg-gray-200 rounded animate-pulse mb-1"></div>
-                        <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Total Orders (30d)</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          {orderStats?.last_30_days?.total_orders || 0}
+                        </p>
+                        {orderStats?.last_30_days?.orders_growth !== undefined && (
+                          <p
+                            className={`text-sm ${
+                              orderStats?.last_30_days.orders_growth >= 0 ? 'text-green-600' : 'text-red-600'
+                            }`}
+                          >
+                            {orderStats?.last_30_days.orders_growth >= 0 ? '+' : ''}
+                            {orderStats?.last_30_days.orders_growth}% vs last period
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : dashboardData && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-lg bg-blue-100">
-                      <ShoppingBagIcon className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Total Orders (30d)</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {dashboardData.last_30_days?.total_orders || 0}
-                      </p>
-                      {dashboardData.last_30_days?.orders_growth !== undefined && (
-                        <p
-                          className={`text-sm ${
-                            dashboardData.last_30_days.orders_growth >= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}
-                        >
-                          {dashboardData.last_30_days.orders_growth >= 0 ? '+' : ''}
-                          {dashboardData.last_30_days.orders_growth}% vs last period
+
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="p-3 rounded-lg bg-green-100">
+                        <CurrencyDollarIcon className="w-6 h-6 text-green-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Revenue (30d)</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          ${orderStats?.last_30_days?.total_revenue || 0}
                         </p>
-                      )}
+                        {orderStats?.last_30_days?.revenue_growth !== undefined && (
+                          <p
+                            className={`text-sm ${
+                              orderStats?.last_30_days.revenue_growth >= 0 ? 'text-green-600' : 'text-red-600'
+                            }`}
+                          >
+                            {orderStats?.last_30_days.revenue_growth >= 0 ? '+' : ''}
+                            {orderStats?.last_30_days.revenue_growth}% vs last period
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-lg bg-green-100">
-                      <CurrencyDollarIcon className="w-6 h-6 text-green-600" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Revenue (30d)</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        ${dashboardData.last_30_days?.total_revenue || 0}
-                      </p>
-                      {dashboardData.last_30_days?.revenue_growth !== undefined && (
-                        <p
-                          className={`text-sm ${
-                            dashboardData.last_30_days.revenue_growth >= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}
-                        >
-                          {dashboardData.last_30_days.revenue_growth >= 0 ? '+' : ''}
-                          {dashboardData.last_30_days.revenue_growth}% vs last period
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="p-3 rounded-lg bg-purple-100">
+                        <ChartBarIcon className="w-6 h-6 text-purple-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Avg Order Value</p>
+                        <p className="text-2xl font-bold text-gray-900">
+                          ${orderStats?.last_30_days?.average_order_value || 0}
                         </p>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-lg bg-purple-100">
-                      <ChartBarIcon className="w-6 h-6 text-purple-600" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Avg Order Value</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        ${dashboardData.last_30_days?.average_order_value || 0}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-lg bg-amber-100">
-                      <ClockIcon className="w-6 h-6 text-amber-600" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-600">Orders (7d)</p>
-                      <p className="text-2xl font-bold text-gray-900">{dashboardData.last_7_days?.total_orders || 0}</p>
+                  <div className="bg-white rounded-lg shadow-lg p-6">
+                    <div className="flex items-center">
+                      <div className="p-3 rounded-lg bg-amber-100">
+                        <ClockIcon className="w-6 h-6 text-amber-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-600">Orders (7d)</p>
+                        <p className="text-2xl font-bold text-gray-900">{orderStats?.last_7_days?.total_orders || 0}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : null)}
 
             {/* Store Connection Status */}
             {storeLoading ? (
@@ -380,11 +276,11 @@ const ShopifyDashboard = () => {
                 </div>
 
                 {/* Top Products */}
-                {dashboardData?.top_products && dashboardData.top_products.length > 0 && (
+                {topProducts && topProducts.length > 0 && (
                   <div className="bg-white rounded-lg shadow-lg p-6">
                     <h3 className="text-lg font-semibold text-gray-900 mb-4">Top Products (30d)</h3>
                     <div className="space-y-3">
-                      {dashboardData.top_products.slice(0, 5).map((product, index) => (
+                      {topProducts.slice(0, 5).map((product, index) => (
                         <div key={product.product_id || index} className="flex items-center justify-between">
                           <div className="flex-1">
                             <div className="text-sm font-medium text-gray-900 truncate">{product.title}</div>
