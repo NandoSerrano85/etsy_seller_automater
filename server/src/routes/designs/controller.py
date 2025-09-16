@@ -20,16 +20,36 @@ router = APIRouter(
 
 @router.post('/start-upload')
 async def start_upload(
-    current_user: CurrentUser,
+    files: List[UploadFile] = File(None),
+    current_user: CurrentUser = Depends(),
     db: Session = Depends(get_db)
 ):
-    """Start a new upload session and return session ID for progress tracking"""
+    """Start a new upload session with file size estimation for progress tracking"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
 
-    session_id = progress_manager.create_session()
-    return {"session_id": session_id}
+    # Calculate total file size for time estimation
+    total_size_bytes = 0
+    file_count = 0
+    if files:
+        for file in files:
+            file_count += 1
+            # Read file size
+            file.file.seek(0, 2)  # Seek to end
+            size = file.file.tell()
+            file.file.seek(0)  # Reset to beginning
+            total_size_bytes += size
+
+    total_size_mb = total_size_bytes / (1024 * 1024)  # Convert to MB
+
+    session_id = progress_manager.create_session(total_size_mb, file_count)
+    return {
+        "session_id": session_id,
+        "estimated_time": progress_manager._file_info[session_id]['estimated_time'],
+        "total_size_mb": total_size_mb,
+        "file_count": file_count
+    }
 
 @router.get('/progress/{session_id}')
 async def get_upload_progress(
@@ -87,8 +107,8 @@ async def create_design(
     # Create progress callback if session_id is provided
     progress_callback = None
     if session_id:
-        def progress_callback(step: int, message: str, total_steps: int = 4):
-            progress_manager.update_progress(session_id, step + 1, total_steps, message)
+        def progress_callback(step: int, message: str, total_steps: int = 4, file_progress: float = 0):
+            progress_manager.update_progress(session_id, step + 1, total_steps, message, file_progress)
 
     try:
         result = await service.create_design(db, user_id, design_model, files, progress_callback)

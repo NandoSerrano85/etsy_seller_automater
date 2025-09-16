@@ -35,6 +35,7 @@ from server.src.utils.nas_storage import nas_storage
 from fastapi import UploadFile, HTTPException
 from PIL import Image
 import imagehash
+from sqlalchemy import and_
 
 
 def list_images_in_dir(directory, extensions={".jpg", ".jpeg", ".png", ".bmp", ".tiff"}):
@@ -72,7 +73,7 @@ def build_hash_db(image_paths, hash_size=16):
 def check_duplicates(new_images, hash_db, threshold=5, hash_size=16):
     """
     Check if new images already exist in hash_db.
-    
+
     Returns:
         dict: {new_image_path: matching_existing_path or None}
     """
@@ -90,6 +91,95 @@ def check_duplicates(new_images, hash_db, threshold=5, hash_size=16):
         except Exception as e:
             logging.warning(f"Skipping {new_path}: {e}")
         results[new_path] = match
+    return results
+
+def calculate_phash(image_path: str, hash_size: int = 16) -> str:
+    """
+    Calculate perceptual hash for an image file.
+
+    Args:
+        image_path: Path to the image file
+        hash_size: Hash size for the perceptual hash
+
+    Returns:
+        String representation of the hash
+    """
+    try:
+        with Image.open(image_path) as img:
+            phash = imagehash.phash(img, hash_size=hash_size)
+            return str(phash)
+    except Exception as e:
+        logging.error(f"Error calculating phash for {image_path}: {e}")
+        raise
+
+def check_duplicates_in_database(db: Session, new_image_paths: List[str], user_id: UUID, threshold: int = 5) -> dict:
+    """
+    Check for duplicate images using database-stored phashes.
+
+    Args:
+        db: Database session
+        new_image_paths: List of paths to new images to check
+        user_id: User ID to scope the search
+        threshold: Hamming distance threshold for considering images duplicates
+
+    Returns:
+        dict: {new_image_path: {'duplicate': bool, 'existing_design': DesignImages or None}}
+    """
+    results = {}
+
+    # Get all existing phashes for this user from database
+    existing_designs = db.query(DesignImages).filter(
+        and_(
+            DesignImages.user_id == user_id,
+            DesignImages.is_active == True,
+            DesignImages.phash.isnot(None)
+        )
+    ).all()
+
+    # Create lookup of phash -> design record
+    existing_phashes = {}
+    for design in existing_designs:
+        try:
+            # Convert string phash back to ImageHash object for comparison
+            phash_obj = imagehash.hex_to_hash(design.phash)
+            existing_phashes[phash_obj] = design
+        except Exception as e:
+            logging.warning(f"Invalid phash in database for design {design.id}: {e}")
+            continue
+
+    # Check each new image
+    for image_path in new_image_paths:
+        try:
+            # Calculate phash for new image
+            new_phash_str = calculate_phash(image_path)
+            new_phash = imagehash.hex_to_hash(new_phash_str)
+
+            # Find closest match
+            closest_design = None
+            min_distance = float('inf')
+
+            for existing_phash, design in existing_phashes.items():
+                distance = abs(new_phash - existing_phash)
+                if distance <= threshold and distance < min_distance:
+                    min_distance = distance
+                    closest_design = design
+
+            results[image_path] = {
+                'duplicate': closest_design is not None,
+                'existing_design': closest_design,
+                'distance': min_distance if closest_design else None,
+                'new_phash': new_phash_str
+            }
+
+        except Exception as e:
+            logging.error(f"Error checking duplicates for {image_path}: {e}")
+            results[image_path] = {
+                'duplicate': False,
+                'existing_design': None,
+                'error': str(e),
+                'new_phash': None
+            }
+
     return results
 
 
@@ -1231,56 +1321,59 @@ async def upload_mockup_files_to_etsy(
                         if design_folder is None:
                             design_folder = os.path.dirname(file_path)
                 
-                if design_path_mapping and design_folder and os.path.exists(design_folder):
-                    logging.info(f"Checking for duplicate images in design folder: {design_folder}")
-                    
-                    # Get all existing images in the design folder
-                    existing_images = list_images_in_dir(design_folder)
+                if design_path_mapping:
+                    logging.info(f"Checking for duplicate images using database phashes")
+
                     design_file_paths = list(design_path_mapping.values())
-                    
-                    # Build hash database for existing images (excluding the current design files)
-                    existing_images_excluding_current = [
-                        img for img in existing_images 
-                        if img not in design_file_paths
-                    ]
-                    
-                    if existing_images_excluding_current:
-                        hash_db = build_hash_db(existing_images_excluding_current)
-                        
-                        # Check if any of the current design files are duplicates
-                        duplicate_results = check_duplicates(design_file_paths, hash_db, threshold=5)
-                        
-                        # Filter out designs that are duplicates
-                        unique_designs = []
-                        removed_designs = []
-                        
-                        for design, design_path in design_path_mapping.items():
-                            matching_image = duplicate_results.get(design_path)
-                            if matching_image:
-                                # This is a duplicate - remove it
-                                logging.warning(f"Removing duplicate design: {design_path} (matches existing {matching_image})")
-                                removed_designs.append(design)
-                            else:
-                                # This is unique - keep it
-                                logging.info(f"Keeping unique design: {design_path}")
-                                unique_designs.append(design)
-                        
-                        # Update the designs list to only include non-duplicates
-                        filtered_designs = unique_designs
-                        
-                        # Log summary
-                        duplicates_removed = len(removed_designs)
-                        if duplicates_removed > 0:
-                            logging.warning(f"Removed {duplicates_removed} duplicate design(s) out of {len(designs)} total design(s)")
-                            logging.info(f"Proceeding with {len(filtered_designs)} unique design(s)")
+
+                    # Use database-based duplicate checking
+                    duplicate_results = check_duplicates_in_database(db, design_file_paths, user_id, threshold=5)
+
+                    # Filter out designs that are duplicates
+                    unique_designs = []
+                    removed_designs = []
+
+                    for design, design_path in design_path_mapping.items():
+                        duplicate_info = duplicate_results.get(design_path, {})
+                        if duplicate_info.get('duplicate', False):
+                            # This is a duplicate - remove it
+                            existing_design = duplicate_info.get('existing_design')
+                            distance = duplicate_info.get('distance', 'unknown')
+                            existing_filename = existing_design.filename if existing_design else 'unknown'
+                            logging.warning(f"Removing duplicate design: {design_path} (matches existing design {existing_filename}, distance: {distance})")
+                            removed_designs.append(design)
                         else:
-                            logging.info(f"No duplicates found - proceeding with all {len(filtered_designs)} design(s)")
+                            # This is unique - keep it and store the phash
+                            logging.info(f"Keeping unique design: {design_path}")
+                            # Store the calculated phash for future duplicate detection
+                            new_phash = duplicate_info.get('new_phash')
+                            if new_phash:
+                                design.phash = new_phash
+                            unique_designs.append(design)
+
+                    # Update the designs list to only include non-duplicates
+                    filtered_designs = unique_designs
+
+                    # Log summary
+                    duplicates_removed = len(removed_designs)
+                    if duplicates_removed > 0:
+                        logging.warning(f"Removed {duplicates_removed} duplicate design(s) out of {len(designs)} total design(s)")
+                        logging.info(f"Proceeding with {len(filtered_designs)} unique design(s)")
                     else:
-                        logging.info("No existing images found in design folder for duplicate comparison")
-                        filtered_designs = designs
+                        logging.info(f"No duplicates found - proceeding with all {len(filtered_designs)} design(s)")
+
                 else:
-                    logging.info("Design folder not found or no design file paths available, skipping duplicate check")
+                    logging.info("No design file paths available, calculating phashes for new designs")
                     filtered_designs = designs
+                    # Calculate phashes for new designs even if we can't check duplicates
+                    for design in filtered_designs:
+                        if hasattr(design, 'file_path') and design.file_path and not getattr(design, 'phash', None):
+                            try:
+                                phash = calculate_phash(design.file_path)
+                                design.phash = phash
+                                logging.info(f"Calculated phash for design: {design.file_path}")
+                            except Exception as e:
+                                logging.warning(f"Could not calculate phash for {design.file_path}: {e}")
             else:
                 logging.info("No designs found, skipping duplicate check")
                 filtered_designs = []

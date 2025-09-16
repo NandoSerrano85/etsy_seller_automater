@@ -31,6 +31,25 @@ from PIL import Image
 import imagehash
 import os
 
+def calculate_phash(image_path: str, hash_size: int = 16) -> str:
+    """
+    Calculate perceptual hash for an image file.
+
+    Args:
+        image_path: Path to the image file
+        hash_size: Hash size for the perceptual hash
+
+    Returns:
+        String representation of the hash
+    """
+    try:
+        with Image.open(image_path) as img:
+            phash = imagehash.phash(img, hash_size=hash_size)
+            return str(phash)
+    except Exception as e:
+        logging.error(f"Error calculating phash for {image_path}: {e}")
+        return None
+
 def _validate_canvas_config(db: Session, product_template_id: UUID, canvas_config_id: UUID) -> bool:
     """Validate that canvas config exists and belongs to the user"""
     canvas_config = db.query(CanvasConfig).filter(
@@ -349,11 +368,16 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
 
             design_data.file_path = file_path
             design_data.filename = filename
+
+            # Calculate perceptual hash for duplicate detection
+            phash = calculate_phash(file_path)
+
             design = DesignImages(
                 user_id=user_id,
                 filename=filename,
                 file_path=file_path,
                 description=design_data.description,
+                phash=phash,
                 canvas_config_id=design_data.canvas_config_id,
                 is_active=design_data.is_active
             )

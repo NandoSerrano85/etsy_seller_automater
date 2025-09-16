@@ -10,24 +10,48 @@ export const useSSEProgress = () => {
     message: '',
     progressPercent: 0,
     elapsedTime: 0,
+    estimatedTotalTime: 0,
+    remainingTime: 0,
+    fileProgress: 0,
   });
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState(null);
   const eventSourceRef = useRef(null);
 
-  const startProgressSession = useCallback(async () => {
-    try {
-      const response = await api.post('/designs/start-upload', {});
-      const newSessionId = response.session_id;
-      setSessionId(newSessionId);
-      console.log('🚀 Started upload session:', newSessionId);
-      return newSessionId;
-    } catch (err) {
-      console.error('❌ Failed to start upload session:', err);
-      setError(err.message);
-      throw err;
-    }
-  }, [api]);
+  const startProgressSession = useCallback(
+    async (files = []) => {
+      try {
+        // Prepare FormData with files to get size estimation
+        const formData = new FormData();
+        files.forEach(file => {
+          formData.append('files', file);
+        });
+
+        const response = await api.postFormData('/designs/start-upload', formData);
+        const newSessionId = response.session_id;
+        setSessionId(newSessionId);
+
+        // Set initial progress with estimation data
+        setProgress(prev => ({
+          ...prev,
+          estimatedTotalTime: response.estimated_time || 60,
+          remainingTime: response.estimated_time || 60,
+        }));
+
+        console.log(
+          '🚀 Started upload session:',
+          newSessionId,
+          `Est. ${response.estimated_time}s for ${response.total_size_mb}MB`
+        );
+        return { sessionId: newSessionId, ...response };
+      } catch (err) {
+        console.error('❌ Failed to start upload session:', err);
+        setError(err.message);
+        throw err;
+      }
+    },
+    [api]
+  );
 
   const connectToProgressStream = useCallback(sessionId => {
     if (!sessionId) return;
@@ -74,6 +98,9 @@ export const useSSEProgress = () => {
           message: data.message || '',
           progressPercent: data.progress_percent || 0,
           elapsedTime: data.elapsed_time || 0,
+          estimatedTotalTime: data.estimated_total_time || 0,
+          remainingTime: data.remaining_time || 0,
+          fileProgress: data.file_progress || 0,
         });
 
         // If upload is complete, close the connection after a delay
@@ -112,6 +139,9 @@ export const useSSEProgress = () => {
       message: '',
       progressPercent: 0,
       elapsedTime: 0,
+      estimatedTotalTime: 0,
+      remainingTime: 0,
+      fileProgress: 0,
     });
     setError(null);
     setSessionId(null);

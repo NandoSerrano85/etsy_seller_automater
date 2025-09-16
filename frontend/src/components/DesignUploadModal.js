@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useSSEProgress } from '../hooks/useSSEProgress';
+import { useProgressSimulation } from '../hooks/useProgressSimulation';
 
 const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const api = useApi();
@@ -12,7 +13,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   // SSE Progress tracking
   const {
     sessionId,
-    progress,
+    progress: rawProgress,
     isConnected,
     error: progressError,
     startProgressSession,
@@ -20,6 +21,9 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
     disconnectFromProgressStream,
     resetProgress,
   } = useSSEProgress();
+
+  // Smooth progress simulation
+  const progress = useProgressSimulation(rawProgress, uploading && isConnected);
 
   // Define upload steps for progress tracking
   const uploadSteps = [
@@ -201,9 +205,9 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       setUploading(true);
 
       try {
-        // Start SSE progress session
-        const newSessionId = await startProgressSession();
-        connectToProgressStream(newSessionId);
+        // Start SSE progress session with file information
+        const sessionData = await startProgressSession(files);
+        connectToProgressStream(sessionData.sessionId);
 
         // First, save the design information
         const designData = {
@@ -221,7 +225,7 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
           uploadFormData.append('files', file);
         });
         uploadFormData.append('design_data', JSON.stringify(designData));
-        uploadFormData.append('session_id', newSessionId);
+        uploadFormData.append('session_id', sessionData.sessionId);
 
         // Use retry logic for file uploads
         const designResponse = await api.postFormDataWithRetry('/designs/', uploadFormData);
@@ -547,24 +551,33 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
                       ))}
                     </div>
 
-                    {/* Progress message and bar */}
+                    {/* Progress message and timing */}
                     <div className="text-sm mb-2 text-center">
-                      {progress.message || 'Starting upload...'}
-                      {progress.elapsedTime > 0 && (
-                        <span className="text-gray-500 ml-2">({Math.round(progress.elapsedTime)}s)</span>
-                      )}
+                      <div className="font-medium text-gray-900">{progress.message || 'Starting upload...'}</div>
+                      <div className="flex justify-center items-center space-x-4 text-xs text-gray-500 mt-1">
+                        {progress.elapsedTime > 0 && <span>Elapsed: {Math.round(progress.elapsedTime)}s</span>}
+                        {progress.remainingTime > 0 && <span>ETA: {Math.round(progress.remainingTime)}s</span>}
+                        {progress.estimatedTotalTime > 0 && (
+                          <span>Total Est: {Math.round(progress.estimatedTotalTime)}s</span>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="w-64 bg-gray-200 rounded-full h-2">
+                    <div className="w-64 bg-gray-200 rounded-full h-3 relative overflow-hidden">
                       <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out relative"
                         style={{ width: `${progress.progressPercent || 0}%` }}
-                      ></div>
+                      >
+                        {/* Animated shimmer effect */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                      </div>
                     </div>
 
-                    <div className="text-xs text-gray-600 mt-1">
-                      Step {progress.step || 1} of {progress.totalSteps || 4} (
-                      {Math.round(progress.progressPercent || 0)}%)
+                    <div className="flex justify-between items-center text-xs text-gray-600 mt-2">
+                      <span>
+                        Step {progress.step || 1} of {progress.totalSteps || 4}
+                      </span>
+                      <span className="font-medium">{Math.round(progress.progressPercent || 0)}%</span>
                     </div>
 
                     {/* Error display */}

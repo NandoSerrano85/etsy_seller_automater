@@ -29,6 +29,7 @@ class DesignImages(Base):
     filename = Column(String, nullable=False)
     file_path = Column(String, nullable=False)
     description = Column(String, nullable=True)
+    phash = Column(String(64), nullable=True)  # Perceptual hash for duplicate detection
     canvas_config_id = Column(UUID(as_uuid=True), ForeignKey('canvas_configs.id'), nullable=True)
     is_active = Column(Boolean, default=True)
     is_digital = Column(Boolean, default=False)
