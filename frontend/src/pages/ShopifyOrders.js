@@ -173,10 +173,10 @@ const ShopifyOrders = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-2">No Store Connected</h2>
           <p className="text-gray-600 mb-6">Please connect your Shopify store to view and manage orders.</p>
           <button
-            onClick={() => navigate('/shopify/connect')}
+            onClick={() => navigate('/account?tab=integrations')}
             className="bg-sage-600 text-white px-6 py-2 rounded-md hover:bg-sage-700"
           >
-            Connect Shopify Store
+            Go to Integrations
           </button>
         </div>
       </div>

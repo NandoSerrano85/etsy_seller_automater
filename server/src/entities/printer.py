@@ -16,12 +16,10 @@ MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'tru
 
 class PrinterType(enum.Enum):
     """Types of printers supported"""
-    INKJET = "inkjet"
-    LASER = "laser"
+    UVDTF = "uvdtf"  # UV Direct to Film
+    DTF = "dtf"      # Direct to Film
     SUBLIMATION = "sublimation"
-    DTG = "dtg"  # Direct to Garment
-    VINYL = "vinyl"
-    UV = "uv"
+    VINYL = "vinyl"  # Vinyl cutting/printing
     OTHER = "other"
 
 class Printer(Base):
@@ -41,7 +39,7 @@ class Printer(Base):
     
     # Printer information
     name = Column(String(255), nullable=False, index=True)
-    printer_type = Column(String(50), nullable=False, default=PrinterType.INKJET.value)
+    printer_type = Column(String(50), nullable=False, default=PrinterType.DTF.value)
     manufacturer = Column(String(100))
     model = Column(String(100))
     description = Column(Text)

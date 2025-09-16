@@ -2,7 +2,9 @@ import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
+import { useShopify } from '../../hooks/useShopify';
 import IntegrationCard from '../../components/IntegrationCard';
+import ConnectShopify from '../../components/ConnectShopify';
 
 const IntegrationsTab = () => {
   // const navigate = useNavigate();
@@ -21,6 +23,15 @@ const IntegrationsTab = () => {
   const [oauthData, setOauthData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // Shopify hook
+  const {
+    store: shopifyStore,
+    isConnected: isShopifyConnected,
+    loading: shopifyLoading,
+    error: shopifyError,
+    disconnectStore: disconnectShopify,
+  } = useShopify();
 
   // Fetch OAuth configuration only when needed
   const fetchOAuthData = useCallback(async () => {
@@ -71,6 +82,12 @@ const IntegrationsTab = () => {
     }
   };
 
+  const handleShopifyDisconnect = async () => {
+    if (window.confirm('Are you sure you want to disconnect your Shopify store?')) {
+      await disconnectShopify();
+    }
+  };
+
   // Available integrations configuration
   const integrations = [
     {
@@ -90,14 +107,22 @@ const IntegrationsTab = () => {
         { icon: '🔄', label: 'Auto-sync Data' },
       ],
     },
-    // Add more integrations here as they become available
     {
       name: 'Shopify',
       icon: '🛍️',
-      description: 'Coming soon - Connect your Shopify store for seamless integration.',
-      isConnected: false,
-      isComingSoon: true,
-      features: [],
+      description: 'Connect your Shopify store to sync products, track orders, and manage inventory.',
+      isConnected: isShopifyConnected,
+      userInfo: shopifyStore?.shop,
+      shopInfo: shopifyStore,
+      isLoading: shopifyLoading,
+      onDisconnect: handleShopifyDisconnect,
+      customConnectComponent: !isShopifyConnected ? ConnectShopify : null,
+      features: [
+        { icon: '🛒', label: 'Product Sync' },
+        { icon: '📋', label: 'Order Management' },
+        { icon: '📊', label: 'Sales Analytics' },
+        { icon: '📦', label: 'Inventory Tracking' },
+      ],
     },
   ];
 
@@ -110,9 +135,9 @@ const IntegrationsTab = () => {
       </div>
 
       {/* Error Messages */}
-      {(error || etsyError) && (
+      {(error || etsyError || shopifyError) && (
         <div className="bg-rose-50 border border-rose-200 rounded-lg p-4">
-          <p className="text-rose-700">{error || etsyError}</p>
+          <p className="text-rose-700">{error || etsyError || shopifyError}</p>
         </div>
       )}
 

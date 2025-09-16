@@ -6,7 +6,7 @@ import { useNotifications } from './NotificationSystem';
 const EditPrinterModal = ({ isOpen, printer, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     name: printer?.name || '',
-    printer_type: printer?.printer_type || 'inkjet',
+    printer_type: printer?.printer_type || 'dtf',
     max_width_inches: printer?.max_width_inches || '',
     max_height_inches: printer?.max_height_inches || '',
     dpi: printer?.dpi || 300,
@@ -20,10 +20,10 @@ const EditPrinterModal = ({ isOpen, printer, onClose, onSubmit }) => {
   const { updatePrinter } = usePrinterStore();
 
   const printerTypes = [
-    { value: 'inkjet', label: 'Inkjet', description: 'Standard inkjet printer for general printing' },
-    { value: 'laser', label: 'Laser', description: 'Laser printer for high-volume printing' },
-    { value: 'thermal', label: 'Thermal', description: 'Thermal printer for labels and receipts' },
+    { value: 'uvdtf', label: 'UVDTF', description: 'UV Direct to Film printer for specialty transfers' },
+    { value: 'dtf', label: 'DTF', description: 'Direct to Film printer for garment transfers' },
     { value: 'sublimation', label: 'Sublimation', description: 'Dye-sublimation printer for transfer printing' },
+    { value: 'vinyl', label: 'Vinyl', description: 'Vinyl cutting/printing for stickers and decals' },
   ];
 
   const dpiOptions = [300, 400, 500, 600, 720, 1200];
@@ -115,7 +115,7 @@ const EditPrinterModal = ({ isOpen, printer, onClose, onSubmit }) => {
     if (!isSubmitting) {
       setFormData({
         name: printer?.name || '',
-        printer_type: printer?.printer_type || 'inkjet',
+        printer_type: printer?.printer_type || 'dtf',
         max_width_inches: printer?.max_width_inches || '',
         max_height_inches: printer?.max_height_inches || '',
         dpi: printer?.dpi || 300,

@@ -12,6 +12,8 @@ const IntegrationCard = ({
   onConnect,
   onDisconnect,
   isLoading,
+  customConnectComponent: CustomConnectComponent,
+  isComingSoon,
 }) => {
   const navigate = useNavigate();
   return (
@@ -103,6 +105,18 @@ const IntegrationCard = ({
                     Disconnect
                   </button>
                 </>
+              ) : isComingSoon ? (
+                <button
+                  disabled
+                  className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-sage-300 to-sage-400 text-sage-600 rounded-lg cursor-not-allowed"
+                >
+                  <span className="mr-2">⏳</span>
+                  Coming Soon
+                </button>
+              ) : CustomConnectComponent ? (
+                <div className="w-full">
+                  <CustomConnectComponent />
+                </div>
               ) : (
                 <button
                   onClick={onConnect}

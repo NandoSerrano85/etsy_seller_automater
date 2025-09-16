@@ -1294,106 +1294,16 @@ async def upload_mockup_files_to_etsy(
             .all()
         )
 
-        # Check for duplicate images and filter out duplicates before processing
-        filtered_designs = designs
-        try:
-            if designs:
-                logging.info(f"Checking for duplicate images among {len(designs)} design(s)")
-                
-                # Create a mapping of design objects to their file paths
-                design_path_mapping = {}
-                design_folder = None
-                
-                for design in designs:
-                    file_path = None
-                    # Try to get file_path or image_path from the design object
-                    if hasattr(design, 'file_path'):
-                        file_path_value = getattr(design, 'file_path', None)
-                        if file_path_value:
-                            file_path = str(file_path_value)
-                    elif hasattr(design, 'image_path'):
-                        image_path_value = getattr(design, 'image_path', None)
-                        if image_path_value:
-                            file_path = str(image_path_value)
-                    
-                    if file_path:
-                        design_path_mapping[design] = file_path
-                        if design_folder is None:
-                            design_folder = os.path.dirname(file_path)
-                
-                if design_path_mapping:
-                    logging.info(f"Checking for duplicate images using database phashes")
-
-                    design_file_paths = list(design_path_mapping.values())
-
-                    # Use database-based duplicate checking
-                    duplicate_results = check_duplicates_in_database(db, design_file_paths, user_id, threshold=5)
-
-                    # Filter out designs that are duplicates
-                    unique_designs = []
-                    removed_designs = []
-
-                    for design, design_path in design_path_mapping.items():
-                        duplicate_info = duplicate_results.get(design_path, {})
-                        if duplicate_info.get('duplicate', False):
-                            # This is a duplicate - remove it
-                            existing_design = duplicate_info.get('existing_design')
-                            distance = duplicate_info.get('distance', 'unknown')
-                            existing_filename = existing_design.filename if existing_design else 'unknown'
-                            logging.warning(f"Removing duplicate design: {design_path} (matches existing design {existing_filename}, distance: {distance})")
-                            removed_designs.append(design)
-                        else:
-                            # This is unique - keep it and store the phash
-                            logging.info(f"Keeping unique design: {design_path}")
-                            # Store the calculated phash for future duplicate detection
-                            new_phash = duplicate_info.get('new_phash')
-                            if new_phash:
-                                design.phash = new_phash
-                            unique_designs.append(design)
-
-                    # Update the designs list to only include non-duplicates
-                    filtered_designs = unique_designs
-
-                    # Log summary
-                    duplicates_removed = len(removed_designs)
-                    if duplicates_removed > 0:
-                        logging.warning(f"Removed {duplicates_removed} duplicate design(s) out of {len(designs)} total design(s)")
-                        logging.info(f"Proceeding with {len(filtered_designs)} unique design(s)")
-                    else:
-                        logging.info(f"No duplicates found - proceeding with all {len(filtered_designs)} design(s)")
-
-                else:
-                    logging.info("No design file paths available, calculating phashes for new designs")
-                    filtered_designs = designs
-                    # Calculate phashes for new designs even if we can't check duplicates
-                    for design in filtered_designs:
-                        if hasattr(design, 'file_path') and design.file_path and not getattr(design, 'phash', None):
-                            try:
-                                phash = calculate_phash(design.file_path)
-                                design.phash = phash
-                                logging.info(f"Calculated phash for design: {design.file_path}")
-                            except Exception as e:
-                                logging.warning(f"Could not calculate phash for {design.file_path}: {e}")
-            else:
-                logging.info("No designs found, skipping duplicate check")
-                filtered_designs = []
-                
-        except Exception as e:
-            # Don't fail the entire process if duplicate detection fails
-            logging.error(f"Error during duplicate detection: {e}")
-            logging.info("Proceeding with all designs due to duplicate detection error")
-            filtered_designs = designs
+        # Duplicate detection is now handled at the design side, so we use all designs
+        logging.info(f"Processing {len(designs)} design(s) - duplicate detection handled at design level")
         
-        # Use filtered designs instead of original designs
-        designs = filtered_designs
-        
-        # Check if we have any designs left after filtering
+        # Check if we have any designs
         if not designs:
-            logging.warning("No designs remaining after duplicate filtering - all designs were duplicates")
+            logging.warning("No designs available for processing")
             return model.UploadToEtsyResponse(
                 success=False,
                 success_code=400,
-                message="All uploaded designs were duplicates of existing images. No Etsy listings created.",
+                message="No designs available for processing. No Etsy listings created.",
             )
 
         mockup_mask_data = {}

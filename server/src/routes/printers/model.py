@@ -9,18 +9,15 @@ from typing import Optional, List
 from enum import Enum
 
 class PrinterTypeEnum(str, Enum):
-    INKJET = "inkjet"
-    LASER = "laser"
+    UVDTF = "uvdtf"  # UV Direct to Film
+    DTF = "dtf"      # Direct to Film
     SUBLIMATION = "sublimation"
-    DTG = "dtg"  # Direct to Garment
-    VINYL = "vinyl"
-    UV = "uv"
-    OTHER = "other"
+    VINYL = "vinyl"  # Vinyl cutting/printing
 
 # Request Models
 class PrinterCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Printer name")
-    printer_type: PrinterTypeEnum = Field(default=PrinterTypeEnum.INKJET)
+    printer_type: PrinterTypeEnum = Field(default=PrinterTypeEnum.DTF)
     manufacturer: Optional[str] = Field(None, max_length=100)
     model: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
