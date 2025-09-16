@@ -189,6 +189,41 @@ def run_migrations():
         print(f"⚠️  Warning: Migration failed: {e}")
         # Continue running - the column might exist or the migration might not be critical
 
+def run_startup_migrations():
+    """Run local migration modules that are safe/idempotent at startup."""
+    import importlib
+    migrations = [
+        "server.migrations.add_phash_to_designs",
+    ]
+
+    with engine.connect() as conn:
+        with conn.begin():
+            for mod_name in migrations:
+                try:
+                    mod = importlib.import_module(mod_name)
+                except Exception as e:
+                    print(f"ℹ️  Migration module {mod_name} not found or failed to import: {e}")
+                    continue
+
+                upgrade = getattr(mod, "upgrade", None)
+                if not callable(upgrade):
+                    print(f"ℹ️  No upgrade() in {mod_name}, skipping")
+                    continue
+
+                try:
+                    print(f"🔄 Applying migration {mod_name}...")
+                    upgrade(conn)
+                    print(f"✅ {mod_name} applied")
+                except Exception as e:
+                    # Migration should be idempotent; log and continue
+                    print(f"⚠️  {mod_name} upgrade failed or already applied: {e}")
+
+# Call migrations before app startup (safe, non-blocking)
+try:
+    run_startup_migrations()
+except Exception as e:
+    print(f"⚠️  Failed running startup migrations: {e}")
+
 def run_org_id_migration(conn):
     """Add missing org_id columns to tables that need multi-tenant support."""
     try:
