@@ -106,7 +106,11 @@ def create_required_enums():
         print(f"⚠️  Warning: Enum creation failed: {e}")
 
 # Create enums first, then tables
-create_required_enums()
+try:
+    create_required_enums()
+except Exception as e:
+    print(f"⚠️  Warning: Enum creation failed: {e}")
+    # Continue - enums might already exist
 
 # Create database tables with error handling
 try:
@@ -220,12 +224,21 @@ def run_startup_migrations():
         except Exception as e:
             # Migration should be idempotent; log and continue
             print(f"⚠️  {mod_name} upgrade failed or already applied: {e}")
+            # Only show full traceback for unexpected errors
+            if "already exists" not in str(e).lower() and "duplicate" not in str(e).lower():
+                import traceback
+                print(f"Migration error details: {traceback.format_exc()}")
 
 # Call migrations before app startup (safe, non-blocking)
 try:
+    print("🔄 Running startup migrations...")
     run_startup_migrations()
+    print("✅ Startup migrations completed")
 except Exception as e:
     print(f"⚠️  Failed running startup migrations: {e}")
+    import traceback
+    print(f"Migration error details: {traceback.format_exc()}")
+    # Continue - the app should still start even if migrations fail
 
 def run_org_id_migration(conn):
     """Add missing org_id columns to tables that need multi-tenant support."""
@@ -511,18 +524,22 @@ def run_server():
     host = os.getenv('HOST', SERVER_CONFIG['default_host'])
     port = int(os.getenv('PORT', SERVER_CONFIG['default_port']))
     debug = os.getenv('DEBUG', str(SERVER_CONFIG['default_debug'])).lower() == 'true'
-    
-    print(f"Starting CraftFlow server on http://{host}:{port}")
-    print(f"Debug mode: {debug}")
-    
+
+    print(f"🚀 Starting CraftFlow server on http://{host}:{port}")
+    print(f"🔧 Debug mode: {debug}")
+    print(f"🌍 Environment: {os.getenv('DOCKER_ENV', 'development')}")
+
     # Disable automatic browser opening to prevent unwanted redirects
     # if not os.getenv('DOCKER_ENV') and not debug:
     #     Timer(2, open_browser).start()
-    
+
+    print("✅ Application startup completed successfully")
+    print("🟢 Server is ready to accept connections")
+
     uvicorn.run(
-        app, 
-        host=host, 
-        port=port, 
+        app,
+        host=host,
+        port=port,
         log_level="info"
     )
 

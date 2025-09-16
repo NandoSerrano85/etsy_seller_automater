@@ -68,11 +68,27 @@ def design_exists(connection, user_id: str, filename: str) -> bool:
 def upgrade(connection):
     """Import designs from NAS and populate design_images table."""
 
-    if not nas_storage.enabled:
-        logging.warning("NAS storage is not enabled. Skipping design import migration.")
-        return
+    try:
+        if not nas_storage.enabled:
+            logging.info("NAS storage is not enabled. Skipping design import migration.")
+            return
 
-    logging.info("Starting NAS design import migration...")
+        logging.info("Starting NAS design import migration...")
+
+        # Test NAS connectivity before proceeding
+        try:
+            # Quick connectivity test
+            with nas_storage.get_sftp_connection() as sftp:
+                sftp.getcwd()  # Simple test
+            logging.info("NAS connectivity confirmed")
+        except Exception as e:
+            logging.warning(f"NAS connectivity test failed: {e}")
+            logging.info("Skipping NAS import migration due to connectivity issues")
+            return
+
+    except Exception as e:
+        logging.warning(f"Error during NAS migration setup: {e}")
+        return
 
     try:
         # Get all users and templates

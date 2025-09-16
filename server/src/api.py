@@ -47,23 +47,69 @@ def register_routes(app: FastAPI):
     # Health check endpoint
     @app.get("/health")
     async def health_check():
-        """Health check endpoint for monitoring and deployment"""
+        """Health check endpoint for monitoring and deployment - fast and lightweight"""
         try:
-            # Check system resources
-            cpu_percent = psutil.cpu_percent(interval=1)
-            memory = psutil.virtual_memory()
-            disk = psutil.disk_usage('/')
-            
-            # Check database connection (if possible)
+            # Quick database check (with timeout)
             db_status = "unknown"
             try:
                 from server.src.database.core import engine
+                from sqlalchemy import text
                 with engine.connect() as conn:
-                    conn.execute("SELECT 1")
+                    # Use a simple query with immediate response
+                    result = conn.execute(text("SELECT 1"))
+                    if result.fetchone():
+                        db_status = "healthy"
+                    else:
+                        db_status = "unhealthy"
+            except Exception as db_e:
+                print(f"Health check database error: {db_e}")
+                db_status = "unhealthy"
+
+            # Return simple healthy response
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "healthy",
+                    "timestamp": int(time.time()),
+                    "version": "1.0.0",
+                    "environment": os.getenv("DOCKER_ENV", "development"),
+                    "services": {
+                        "database": db_status,
+                        "api": "healthy"
+                    }
+                }
+            )
+        except Exception as e:
+            print(f"Health check error: {e}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "unhealthy",
+                    "timestamp": int(time.time()),
+                    "error": str(e)
+                }
+            )
+
+    @app.get("/health/detailed")
+    async def detailed_health_check():
+        """Detailed health check with system metrics - slower but more comprehensive"""
+        try:
+            # Check system resources (non-blocking)
+            cpu_percent = psutil.cpu_percent(interval=0)  # Non-blocking
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+
+            # Check database connection
+            db_status = "unknown"
+            try:
+                from server.src.database.core import engine
+                from sqlalchemy import text
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
                     db_status = "healthy"
             except Exception:
                 db_status = "unhealthy"
-            
+
             return JSONResponse(
                 status_code=200,
                 content={
