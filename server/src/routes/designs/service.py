@@ -189,7 +189,7 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                     image_path = os.path.join(directory_path, image_file)
                     try:
                         with Image.open(image_path) as img:
-                            img_hash = imagehash.phash(img)
+                            img_hash = imagehash.phash(img, hash_size=16)  # Use consistent hash size
                             hash_db[image_path] = img_hash
                     except Exception as e:
                         logging.error(f"Error processing image {image_path}: {str(e)}")
@@ -305,7 +305,17 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
             try:
                 # Convert string phash back to ImageHash object for comparison
                 phash_obj = imagehash.hex_to_hash(design.phash)
-                db_phashes[phash_obj] = design
+
+                # Check if this is an 8x8 hash (64 characters) vs 16x16 hash (256 characters)
+                if len(design.phash) == 16:  # 8x8 hash (64 bits = 16 hex chars)
+                    logging.info(f"Skipping 8x8 phash for design {design.filename} - will be recalculated with 16x16")
+                    continue
+                elif len(design.phash) == 64:  # 16x16 hash (256 bits = 64 hex chars)
+                    db_phashes[phash_obj] = design
+                else:
+                    logging.warning(f"Unexpected phash length {len(design.phash)} for design {design.id}")
+                    continue
+
             except Exception as e:
                 logging.warning(f"Invalid phash in database for design {design.id}: {e}")
                 continue
@@ -338,7 +348,7 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                         pil_image = Image.fromarray(temp_image)
 
                     # Calculate hash
-                    file_hash = imagehash.phash(pil_image)
+                    file_hash = imagehash.phash(pil_image, hash_size=16)
 
                     # Check against existing hashes (local files)
                     is_duplicate = False

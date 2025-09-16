@@ -199,6 +199,7 @@ def run_startup_migrations():
     migrations = [
         "server.migrations.add_phash_to_designs",
         "server.migrations.remove_shopify_unique_constraint",
+        "server.migrations.update_phash_hash_size",
         "server.migrations.import_nas_designs",
     ]
 
