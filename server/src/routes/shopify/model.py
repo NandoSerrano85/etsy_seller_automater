@@ -6,6 +6,9 @@ from typing import Optional
 class ShopifyOAuthInitRequest(BaseModel):
     shop_domain: str
 
+    class Config:
+        str_strip_whitespace = True
+
 class ShopifyOAuthInitResponse(BaseModel):
     authorization_url: str
     state: str
@@ -26,3 +29,7 @@ class ShopifyOAuthCallbackResponse(BaseModel):
     success: bool
     message: str
     store: Optional[ShopifyStoreResponse] = None
+
+class ShopifyStoresListResponse(BaseModel):
+    stores: list[ShopifyStoreResponse]
+    total: int

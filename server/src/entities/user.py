@@ -41,7 +41,7 @@ class User(Base):
     etsy_product_templates = relationship('EtsyProductTemplate', order_by='EtsyProductTemplate.id', back_populates='user')
     mockups = relationship('Mockups', order_by='Mockups.id', back_populates='user')
     design_images = relationship('DesignImages', order_by='DesignImages.id', back_populates='user')
-    shopify_store = relationship('ShopifyStore', back_populates='user', uselist=False)
+    shopify_stores = relationship('ShopifyStore', back_populates='user')
     shopify_products = relationship('ShopifyProduct', back_populates='user')
     
     # Multi-tenant relationships - temporarily disabled to resolve join condition issues

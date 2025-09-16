@@ -287,6 +287,31 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
         # Build hash database of existing designs in the directory
         existing_hash_db = build_hash_db(designs_path)
 
+        # Get existing phashes from database for this user
+        from server.src.entities.designs import DesignImages
+        from sqlalchemy import and_
+
+        existing_designs = db.query(DesignImages).filter(
+            and_(
+                DesignImages.user_id == user_id,
+                DesignImages.is_active == True,
+                DesignImages.phash.isnot(None)
+            )
+        ).all()
+
+        # Create database phash lookup
+        db_phashes = {}
+        for design in existing_designs:
+            try:
+                # Convert string phash back to ImageHash object for comparison
+                phash_obj = imagehash.hex_to_hash(design.phash)
+                db_phashes[phash_obj] = design
+            except Exception as e:
+                logging.warning(f"Invalid phash in database for design {design.id}: {e}")
+                continue
+
+        logging.info(f"Found {len(existing_hash_db)} existing files in directory and {len(db_phashes)} designs with phashes in database")
+
         # Check for duplicates in uploaded files before processing
         non_duplicate_files = []
         duplicate_count = 0
@@ -315,29 +340,48 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                     # Calculate hash
                     file_hash = imagehash.phash(pil_image)
 
-                    # Check against existing hashes
+                    # Check against existing hashes (local files)
                     is_duplicate = False
+                    duplicate_source = None
+
                     for existing_path, existing_hash in existing_hash_db.items():
                         hash_diff = file_hash - existing_hash
                         if hash_diff <= 5:  # threshold
-                            logging.warning(f"Skipping duplicate file: {file.filename} (matches existing {os.path.basename(existing_path)})")
+                            logging.warning(f"Skipping duplicate file: {file.filename} (matches existing file {os.path.basename(existing_path)})")
                             duplicate_count += 1
                             is_duplicate = True
+                            duplicate_source = f"local file {os.path.basename(existing_path)}"
                             break
+
+                    # Check against database phashes
+                    if not is_duplicate:
+                        for existing_phash, existing_design in db_phashes.items():
+                            hash_diff = abs(file_hash - existing_phash)
+                            if hash_diff <= 5:  # threshold
+                                logging.warning(f"Skipping duplicate file: {file.filename} (matches database design {existing_design.filename}, distance: {hash_diff})")
+                                duplicate_count += 1
+                                is_duplicate = True
+                                duplicate_source = f"database design {existing_design.filename}"
+                                break
 
                     if not is_duplicate:
                         # Check against other uploaded files to avoid processing duplicates within the same upload
                         for j, (other_file, other_hash) in enumerate(non_duplicate_files):
-                            hash_diff = file_hash - other_hash
-                            if hash_diff <= 5:  # threshold
-                                logging.warning(f"Skipping duplicate file within upload: {file.filename} (matches {other_file.filename})")
-                                duplicate_count += 1
-                                is_duplicate = True
-                                break
+                            if other_hash is not None:
+                                hash_diff = file_hash - other_hash
+                                if hash_diff <= 5:  # threshold
+                                    logging.warning(f"Skipping duplicate file within upload: {file.filename} (matches {other_file.filename})")
+                                    duplicate_count += 1
+                                    is_duplicate = True
+                                    duplicate_source = f"uploaded file {other_file.filename}"
+                                    break
 
                         if not is_duplicate:
                             non_duplicate_files.append((file, file_hash))
                             existing_hash_db[f"temp_{i}"] = file_hash  # Add to prevent future duplicates in this batch
+                            logging.info(f"File {file.filename} is unique, will be processed")
+                    else:
+                        logging.info(f"File {file.filename} is duplicate of {duplicate_source}")
                 else:
                     logging.error(f"Failed to decode image for duplicate check: {file.filename}")
                     # Still process files that can't be decoded for duplicate checking

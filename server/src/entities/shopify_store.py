@@ -10,7 +10,7 @@ class ShopifyStore(Base):
     __table_args__ = {'extend_existing': True}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, unique=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
     shop_domain = Column(String(255), nullable=False)
     shop_name = Column(String(255), nullable=False)
     access_token = Column(Text, nullable=False)
@@ -18,5 +18,5 @@ class ShopifyStore(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    user = relationship('User', back_populates='shopify_store')
+    user = relationship('User', back_populates='shopify_stores')
     products = relationship('ShopifyProduct', back_populates='store')

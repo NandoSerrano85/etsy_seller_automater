@@ -152,25 +152,42 @@ async def initiate_shopify_oauth(
 ):
     """Initiate Shopify OAuth flow"""
     try:
+        # Debug logging
+        logger.info(f"Received shop_domain: {request.shop_domain!r}")
+
+        # Validate shop_domain is not empty
+        if not request.shop_domain or not request.shop_domain.strip():
+            logger.error(f"Empty shop_domain received: {request.shop_domain!r}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Shop domain is required and cannot be empty"
+            )
+
+        # Clean the shop domain
+        clean_domain = request.shop_domain.strip()
+        logger.info(f"Cleaned shop_domain: {clean_domain!r}")
+
         # Generate state parameter for CSRF protection
         state = secrets.token_urlsafe(32)
 
         # Store state with user ID (in production, use Redis or database)
         oauth_states[state] = {
             'user_id': str(current_user.get_uuid()),
-            'shop_domain': request.shop_domain
+            'shop_domain': clean_domain
         }
 
         # Build OAuth URL
-        authorization_url = build_oauth_url(request.shop_domain, state)
+        authorization_url = build_oauth_url(clean_domain, state)
 
-        logger.info(f"Initiated Shopify OAuth for user {current_user.get_uuid()} with shop {request.shop_domain}")
+        logger.info(f"Initiated Shopify OAuth for user {current_user.get_uuid()} with shop {clean_domain}")
 
         return model.ShopifyOAuthInitResponse(
             authorization_url=authorization_url,
             state=state
         )
 
+    except HTTPException:
+        raise
     except ShopifyOAuthError as e:
         logger.error(f"Shopify OAuth error: {e}")
         raise HTTPException(
@@ -243,12 +260,14 @@ async def shopify_oauth_callback(
                 detail="User not found"
             )
 
-        # Check if user already has a Shopify store connected
-        existing_store = db.query(ShopifyStore).filter(ShopifyStore.user_id == user_id).first()
+        # Check if user already has this specific Shopify store connected
+        existing_store = db.query(ShopifyStore).filter(
+            ShopifyStore.user_id == user_id,
+            ShopifyStore.shop_domain == shop
+        ).first()
 
         if existing_store:
             # Update existing store
-            existing_store.shop_domain = shop
             existing_store.shop_name = shop_data.get('name', shop)
             existing_store.access_token = access_token
             existing_store.is_active = True
@@ -291,12 +310,40 @@ async def shopify_oauth_callback(
             detail="Failed to complete Shopify OAuth"
         )
 
+@router.get("/stores", response_model=model.ShopifyStoresListResponse)
+async def get_shopify_stores(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get all connected Shopify stores for current user"""
+    try:
+        user_id = current_user.get_uuid()
+
+        stores = db.query(ShopifyStore).filter(
+            ShopifyStore.user_id == user_id,
+            ShopifyStore.is_active == True
+        ).all()
+
+        store_responses = [model.ShopifyStoreResponse.from_orm(store) for store in stores]
+
+        return model.ShopifyStoresListResponse(
+            stores=store_responses,
+            total=len(store_responses)
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting Shopify stores for user {current_user.get_uuid()}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get Shopify store information"
+        )
+
 @router.get("/store", response_model=Optional[model.ShopifyStoreResponse])
 async def get_shopify_store(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get connected Shopify store information for current user"""
+    """Get first connected Shopify store for current user (legacy endpoint)"""
     try:
         user_id = current_user.get_uuid()
 
