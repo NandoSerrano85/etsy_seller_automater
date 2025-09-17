@@ -118,15 +118,16 @@ def create_required_enums():
     except Exception as e:
         print(f"⚠️  Warning: Enum creation failed: {e}")
 
-# Create enums first, then tables
-try:
-    create_required_enums()
-except Exception as e:
-    print(f"⚠️  Warning: Enum creation failed: {e}")
-    # Continue - enums might already exist
-
-# Create database tables with error handling (skip in production)
+# Skip all database operations in production to ensure fast startup
 if os.getenv('RAILWAY_ENVIRONMENT') != 'production':
+    # Create enums first, then tables
+    try:
+        create_required_enums()
+    except Exception as e:
+        print(f"⚠️  Warning: Enum creation failed: {e}")
+        # Continue - enums might already exist
+
+    # Create database tables with error handling
     try:
         Base.metadata.create_all(bind=engine)
         print("✅ Database tables created successfully")
@@ -134,7 +135,7 @@ if os.getenv('RAILWAY_ENVIRONMENT') != 'production':
         print(f"⚠️  Warning: Database table creation failed: {e}")
         # Continue running - tables might already exist
 else:
-    print("ℹ️  Skipping database table creation in production")
+    print("ℹ️  Skipping all database operations in production for fast startup")
 
 # Run database migrations for new columns
 def run_migrations():
