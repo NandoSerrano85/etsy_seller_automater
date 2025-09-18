@@ -41,6 +41,10 @@ class User(Base):
     etsy_product_templates = relationship('EtsyProductTemplate', order_by='EtsyProductTemplate.id', back_populates='user')
     mockups = relationship('Mockups', order_by='Mockups.id', back_populates='user')
     design_images = relationship('DesignImages', order_by='DesignImages.id', back_populates='user')
+
+    # Platform connections and stores (new architecture)
+    platform_connections = relationship('PlatformConnection', back_populates='user')
+    etsy_stores = relationship('EtsyStore', back_populates='user')
     shopify_stores = relationship('ShopifyStore', back_populates='user')
     shopify_products = relationship('ShopifyProduct', back_populates='user')
     
