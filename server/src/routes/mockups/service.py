@@ -1353,9 +1353,9 @@ async def upload_mockup_files_to_etsy(
         materials = template.materials.split(',') if template.materials else []
         tags = template.tags.split(',') if template.tags else []
         
-        logging.info(f"DEBUG API: Creating Etsy listings for {mockup_data} designs")
+        logging.info(f"DEBUG API: Creating Etsy listings for {len(mockup_data)} designs")
         for i,(design, mockups) in enumerate(mockup_data.items()):
-            logging.info(f"DEBUG API: Creating listing {i+1}/{len(result)} for design: {design}")
+            logging.info(f"DEBUG API: Creating listing {i+1}/{len(mockup_data)} for design: {design}")
             title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
             listing_response = etsy_api.create_draft_listing(
                 title=' '.join(title + [template.title]) if template.title else ' '.join(title),
