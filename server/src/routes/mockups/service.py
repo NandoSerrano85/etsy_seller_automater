@@ -1385,7 +1385,7 @@ async def upload_mockup_files_to_etsy(
 
             # Upload digital file(s) if digital template
             if is_digital:
-                # The digital file path and name are the key (design) in result.items()
+                # The digital file path and name are the key (design) in mockup_data.items()
                 digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/Digital/{template.name}/", design)
                 digital_file_name = design
                 logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
