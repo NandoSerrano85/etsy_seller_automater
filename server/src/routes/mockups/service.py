@@ -1236,8 +1236,6 @@ async def upload_mockup_files_to_etsy(
     This function replicates the functionality of the original upload_mockup endpoint.
     """
     try:
-        ten_seconds_ago = datetime.utcnow() - timedelta(seconds=200)
-
         mockup_with_images = (
             db.query(Mockups)
             .options(
@@ -1251,48 +1249,41 @@ async def upload_mockup_files_to_etsy(
             .first()
         )
 
-        # Get template to check if it's digital
-        result = (
-            db.query(
-                User.shop_name,
-                EtsyProductTemplate,
-                Mockups,
-                func.array_agg(DesignImages.id).label('design_ids')  # Aggregate designs into an array
-            )
-            .join(EtsyProductTemplate, EtsyProductTemplate.user_id == User.id)
-            .join(Mockups, Mockups.product_template_id == EtsyProductTemplate.id)
-            .join(DesignImages, DesignImages.user_id == User.id)  # Changed to inner join
-            .filter(
-                User.id == user_id,
-                EtsyProductTemplate.id == product_data.product_template_id,
-                Mockups.id == product_data.mockup_id,
-                DesignImages.is_active == True,  # Only get active designs
-                DesignImages.created_at >= ten_seconds_ago  
-            )
-            .group_by(
-                User.shop_name,
-                EtsyProductTemplate.id,
-                Mockups.id
-            )
-            .order_by(desc(func.max(DesignImages.created_at)))  # Order by most recent design
-            .first()
-        )
+        # Get user, template, and mockup information - use provided design_ids from request
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logging.error("upload_mockup_files_to_etsy: User not found for ID %s", user_id)
+            raise HTTPException(status_code=404, detail="User not found")
 
-        print(result)
-        # Defensive check: if the call returned None or an unexpected structure, log and fail cleanly
-        if not result or not hasattr(result, "__getitem__") or len(result) == 0:
-            logging.error("upload_mockup_files_to_etsy: expected shop info from Etsy, got %r", result)
-            # return or raise a FastAPI HTTPException so caller gets a clear error
-            raise HTTPException(status_code=502, detail="Failed to retrieve shop information from Etsy")
-        shop_name = result[0]
-        template = result[1]
-        mockup = result[2]
-        design_ids = result[3]
+        template = db.query(EtsyProductTemplate).filter(
+            EtsyProductTemplate.id == product_data.product_template_id,
+            EtsyProductTemplate.user_id == user_id
+        ).first()
+        if not template:
+            logging.error("upload_mockup_files_to_etsy: Template not found for ID %s", product_data.product_template_id)
+            raise HTTPException(status_code=404, detail="Product template not found")
+
+        mockup = mockup_with_images  # We already have this from the earlier query
+        if not mockup:
+            logging.error("upload_mockup_files_to_etsy: Mockup not found for ID %s", product_data.mockup_id)
+            raise HTTPException(status_code=404, detail="Mockup not found")
+
+        # Use the design_ids provided in the request
+        if not product_data.design_ids:
+            logging.error("upload_mockup_files_to_etsy: No design IDs provided in request")
+            raise HTTPException(status_code=400, detail="No design IDs provided")
+
         designs = (
             db.query(DesignImages)
-            .filter(DesignImages.id.in_(design_ids))
+            .filter(
+                DesignImages.id.in_(product_data.design_ids),
+                DesignImages.user_id == user_id,
+                DesignImages.is_active == True
+            )
             .all()
         )
+
+        shop_name = user.shop_name
 
         # Duplicate detection is now handled at the design side, so we use all designs
         logging.info(f"Processing {len(designs)} design(s) - duplicate detection handled at design level")
