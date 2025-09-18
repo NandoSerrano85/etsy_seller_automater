@@ -19,9 +19,9 @@ router = APIRouter(
 # Platform Connection Management
 @router.get("/", response_model=model.PlatformConnectionListResponse)
 async def get_platform_connections(
-    platform: Optional[model.PlatformTypeEnum] = None,
     current_user: CurrentUser,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    platform: Optional[model.PlatformTypeEnum] = None
 ):
     """Get all platform connections for the current user"""
     connections = service.get_user_platform_connections(db, current_user.user_id, platform)
