@@ -20,7 +20,7 @@ router = APIRouter(
 @router.get("/", response_model=model.PlatformConnectionListResponse)
 async def get_platform_connections(
     platform: Optional[model.PlatformTypeEnum] = None,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Get all platform connections for the current user"""
@@ -33,7 +33,7 @@ async def get_platform_connections(
 @router.post("/", response_model=model.PlatformConnectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_platform_connection(
     connection_data: model.PlatformConnectionCreate,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Create a new platform connection"""
@@ -43,7 +43,7 @@ async def create_platform_connection(
 @router.get("/{connection_id}", response_model=model.PlatformConnectionResponse)
 async def get_platform_connection(
     connection_id: UUID,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Get a specific platform connection"""
@@ -56,7 +56,7 @@ async def get_platform_connection(
 async def update_platform_connection(
     connection_id: UUID,
     update_data: model.PlatformConnectionUpdate,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Update a platform connection"""
@@ -68,7 +68,7 @@ async def update_platform_connection(
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_platform_connection(
     connection_id: UUID,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Delete a platform connection"""
@@ -79,7 +79,7 @@ async def delete_platform_connection(
 @router.post("/{connection_id}/verify", response_model=model.ConnectionVerificationResponse)
 async def verify_platform_connection(
     connection_id: UUID,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Verify that a platform connection is still valid"""
@@ -89,7 +89,7 @@ async def verify_platform_connection(
 # Etsy Store Management
 @router.get("/etsy/stores", response_model=model.EtsyStoreListResponse)
 async def get_etsy_stores(
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Get all Etsy stores for the current user"""
@@ -102,7 +102,7 @@ async def get_etsy_stores(
 @router.post("/etsy/stores", response_model=model.EtsyStoreResponse, status_code=status.HTTP_201_CREATED)
 async def create_etsy_store(
     store_data: model.EtsyStoreCreate,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Create a new Etsy store"""
@@ -112,7 +112,7 @@ async def create_etsy_store(
 @router.get("/etsy/stores/{store_id}", response_model=model.EtsyStoreResponse)
 async def get_etsy_store(
     store_id: UUID,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Get a specific Etsy store"""
@@ -125,7 +125,7 @@ async def get_etsy_store(
 async def update_etsy_store(
     store_id: UUID,
     update_data: model.EtsyStoreUpdate,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Update an Etsy store"""
@@ -137,7 +137,7 @@ async def update_etsy_store(
 @router.delete("/etsy/stores/{store_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_etsy_store(
     store_id: UUID,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Delete an Etsy store"""
@@ -148,7 +148,7 @@ async def delete_etsy_store(
 # Enhanced Shopify Store Management
 @router.get("/shopify/stores", response_model=model.ShopifyStoreEnhancedListResponse)
 async def get_enhanced_shopify_stores(
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Get all Shopify stores for the current user with enhanced information"""
@@ -162,7 +162,7 @@ async def get_enhanced_shopify_stores(
 async def update_enhanced_shopify_store(
     store_id: UUID,
     update_data: model.ShopifyStoreEnhancedUpdate,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Update a Shopify store with enhanced information"""
@@ -174,7 +174,7 @@ async def update_enhanced_shopify_store(
 # Bulk operations
 @router.post("/verify-all", response_model=model.BulkConnectionVerificationResponse)
 async def verify_all_connections(
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Verify all platform connections for the current user"""
@@ -185,7 +185,7 @@ async def verify_all_connections(
 @router.post("/setup", response_model=model.PlatformSetupResponse)
 async def setup_platform(
     setup_data: model.PlatformSetupRequest,
-    current_user: CurrentUser = Depends(),
+    current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
     """Setup a new platform connection and store in one operation"""
