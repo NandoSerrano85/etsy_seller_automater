@@ -1344,8 +1344,7 @@ async def upload_mockup_files_to_etsy(
         ))
         is_digital = len(digital_image_paths) > 0
         current_id_number = int(current_id_number)
-        logging.info(f"DEBUG API: process_uploaded_mockups returned: {result}")
-        
+
         logging.info(f"DEBUG API: finished processing uploaded files")
         logging.info(f"DEBUG API: Starting Etsy API calls")
         etsy_api = EtsyAPI(user_id, db)
