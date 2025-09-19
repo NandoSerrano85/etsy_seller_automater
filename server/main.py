@@ -248,7 +248,12 @@ def run_startup_migrations():
                 print(f"Migration error details: {traceback.format_exc()}")
 
 # Skip migrations in production/Railway to ensure fast startup
-if os.getenv('RAILWAY_ENVIRONMENT') != 'production' and os.getenv('SKIP_MIGRATIONS') != 'true':
+should_run_migrations = (
+    (os.getenv('RAILWAY_ENVIRONMENT') != 'production' and os.getenv('SKIP_MIGRATIONS') != 'true') or
+    os.getenv('ENABLE_MIGRATIONS_IN_PRODUCTION', 'false').lower() == 'true'
+)
+
+if should_run_migrations:
     # Call migrations before app startup (safe, non-blocking)
     try:
         print("🔄 Running startup migrations...")
