@@ -37,6 +37,9 @@ NAS_BASE_PATH=/share/Graphics
 
 # Migration Control
 MIGRATION_MODE=all  # Options: 'all', 'startup', 'nas-only'
+
+# NAS Processing Options
+NAS_USE_BATCHED=true  # Use optimized batch processing (default: true)
 ```
 
 ### 3. Service Configuration
@@ -70,6 +73,28 @@ Runs only NAS design import:
 - Scans `/share/Graphics/<shop_name>/<template_name>/`
 - Imports images to `design_images` table
 - Generates phashes for duplicate detection
+
+## NAS Processing Options
+
+### Batched Processing (Default)
+
+When `NAS_USE_BATCHED=true` (default):
+
+- **500MB Batches**: Files are grouped into ~500MB chunks
+- **Parallel Processing**: Multiple batches processed simultaneously
+- **Memory Efficient**: Avoids loading all files at once
+- **Progress Tracking**: Detailed logging of batch progress
+- **Error Isolation**: Batch failures don't affect other batches
+- **Optimal Performance**: Uses multiprocessing for CPU-bound tasks
+
+### Sequential Processing
+
+When `NAS_USE_BATCHED=false`:
+
+- **One-by-one**: Files processed sequentially
+- **Lower Memory**: Minimal memory usage
+- **Simple Debugging**: Easier to trace individual file issues
+- **Slower**: No parallel processing benefits
 
 ## Usage
 

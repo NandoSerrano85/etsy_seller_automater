@@ -85,7 +85,7 @@ def run_startup_migrations(engine):
 
 def run_nas_migration(engine):
     """Run NAS design import migration"""
-    logger.info("🔄 Running NAS design import migration...")
+    logger.info("🔄 Running optimized NAS design import migration...")
 
     try:
         # Check NAS configuration
@@ -93,8 +93,15 @@ def run_nas_migration(engine):
             logger.warning("⚠️  NAS credentials not configured, skipping NAS migration")
             return False
 
-        # Import and run NAS migration
-        from server.migrations.import_nas_designs import upgrade
+        # Check if we should use batched processing
+        use_batched = os.getenv('NAS_USE_BATCHED', 'true').lower() == 'true'
+
+        if use_batched:
+            logger.info("📦 Using batched parallel processing for NAS migration")
+            from server.migrations.import_nas_designs_batched import upgrade
+        else:
+            logger.info("📄 Using sequential processing for NAS migration")
+            from server.migrations.import_nas_designs import upgrade
 
         with engine.connect() as conn:
             trans = conn.begin()
