@@ -31,6 +31,3 @@ uvicorn==0.24.0
 # HTTP client dependencies (used by server code)
 httpx==0.25.2
 requests==2.31.0
-
-# Parallel processing
-concurrent-futures==3.1.1
