@@ -247,26 +247,10 @@ def run_startup_migrations():
                 import traceback
                 print(f"Migration error details: {traceback.format_exc()}")
 
-# Skip migrations in production/Railway to ensure fast startup
-should_run_migrations = (
-    (os.getenv('RAILWAY_ENVIRONMENT') != 'production' and os.getenv('SKIP_MIGRATIONS') != 'true') or
-    os.getenv('ENABLE_MIGRATIONS_IN_PRODUCTION', 'false').lower() == 'true'
-)
-
-if should_run_migrations:
-    # Call migrations before app startup (safe, non-blocking)
-    try:
-        print("🔄 Running startup migrations...")
-        run_startup_migrations()
-        print("✅ Startup migrations completed")
-    except Exception as e:
-        print(f"⚠️  Failed running startup migrations: {e}")
-        import traceback
-        print(f"Migration error details: {traceback.format_exc()}")
-        # Continue - the app should still start even if migrations fail
-else:
-    print("ℹ️  Skipping migrations in production/Railway environment for fast startup")
-    print("ℹ️  Run migrations manually if needed")
+# Migrations are now handled by a separate Railway service
+# This ensures fast startup and prevents health check failures
+print("ℹ️  Migrations are handled by a separate Railway migration service")
+print("ℹ️  Main API starts immediately for fast health checks")
 
 def run_org_id_migration(conn):
     """Add missing org_id columns to tables that need multi-tenant support."""
