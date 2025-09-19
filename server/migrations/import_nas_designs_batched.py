@@ -109,7 +109,7 @@ def process_single_file(file_info: FileInfo) -> Tuple[bool, str, Optional[str]]:
 
 def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
     """
-    Process a batch of files in parallel within this batch
+    Process a batch of files (~500MB) in parallel, then commit all to database at once
     This function runs in a separate process
     """
     start_time = time.time()
@@ -119,80 +119,127 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
     error_details = []
     total_size = sum(f.size for f in batch_files)
 
+    # Storage for successful processing results
+    successful_results = []
+
+    logging.info(f"📦 Batch {batch_id}: Starting processing of {len(batch_files)} files ({total_size / (1024*1024):.1f} MB)")
+
     try:
         # Create database connection for this batch
         connection = get_database_connection()
 
-        # Process files with thread pool for I/O operations
-        from concurrent.futures import ThreadPoolExecutor
+        # First, check which files already exist to skip them
+        existing_files = set()
+        for file_info in batch_files:
+            if design_exists(connection, file_info.user_id, file_info.filename):
+                existing_files.add(file_info.filename)
+                skipped += 1
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            # Submit all file processing tasks
-            future_to_file = {
-                executor.submit(process_single_file, file_info): file_info
-                for file_info in batch_files
-            }
+        # Filter out existing files
+        files_to_process = [f for f in batch_files if f.filename not in existing_files]
 
-            # Process results as they complete
-            for future in as_completed(future_to_file):
-                file_info = future_to_file[future]
+        logging.info(f"📦 Batch {batch_id}: Processing {len(files_to_process)} new files, skipping {skipped} existing")
 
-                try:
-                    # Check if design already exists (in database process)
-                    if design_exists(connection, file_info.user_id, file_info.filename):
-                        skipped += 1
-                        continue
+        if files_to_process:
+            # Process files with thread pool for I/O operations
+            from concurrent.futures import ThreadPoolExecutor
 
-                    # Get processing result
-                    success, error_msg, phash = future.result()
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                # Submit all file processing tasks
+                future_to_file = {
+                    executor.submit(process_single_file, file_info): file_info
+                    for file_info in files_to_process
+                }
 
-                    if not success:
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    file_info = future_to_file[future]
+
+                    try:
+                        # Get processing result
+                        success, error_msg, phash = future.result()
+
+                        if not success:
+                            errors += 1
+                            error_details.append(error_msg)
+                            continue
+
+                        # Store successful result for batch database insert
+                        successful_results.append({
+                            'file_info': file_info,
+                            'phash': phash,
+                            'design_id': str(uuid.uuid4())
+                        })
+
+                    except Exception as e:
                         errors += 1
-                        error_details.append(error_msg)
-                        continue
+                        error_details.append(f"Processing error for {file_info.filename}: {e}")
 
-                    # Insert into database
-                    design_id = str(uuid.uuid4())
-                    insert_query = text("""
-                        INSERT INTO design_images
-                        (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
-                        VALUES
-                        (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
-                    """)
+        # Now perform batch database insert for all successful results
+        if successful_results:
+            logging.info(f"📦 Batch {batch_id}: Writing {len(successful_results)} records to database...")
 
-                    now = datetime.now(timezone.utc)
-                    connection.execute(insert_query, {
+            try:
+                # Begin transaction for batch insert
+                trans = connection.begin()
+
+                now = datetime.now(timezone.utc)
+
+                # Batch insert into design_images
+                insert_query = text("""
+                    INSERT INTO design_images
+                    (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
+                    VALUES
+                    (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                """)
+
+                design_records = []
+                association_records = []
+
+                for result in successful_results:
+                    file_info = result['file_info']
+                    design_id = result['design_id']
+
+                    design_records.append({
                         "id": design_id,
                         "user_id": file_info.user_id,
                         "filename": file_info.filename,
                         "file_path": file_info.file_path,
-                        "phash": phash,
+                        "phash": result['phash'],
                         "is_active": True,
                         "created_at": now,
                         "updated_at": now
                     })
 
-                    # Associate with template
-                    association_query = text("""
-                        INSERT INTO design_template_association
-                        (design_image_id, product_template_id)
-                        VALUES (:design_id, :template_id)
-                        ON CONFLICT DO NOTHING
-                    """)
-
-                    connection.execute(association_query, {
+                    association_records.append({
                         "design_id": design_id,
                         "template_id": file_info.template_id
                     })
 
-                    processed += 1
+                # Execute batch insert for designs
+                connection.execute(insert_query, design_records)
 
-                except Exception as e:
-                    errors += 1
-                    error_details.append(f"Database error for {file_info.filename}: {e}")
+                # Batch insert template associations
+                association_query = text("""
+                    INSERT INTO design_template_association
+                    (design_image_id, product_template_id)
+                    VALUES (:design_id, :template_id)
+                    ON CONFLICT DO NOTHING
+                """)
 
-        # Commit all changes for this batch
-        connection.commit()
+                connection.execute(association_query, association_records)
+
+                # Commit the entire batch at once
+                trans.commit()
+                processed = len(successful_results)
+
+                logging.info(f"✅ Batch {batch_id}: Successfully committed {processed} records to database")
+
+            except Exception as e:
+                trans.rollback()
+                error_details.append(f"Batch database commit failed: {e}")
+                errors += len(successful_results)
+                processed = 0
 
     except Exception as e:
         error_details.append(f"Batch {batch_id} failed: {e}")
@@ -202,6 +249,8 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
             connection.close()
 
     processing_time = time.time() - start_time
+
+    logging.info(f"📦 Batch {batch_id}: Completed in {processing_time:.1f}s - {processed} processed, {skipped} skipped, {errors} errors")
 
     return BatchResult(
         batch_id=batch_id,

@@ -99,21 +99,32 @@ def run_nas_migration(engine):
         if use_batched:
             logger.info("📦 Using batched parallel processing for NAS migration")
             from server.migrations.import_nas_designs_batched import upgrade
+
+            # Batched migration handles its own transactions and connections
+            try:
+                with engine.connect() as conn:
+                    upgrade(conn)
+                logger.info("✅ NAS migration completed successfully")
+                return True
+            except Exception as e:
+                logger.error(f"❌ NAS migration failed: {e}")
+                return False
         else:
             logger.info("📄 Using sequential processing for NAS migration")
             from server.migrations.import_nas_designs import upgrade
 
-        with engine.connect() as conn:
-            trans = conn.begin()
-            try:
-                upgrade(conn)
-                trans.commit()
-                logger.info("✅ NAS migration completed successfully")
-                return True
-            except Exception as e:
-                trans.rollback()
-                logger.error(f"❌ NAS migration failed: {e}")
-                return False
+            # Sequential migration uses single transaction
+            with engine.connect() as conn:
+                trans = conn.begin()
+                try:
+                    upgrade(conn)
+                    trans.commit()
+                    logger.info("✅ NAS migration completed successfully")
+                    return True
+                except Exception as e:
+                    trans.rollback()
+                    logger.error(f"❌ NAS migration failed: {e}")
+                    return False
 
     except Exception as e:
         logger.error(f"❌ Could not run NAS migration: {e}")
