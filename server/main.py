@@ -492,7 +492,7 @@ def enable_multi_tenant_features():
     os.environ['ENABLE_MULTI_TENANT'] = 'true'
     print("✅ Multi-tenant features enabled")
 
-# Skip complex migrations in production
+# Skip complex migrations in production to ensure fast startup and health check pass
 if os.getenv('RAILWAY_ENVIRONMENT') != 'production':
     try:
         run_migrations()
