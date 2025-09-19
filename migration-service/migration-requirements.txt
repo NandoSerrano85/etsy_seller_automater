@@ -1,7 +1,33 @@
-# Minimal requirements for migration service
+# Migration service requirements
+# Database
 sqlalchemy==2.0.30
 psycopg2-binary==2.9.9
+
+# Image processing for phash generation
 Pillow==10.1.0
 imagehash==4.3.1
+
+# NAS/SFTP access
 paramiko==3.4.0
+
+# Environment and utilities
 python-dotenv==1.0.0
+
+# FastAPI dependencies (needed by server imports)
+fastapi==0.104.1
+pydantic==2.5.0
+starlette==0.27.0
+
+# Auth dependencies (used by server code)
+passlib>=1.7.4
+python-jose==3.3.0
+bcrypt==3.2.2
+pyjwt==2.10.1
+
+# Additional server dependencies
+python-multipart==0.0.6
+uvicorn==0.24.0
+
+# HTTP client dependencies (used by server code)
+httpx==0.25.2
+requests==2.31.0
