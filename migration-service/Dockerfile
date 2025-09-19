@@ -12,14 +12,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements (subset for migrations only)
-COPY migration-requirements.txt .
+COPY migration-service/migration-requirements.txt .
 RUN pip install --no-cache-dir -r migration-requirements.txt
 
 # Copy the server code (for access to migrations and entities)
 COPY server/ ./server/
 
 # Copy migration runner
-COPY migration-service/run-migrations.py .
+COPY migration-service/run-migrations.py ./run-migrations.py
 
 # Set environment variables
 ENV PYTHONPATH=/app
