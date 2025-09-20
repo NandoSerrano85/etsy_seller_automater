@@ -147,19 +147,54 @@ def upgrade(connection):
         """))
         logging.info("Created printers table")
 
-        # Add indexes for performance
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(org_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON organization_members(organization_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON organization_members(user_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_shops_org_id ON shops(organization_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_files_org_id ON files(organization_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_print_jobs_org_id ON print_jobs(organization_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_print_jobs_status ON print_jobs(status);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_events_org_id ON events(organization_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_events_user_id ON events(user_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_printers_org_id ON printers(organization_id);"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS idx_printers_user_id ON printers(user_id);"))
-        logging.info("Created performance indexes")
+        # Add indexes for performance - with existence checks
+        try:
+            # Check if tables exist before creating indexes
+            tables_to_index = [
+                ("users", "org_id", "idx_users_org_id"),
+                ("organization_members", "organization_id", "idx_organization_members_org_id"),
+                ("organization_members", "user_id", "idx_organization_members_user_id"),
+                ("shops", "organization_id", "idx_shops_org_id"),
+                ("files", "organization_id", "idx_files_org_id"),
+                ("print_jobs", "organization_id", "idx_print_jobs_org_id"),
+                ("print_jobs", "status", "idx_print_jobs_status"),
+                ("events", "organization_id", "idx_events_org_id"),
+                ("events", "user_id", "idx_events_user_id"),
+                ("printers", "organization_id", "idx_printers_org_id"),
+                ("printers", "user_id", "idx_printers_user_id")
+            ]
+
+            for table_name, column_name, index_name in tables_to_index:
+                # Check if table exists
+                table_check = connection.execute(text(f"""
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_name = '{table_name}' AND table_schema = 'public'
+                """)).fetchone()
+
+                if not table_check:
+                    logging.warning(f"Table {table_name} does not exist, skipping index {index_name}")
+                    continue
+
+                # Check if column exists
+                column_check = connection.execute(text(f"""
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = '{table_name}' AND column_name = '{column_name}'
+                """)).fetchone()
+
+                if not column_check:
+                    logging.warning(f"Column {column_name} does not exist in table {table_name}, skipping index {index_name}")
+                    continue
+
+                # Create the index
+                connection.execute(text(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name});"))
+                logging.info(f"Created index {index_name}")
+
+            logging.info("Completed performance index creation")
+        except Exception as e:
+            logging.warning(f"Some indexes may not have been created: {e}")
+            # Continue - indexes are not critical for basic functionality
 
         # Update existing canvas_configs table to add DPI and spacing fields if they don't exist
         connection.execute(text("""

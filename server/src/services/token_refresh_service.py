@@ -96,53 +96,86 @@ class TokenRefreshService:
     async def _find_tokens_to_refresh(self, db: Session) -> List[PlatformConnection]:
         """Find platform connections with tokens that need refreshing"""
 
-        # Calculate the threshold time (now + refresh_threshold seconds)
-        threshold_time = datetime.now(timezone.utc) + timedelta(seconds=self.refresh_threshold)
+        try:
+            # Calculate the threshold time (now + refresh_threshold seconds)
+            threshold_time = datetime.now(timezone.utc) + timedelta(seconds=self.refresh_threshold)
 
-        # Query for active connections with tokens expiring soon
-        connections = db.query(PlatformConnection).filter(
-            and_(
-                PlatformConnection.is_active == True,
-                PlatformConnection.access_token.isnot(None),
-                PlatformConnection.refresh_token.isnot(None),
-                PlatformConnection.token_expires_at.isnot(None),
-                PlatformConnection.token_expires_at <= threshold_time
-            )
-        ).all()
+            # Query for active connections with tokens expiring soon
+            # Use more robust filtering to avoid enum issues
+            connections = db.query(PlatformConnection).filter(
+                and_(
+                    PlatformConnection.is_active == True,
+                    PlatformConnection.access_token.isnot(None),
+                    PlatformConnection.refresh_token.isnot(None),
+                    PlatformConnection.token_expires_at.isnot(None),
+                    PlatformConnection.token_expires_at <= threshold_time
+                )
+            ).all()
 
-        return connections
+            # Filter out connections with problematic platform values
+            valid_connections = []
+            for conn in connections:
+                try:
+                    # Test if we can access the platform attribute without enum errors
+                    platform_test = conn.platform
+                    if platform_test:
+                        valid_connections.append(conn)
+                except Exception as e:
+                    logger.warning(f"Skipping connection {conn.id} due to platform enum error: {e}")
+                    continue
+
+            logger.debug(f"Found {len(valid_connections)} valid connections out of {len(connections)} total")
+            return valid_connections
+
+        except Exception as e:
+            logger.error(f"Error finding tokens to refresh: {e}")
+            return []
 
     async def _refresh_single_token(self, connection: PlatformConnection, db: Session):
         """Refresh a single platform connection token"""
 
-        platform = connection.platform.value
         user_id = connection.user_id
 
-        logger.info(f"🔄 Refreshing {platform} token for user {user_id}")
-
         try:
-            # Handle case-insensitive platform comparison
-            platform_enum = connection.platform
-            if hasattr(platform_enum, 'value'):
-                platform_value = platform_enum.value.upper()
-            else:
-                platform_value = str(platform_enum).upper()
+            # Safely extract platform value with fallback handling
+            platform_value = None
+            platform_enum = None
 
-            if platform_value == 'ETSY' or platform_enum == PlatformType.ETSY:
+            if hasattr(connection, 'platform') and connection.platform:
+                platform_enum = connection.platform
+                if hasattr(platform_enum, 'value'):
+                    platform_value = platform_enum.value.lower()
+                else:
+                    platform_value = str(platform_enum).lower()
+            else:
+                logger.error(f"Connection {connection.id} has no platform information")
+                return
+
+            logger.info(f"🔄 Refreshing {platform_value} token for user {user_id}")
+
+            # Direct platform value comparison (case-insensitive)
+            if platform_value == 'etsy':
                 await self._refresh_etsy_token(connection, db)
-            elif platform_value == 'SHOPIFY' or platform_enum == PlatformType.SHOPIFY:
+            elif platform_value == 'shopify':
                 await self._refresh_shopify_token(connection, db)
             # Add other platforms as needed
             else:
-                logger.warning(f"Token refresh not implemented for platform: {platform} (enum: {platform_enum})")
+                logger.warning(f"Token refresh not implemented for platform: {platform_value}")
                 return
 
             self.stats['tokens_refreshed'] += 1
-            logger.info(f"✅ Successfully refreshed {platform} token for user {user_id}")
+            logger.info(f"✅ Successfully refreshed {platform_value} token for user {user_id}")
 
         except Exception as e:
             self.stats['refresh_failures'] += 1
-            logger.error(f"❌ Failed to refresh {platform} token for user {user_id}: {e}")
+            logger.error(f"❌ Failed to refresh token for user {user_id}: {e}")
+
+            # Log additional debug information
+            try:
+                platform_debug = getattr(connection, 'platform', 'no_platform_attr')
+                logger.error(f"Debug - platform attribute: {platform_debug}, type: {type(platform_debug)}")
+            except Exception as debug_e:
+                logger.error(f"Debug error: {debug_e}")
 
             # Mark connection as inactive if refresh fails repeatedly
             await self._handle_refresh_failure(connection, db)
