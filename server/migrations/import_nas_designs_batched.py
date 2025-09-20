@@ -180,27 +180,63 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
             logging.info(f"📦 Batch {batch_id}: Writing {len(successful_results)} records to database...")
 
             try:
-                # Begin transaction for batch insert
+                # Begin transaction for batch insert with deadlock prevention
                 trans = connection.begin()
+
+                # Set transaction isolation level to avoid deadlocks
+                connection.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED"))
+
+                # Use advisory lock to prevent concurrent batch processing conflicts
+                connection.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
+                                 {"lock_key": hash(f"nas_migration_batch_{batch_id}") % 2147483647})
 
                 now = datetime.now(timezone.utc)
 
-                # Batch insert into design_images
-                insert_query = text("""
-                    INSERT INTO design_images
-                    (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
-                    VALUES
-                    (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
-                """)
+                # Check if multi-tenant is enabled to include org_id
+                multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
+
+                if multi_tenant:
+                    # Batch insert into design_images with org_id
+                    insert_query = text("""
+                        INSERT INTO design_images
+                        (id, user_id, org_id, filename, file_path, phash, is_active, created_at, updated_at)
+                        VALUES
+                        (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                        ON CONFLICT (id) DO NOTHING
+                    """)
+                else:
+                    # Batch insert into design_images without org_id
+                    insert_query = text("""
+                        INSERT INTO design_images
+                        (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
+                        VALUES
+                        (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                        ON CONFLICT (id) DO NOTHING
+                    """)
 
                 design_records = []
                 association_records = []
+
+                # Get user org_id if multi-tenant is enabled
+                user_org_map = {}
+                if multi_tenant and successful_results:
+                    # Get org_ids for all users in this batch
+                    user_ids = list(set(result['file_info'].user_id for result in successful_results))
+                    logging.info(f"📦 Batch {batch_id}: Getting org_ids for {len(user_ids)} users...")
+
+                    # Use proper SQL array syntax for PostgreSQL
+                    placeholders = ','.join([f':user_id_{i}' for i in range(len(user_ids))])
+                    org_query = text(f"SELECT id, org_id FROM users WHERE id IN ({placeholders})")
+                    org_params = {f'user_id_{i}': user_id for i, user_id in enumerate(user_ids)}
+                    org_result = connection.execute(org_query, org_params)
+                    user_org_map = {str(row[0]): row[1] for row in org_result}
+                    logging.info(f"📦 Batch {batch_id}: Found org_ids for {len(user_org_map)} users")
 
                 for result in successful_results:
                     file_info = result['file_info']
                     design_id = result['design_id']
 
-                    design_records.append({
+                    design_record = {
                         "id": design_id,
                         "user_id": file_info.user_id,
                         "filename": file_info.filename,
@@ -209,7 +245,13 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                         "is_active": True,
                         "created_at": now,
                         "updated_at": now
-                    })
+                    }
+
+                    # Add org_id if multi-tenant is enabled
+                    if multi_tenant:
+                        design_record["org_id"] = user_org_map.get(file_info.user_id)
+
+                    design_records.append(design_record)
 
                     association_records.append({
                         "design_id": design_id,
@@ -217,7 +259,9 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                     })
 
                 # Execute batch insert for designs
-                connection.execute(insert_query, design_records)
+                logging.info(f"📦 Batch {batch_id}: Inserting {len(design_records)} design records...")
+                design_result = connection.execute(insert_query, design_records)
+                design_rows_inserted = design_result.rowcount if hasattr(design_result, 'rowcount') else len(design_records)
 
                 # Batch insert template associations
                 association_query = text("""
@@ -227,19 +271,48 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                     ON CONFLICT DO NOTHING
                 """)
 
-                connection.execute(association_query, association_records)
+                logging.info(f"📦 Batch {batch_id}: Inserting {len(association_records)} template associations...")
+                assoc_result = connection.execute(association_query, association_records)
+                assoc_rows_inserted = assoc_result.rowcount if hasattr(assoc_result, 'rowcount') else len(association_records)
 
                 # Commit the entire batch at once
                 trans.commit()
                 processed = len(successful_results)
 
+                # Verify insertions were successful
+                design_ids = [record["id"] for record in design_records]
+                if design_ids:
+                    verify_placeholders = ','.join([f':id_{i}' for i in range(len(design_ids))])
+                    verify_query = text(f"SELECT COUNT(*) FROM design_images WHERE id IN ({verify_placeholders})")
+                    verify_params = {f'id_{i}': design_id for i, design_id in enumerate(design_ids)}
+                    verify_result = connection.execute(verify_query, verify_params)
+                    actual_count = verify_result.fetchone()[0]
+                else:
+                    actual_count = 0
+
                 logging.info(f"✅ Batch {batch_id}: Successfully committed {processed} records to database")
+                logging.info(f"   └─ Design records inserted: {design_rows_inserted}")
+                logging.info(f"   └─ Template associations: {assoc_rows_inserted}")
+                logging.info(f"   └─ Verification: {actual_count}/{len(design_records)} records confirmed in database")
+
+                # Warn if verification count doesn't match
+                if actual_count != len(design_records):
+                    logging.warning(f"⚠️  Batch {batch_id}: Expected {len(design_records)} records, found {actual_count} in database")
 
             except Exception as e:
                 trans.rollback()
+                logging.error(f"❌ Batch {batch_id}: Database commit failed - {e}")
                 error_details.append(f"Batch database commit failed: {e}")
                 errors += len(successful_results)
                 processed = 0
+
+                # Log detailed error information for debugging
+                if "design_images" in str(e).lower():
+                    logging.error(f"❌ Batch {batch_id}: Design table error - check schema compatibility")
+                if "org_id" in str(e).lower():
+                    logging.error(f"❌ Batch {batch_id}: Multi-tenant org_id error - check user org assignments")
+                if "duplicate" in str(e).lower() or "conflict" in str(e).lower():
+                    logging.error(f"❌ Batch {batch_id}: Duplicate key conflict - some records may already exist")
 
     except Exception as e:
         error_details.append(f"Batch {batch_id} failed: {e}")
