@@ -99,7 +99,10 @@ class CacheService:
 
         try:
             # Serialize value
-            if isinstance(value, (dict, list)):
+            if hasattr(value, 'model_dump'):
+                # Pydantic model - convert to dict first
+                serialized_value = json.dumps(value.model_dump(), default=str)
+            elif isinstance(value, (dict, list)):
                 serialized_value = json.dumps(value, default=str)
             else:
                 serialized_value = str(value)

@@ -23,18 +23,32 @@ def create_printer(
     current_user: User = Depends(get_current_user)
 ):
     """Create a new printer"""
-    if not current_user.org_id:
-        raise HTTPException(status_code=400, detail="User must belong to an organization")
-    
+    # Get or create default organization for user if multi-tenant is enabled
+    org_id = None
+    if hasattr(current_user, 'org_id'):
+        org_id = current_user.org_id
+        if not org_id:
+            # Create a default organization for the user
+            from server.src.routes.organizations.service import OrganizationService
+            try:
+                org = OrganizationService.create_default_organization_for_user(db, current_user.id)
+                org_id = org.id
+                # Update user with the new org_id
+                current_user.org_id = org_id
+                db.commit()
+            except Exception as e:
+                # If organization creation fails, continue without org_id for backward compatibility
+                pass
+
     try:
         printer = PrinterService.create_printer(
             db=db,
             user_id=current_user.id,
-            org_id=current_user.org_id,
+            org_id=org_id,
             printer_data=printer_data
         )
         return model.PrinterResponse.model_validate(printer)
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -47,18 +61,20 @@ def get_my_printers(
     current_user: User = Depends(get_current_user)
 ):
     """Get current user's printers"""
-    if not current_user.org_id:
-        raise HTTPException(status_code=400, detail="User must belong to an organization")
-    
+    # Handle both legacy users (without org_id) and multi-tenant users
+    org_id = None
+    if hasattr(current_user, 'org_id'):
+        org_id = current_user.org_id
+
     printers, total = PrinterService.get_user_printers(
         db=db,
         user_id=current_user.id,
-        org_id=current_user.org_id,
+        org_id=org_id,
         skip=skip,
         limit=limit,
         active_only=active_only
     )
-    
+
     return model.PrinterListResponse(
         printers=[model.PrinterResponse.model_validate(printer) for printer in printers],
         total=total,
@@ -171,18 +187,20 @@ def find_compatible_printers(
     current_user: User = Depends(get_current_user)
 ):
     """Find printers compatible with given dimensions and template"""
-    if not current_user.org_id:
-        raise HTTPException(status_code=400, detail="User must belong to an organization")
-    
+    # Handle both legacy users (without org_id) and multi-tenant users
+    org_id = None
+    if hasattr(current_user, 'org_id'):
+        org_id = current_user.org_id
+
     compatible_printers = PrinterService.find_compatible_printers(
         db=db,
         user_id=current_user.id,
-        org_id=current_user.org_id,
+        org_id=org_id,
         width_inches=width_inches,
         height_inches=height_inches,
         template_id=template_id
     )
-    
+
     return model.PrinterListResponse(
         printers=[model.PrinterResponse.model_validate(printer) for printer in compatible_printers],
         total=len(compatible_printers),
@@ -196,15 +214,17 @@ def get_default_printer(
     current_user: User = Depends(get_current_user)
 ):
     """Get user's default printer"""
-    if not current_user.org_id:
-        raise HTTPException(status_code=400, detail="User must belong to an organization")
-    
+    # Handle both legacy users (without org_id) and multi-tenant users
+    org_id = None
+    if hasattr(current_user, 'org_id'):
+        org_id = current_user.org_id
+
     default_printer = PrinterService.get_default_printer(
         db=db,
         user_id=current_user.id,
-        org_id=current_user.org_id
+        org_id=org_id
     )
-    
+
     if default_printer:
         return model.PrinterResponse.model_validate(default_printer)
     return None
@@ -240,13 +260,15 @@ def get_printer_stats(
     current_user: User = Depends(get_current_user)
 ):
     """Get printer statistics for current user"""
-    if not current_user.org_id:
-        raise HTTPException(status_code=400, detail="User must belong to an organization")
-    
+    # Handle both legacy users (without org_id) and multi-tenant users
+    org_id = None
+    if hasattr(current_user, 'org_id'):
+        org_id = current_user.org_id
+
     return PrinterService.get_printer_stats(
         db=db,
         user_id=current_user.id,
-        org_id=current_user.org_id
+        org_id=org_id
     )
 
 @router.get("/suggestions/config", response_model=model.PrinterSuggestionsResponse)

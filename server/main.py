@@ -73,9 +73,15 @@ async def lifespan(app: FastAPI):
             from server.src.services.token_refresh_service import start_token_refresh_service
             print("🔄 Starting automatic token refresh service...")
 
-            # Start the token refresh service as a background task
-            token_refresh_task = asyncio.create_task(start_token_refresh_service())
-            print("✅ Token refresh service started")
+            # Start the token refresh service as a background task with error handling
+            async def safe_token_service():
+                try:
+                    await start_token_refresh_service()
+                except Exception as e:
+                    print(f"⚠️  Token refresh service stopped due to error: {e}")
+
+            token_refresh_task = asyncio.create_task(safe_token_service())
+            print("✅ Token refresh service started (with error handling)")
 
         except Exception as e:
             print(f"⚠️  Warning: Failed to start token refresh service: {e}")
@@ -111,17 +117,24 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://comforting-cocada-88dd8c.netlify.app",
-        "https://printer-automater.netlify.app", 
+        "https://printer-automater.netlify.app",
         "https://printer-automation-frontend-production.up.railway.app",  # Specific Railway frontend URL
         frontend_url,  # Dynamic frontend URL from environment
         "http://localhost:3000",
         "http://127.0.0.1:3000"
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=["*"],
     allow_origin_regex=r"https://.*\.railway\.app",  # Use regex for Railway subdomains
+    expose_headers=["*"]
 )
+
+print("🌐 CORS middleware configured with the following origins:")
+print(f"   - https://printer-automation-frontend-production.up.railway.app")
+print(f"   - {frontend_url}")
+print(f"   - Any *.railway.app subdomain")
+print("🔧 CORS allows all methods and headers")
 
 # Add explicit OPTIONS handling for debugging
 @app.options("/{path:path}")

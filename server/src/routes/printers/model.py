@@ -57,7 +57,7 @@ class PrinterCapabilityCheck(BaseModel):
 class PrinterResponse(BaseModel):
     id: UUID
     user_id: UUID
-    org_id: UUID
+    org_id: Optional[UUID] = None  # Made optional for backward compatibility
     name: str
     printer_type: str
     manufacturer: Optional[str] = None
@@ -71,14 +71,14 @@ class PrinterResponse(BaseModel):
     is_default: bool
     created_at: datetime
     updated_at: datetime
-    
+
     # Computed properties
     print_area_description: str = ""
     is_large_format: bool = False
-    
+
     class Config:
         from_attributes = True
-    
+
     def __init__(self, **data):
         super().__init__(**data)
         # Compute derived properties

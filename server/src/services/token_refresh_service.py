@@ -70,8 +70,12 @@ class TokenRefreshService:
             self.stats['total_checks'] += 1
             self.stats['last_run'] = datetime.now(timezone.utc)
 
-            # Get database session
-            db: Session = next(get_db())
+            # Get database session with error handling
+            try:
+                db: Session = next(get_db())
+            except Exception as db_error:
+                logger.warning(f"Database connection failed, skipping token refresh cycle: {db_error}")
+                return
 
             try:
                 # Find tokens that need refreshing
@@ -91,7 +95,7 @@ class TokenRefreshService:
                 db.close()
 
         except Exception as e:
-            logger.error(f"Error in token refresh cycle: {e}")
+            logger.warning(f"Token refresh cycle failed, continuing service: {e}")
 
     async def _find_tokens_to_refresh(self, db: Session) -> List[PlatformConnection]:
         """Find platform connections with tokens that need refreshing"""
@@ -100,35 +104,44 @@ class TokenRefreshService:
             # Calculate the threshold time (now + refresh_threshold seconds)
             threshold_time = datetime.now(timezone.utc) + timedelta(seconds=self.refresh_threshold)
 
-            # Query for active connections with tokens expiring soon
-            # Use more robust filtering to avoid enum issues
-            connections = db.query(PlatformConnection).filter(
-                and_(
-                    PlatformConnection.is_active == True,
-                    PlatformConnection.access_token.isnot(None),
-                    PlatformConnection.refresh_token.isnot(None),
-                    PlatformConnection.token_expires_at.isnot(None),
-                    PlatformConnection.token_expires_at <= threshold_time
-                )
-            ).all()
+            # Use raw SQL to avoid enum issues
+            from sqlalchemy import text
+            result = db.execute(text("""
+                SELECT id, user_id, platform, access_token, refresh_token, token_expires_at, is_active
+                FROM platform_connections
+                WHERE is_active = true
+                AND access_token IS NOT NULL
+                AND refresh_token IS NOT NULL
+                AND token_expires_at IS NOT NULL
+                AND token_expires_at <= :threshold_time
+            """), {"threshold_time": threshold_time})
 
-            # Filter out connections with problematic platform values
+            raw_connections = result.fetchall()
+
+            # Manually create connection objects to avoid enum issues
             valid_connections = []
-            for conn in connections:
+            for row in raw_connections:
                 try:
-                    # Test if we can access the platform attribute without enum errors
-                    platform_test = conn.platform
-                    if platform_test:
-                        valid_connections.append(conn)
+                    # Check if platform value is valid before processing
+                    platform_value = row.platform.lower() if row.platform else None
+                    if platform_value in ['etsy', 'shopify', 'amazon', 'ebay']:
+                        # Get the actual ORM object for this connection
+                        conn = db.query(PlatformConnection).filter(PlatformConnection.id == row.id).first()
+                        if conn:
+                            valid_connections.append(conn)
+                    else:
+                        logger.warning(f"Skipping connection {row.id} with invalid platform: {row.platform}")
                 except Exception as e:
-                    logger.warning(f"Skipping connection {conn.id} due to platform enum error: {e}")
+                    logger.warning(f"Error processing connection {row.id}: {e}")
                     continue
 
-            logger.debug(f"Found {len(valid_connections)} valid connections out of {len(connections)} total")
+            logger.debug(f"Found {len(valid_connections)} valid connections out of {len(raw_connections)} total")
             return valid_connections
 
         except Exception as e:
             logger.error(f"Error finding tokens to refresh: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return []
 
     async def _refresh_single_token(self, connection: PlatformConnection, db: Session):
