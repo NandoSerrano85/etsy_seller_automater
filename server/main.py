@@ -13,6 +13,8 @@ sys.path.insert(0, project_root)
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
+import asyncio
 
 # Enable multi-tenant features early, before entity imports
 os.environ['ENABLE_MULTI_TENANT'] = 'true'
@@ -46,8 +48,52 @@ print(f"🔧 Multi-tenant: {os.getenv('ENABLE_MULTI_TENANT', 'false')}")
 dotenv_path = os.path.join(project_root, '.env')
 load_dotenv(dotenv_path)
 
+# Global variable to hold the token refresh task
+token_refresh_task = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager - handles startup and shutdown"""
+    global token_refresh_task
+
+    # Startup
+    print("🔄 Starting application services...")
+
+    # Only start token refresh service in production
+    if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
+        try:
+            from server.src.services.token_refresh_service import start_token_refresh_service
+            print("🔄 Starting automatic token refresh service...")
+
+            # Start the token refresh service as a background task
+            token_refresh_task = asyncio.create_task(start_token_refresh_service())
+            print("✅ Token refresh service started")
+
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to start token refresh service: {e}")
+    else:
+        print("ℹ️  Skipping token refresh service in development mode")
+
+    print("✅ Application services started")
+
+    yield  # App runs here
+
+    # Shutdown
+    print("🛑 Shutting down application services...")
+
+    if token_refresh_task:
+        try:
+            from server.src.services.token_refresh_service import stop_token_refresh_service
+            stop_token_refresh_service()
+            token_refresh_task.cancel()
+            print("✅ Token refresh service stopped")
+        except Exception as e:
+            print(f"⚠️  Warning: Error stopping token refresh service: {e}")
+
+    print("✅ Application shutdown complete")
+
 print("📋 Creating FastAPI application...")
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 print("✅ FastAPI application created")
 
 # Get frontend URL from environment variable

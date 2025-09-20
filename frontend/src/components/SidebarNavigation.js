@@ -125,38 +125,38 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
       path: '/?tab=tools',
       gradient: 'from-sky-100 to-sky-200',
     },
-    {
-      id: 'organizations',
-      label: 'Organizations',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h5a2 2 0 002-2V9a2 2 0 00-2-2H9a2 2 0 00-2 2v10a2 2 0 002 2z"
-          />
-        </svg>
-      ),
-      path: '/organizations',
-      gradient: 'from-indigo-100 to-indigo-200',
-    },
-    {
-      id: 'printers',
-      label: 'Printer Management',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-9a2 2 0 00-2-2H9a2 2 0 00-2 2v9a2 2 0 002 2z"
-          />
-        </svg>
-      ),
-      path: '/printers',
-      gradient: 'from-orange-100 to-orange-200',
-    },
+    // {
+    //   id: 'organizations',
+    //   label: 'Organizations',
+    //   icon: (
+    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    //       <path
+    //         strokeLinecap="round"
+    //         strokeLinejoin="round"
+    //         strokeWidth={2}
+    //         d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 8h5a2 2 0 002-2V9a2 2 0 00-2-2H9a2 2 0 00-2 2v10a2 2 0 002 2z"
+    //       />
+    //     </svg>
+    //   ),
+    //   path: '/organizations',
+    //   gradient: 'from-indigo-100 to-indigo-200',
+    // },
+    // {
+    //   id: 'printers',
+    //   label: 'Printer Management',
+    //   icon: (
+    //     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    //       <path
+    //         strokeLinecap="round"
+    //         strokeLinejoin="round"
+    //         strokeWidth={2}
+    //         d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-9a2 2 0 00-2-2H9a2 2 0 00-2 2v9a2 2 0 002 2z"
+    //       />
+    //     </svg>
+    //   ),
+    //   path: '/printers',
+    //   gradient: 'from-orange-100 to-orange-200',
+    // },
     {
       id: 'shopify',
       label: 'Shopify',
@@ -195,6 +195,8 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
         { label: 'Subscription', path: '/subscription' },
         { label: 'Integrations', path: '/account?tab=integrations' },
         { label: 'Preferences', path: '/account?tab=preferences' },
+        { label: 'Printer Management', path: '/account?tab=printers' },
+        { label: 'Organizations', path: '/account?tab=organizations' },
       ],
     },
   ];

@@ -191,3 +191,22 @@ async def setup_platform(
     """Setup a new platform connection and store in one operation"""
     result = await service.setup_platform_connection(db, current_user.user_id, setup_data)
     return result
+
+# Token refresh monitoring
+@router.get("/token-refresh/stats")
+async def get_token_refresh_stats():
+    """Get statistics for the automatic token refresh service"""
+    try:
+        from server.src.services.token_refresh_service import get_token_refresh_stats
+        stats = get_token_refresh_stats()
+        return {
+            "service_status": "running" if stats["is_running"] else "stopped",
+            "stats": stats,
+            "message": "Token refresh service is monitoring platform connections"
+        }
+    except Exception as e:
+        return {
+            "service_status": "error",
+            "stats": None,
+            "message": f"Failed to get token refresh stats: {e}"
+        }

@@ -61,5 +61,18 @@ class PlatformConnection(Base):
             return False
         return datetime.now(timezone.utc) > self.token_expires_at
 
+    def needs_token_refresh(self, threshold_seconds: int = 30) -> bool:
+        """Check if the access token needs refreshing (expires within threshold)"""
+        if not self.token_expires_at:
+            return False
+        threshold_time = datetime.now(timezone.utc) + timedelta(seconds=threshold_seconds)
+        return self.token_expires_at <= threshold_time
+
+    def time_until_expiry(self) -> timedelta:
+        """Get time remaining until token expires"""
+        if not self.token_expires_at:
+            return timedelta(days=365)  # Return large value if no expiry set
+        return self.token_expires_at - datetime.now(timezone.utc)
+
     def __repr__(self):
         return f"<PlatformConnection(id={self.id}, user_id={self.user_id}, platform={self.platform.value})>"
