@@ -45,16 +45,65 @@ def setup_database():
         logger.error(f"❌ Database connection failed: {e}")
         raise
 
+def discover_migrations():
+    """Automatically discover all migration files"""
+    import os
+    import glob
+
+    # Get all Python files in migrations directory (except __init__.py and imports)
+    migrations_dir = '/app/server/migrations'
+    if not os.path.exists(migrations_dir):
+        migrations_dir = 'server/migrations'  # Fallback for local development
+
+    migration_files = glob.glob(os.path.join(migrations_dir, '*.py'))
+    migration_modules = []
+
+    # Define dependency order for known migrations
+    migration_order = [
+        "add_multi_tenant_schema",        # Must run first for multi-tenant support
+        "add_etsy_shop_id",               # Adds Etsy shop ID fields
+        "add_phash_to_designs",           # Adds phash column to designs
+        "remove_shopify_unique_constraint", # Removes Shopify constraints
+        "update_phash_hash_size",         # Updates phash column size
+        "separate_platform_connections"   # Separates platform connections
+    ]
+
+    # Exclude certain files
+    excluded_files = [
+        "__init__.py",
+        "__pycache__",
+        "import_nas_designs.py",         # Replaced by batched version
+        "import_nas_designs_batched.py"  # Handled separately as NAS migration
+    ]
+
+    # First, add known migrations in order
+    for migration_name in migration_order:
+        module_name = f"server.migrations.{migration_name}"
+        migration_modules.append(module_name)
+
+    # Then discover any new migrations not in the known list
+    for file_path in migration_files:
+        filename = os.path.basename(file_path)
+        if filename in excluded_files:
+            continue
+
+        migration_name = filename.replace('.py', '')
+        module_name = f"server.migrations.{migration_name}"
+
+        # Add if not already in the list
+        if module_name not in migration_modules:
+            migration_modules.append(module_name)
+            logger.info(f"🔍 Discovered new migration: {migration_name}")
+
+    return migration_modules
+
 def run_startup_migrations(engine):
     """Run lightweight startup migrations"""
     logger.info("🔄 Running startup migrations...")
 
-    migrations = [
-        "server.migrations.add_phash_to_designs",
-        "server.migrations.remove_shopify_unique_constraint",
-        "server.migrations.update_phash_hash_size",
-        "server.migrations.separate_platform_connections"
-    ]
+    # Auto-discover all migrations
+    migrations = discover_migrations()
+    logger.info(f"📋 Found {len(migrations)} migrations to run")
 
     success_count = 0
 
@@ -81,6 +130,10 @@ def run_startup_migrations(engine):
             logger.error(f"  ❌ Could not load {migration_name}: {e}")
 
     logger.info(f"✅ Startup migrations completed: {success_count}/{len(migrations)} successful")
+
+    # Log which migrations were run
+    if success_count < len(migrations):
+        logger.warning(f"⚠️  Some migrations may have failed or were skipped")
     return success_count
 
 def run_nas_migration(engine):

@@ -121,13 +121,20 @@ class TokenRefreshService:
         logger.info(f"🔄 Refreshing {platform} token for user {user_id}")
 
         try:
-            if connection.platform == PlatformType.ETSY:
+            # Handle case-insensitive platform comparison
+            platform_enum = connection.platform
+            if hasattr(platform_enum, 'value'):
+                platform_value = platform_enum.value.upper()
+            else:
+                platform_value = str(platform_enum).upper()
+
+            if platform_value == 'ETSY' or platform_enum == PlatformType.ETSY:
                 await self._refresh_etsy_token(connection, db)
-            elif connection.platform == PlatformType.SHOPIFY:
+            elif platform_value == 'SHOPIFY' or platform_enum == PlatformType.SHOPIFY:
                 await self._refresh_shopify_token(connection, db)
             # Add other platforms as needed
             else:
-                logger.warning(f"Token refresh not implemented for platform: {platform}")
+                logger.warning(f"Token refresh not implemented for platform: {platform} (enum: {platform_enum})")
                 return
 
             self.stats['tokens_refreshed'] += 1

@@ -117,12 +117,16 @@ def upgrade(connection):
 
                 connection_id = connection_result.fetchone()[0]
 
-                # Create Etsy store if we have shop info
+                # Create Etsy store if we have shop info (avoid duplicates)
                 if etsy_shop_id and shop_name:
                     connection.execute(text("""
                         INSERT INTO etsy_stores
                         (user_id, connection_id, etsy_shop_id, shop_name, is_active)
                         VALUES (:user_id, :connection_id, :etsy_shop_id, :shop_name, true)
+                        ON CONFLICT (etsy_shop_id) DO UPDATE SET
+                            connection_id = EXCLUDED.connection_id,
+                            shop_name = EXCLUDED.shop_name,
+                            is_active = true
                     """), {
                         "user_id": user_id,
                         "connection_id": connection_id,
@@ -137,14 +141,28 @@ def upgrade(connection):
                 logging.error(f"Error migrating Etsy data for user {user_id}: {e}")
                 continue
 
-        # Migrate existing Shopify data
+        # Migrate existing Shopify data (use separate connection to avoid transaction issues)
         logging.info("Migrating existing Shopify data...")
 
-        shopify_stores_result = connection.execute(text("""
-            SELECT id, user_id, access_token, shop_domain, shop_name
-            FROM shopify_stores
-            WHERE access_token IS NOT NULL
-        """))
+        try:
+            shopify_stores_result = connection.execute(text("""
+                SELECT id, user_id, access_token, shop_domain, shop_name
+                FROM shopify_stores
+                WHERE access_token IS NOT NULL
+            """))
+        except Exception as e:
+            logging.error(f"Failed to query Shopify stores, likely due to transaction rollback: {e}")
+            logging.info("Attempting to start fresh transaction for Shopify migration...")
+            # Create new connection for Shopify migration
+            from sqlalchemy import create_engine
+            import os
+            engine = create_engine(os.getenv('DATABASE_URL'))
+            connection = engine.connect()
+            shopify_stores_result = connection.execute(text("""
+                SELECT id, user_id, access_token, shop_domain, shop_name
+                FROM shopify_stores
+                WHERE access_token IS NOT NULL
+            """))
 
         shopify_stores = shopify_stores_result.fetchall()
         migrated_shopify_count = 0
