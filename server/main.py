@@ -135,6 +135,7 @@ print(f"   - https://printer-automation-frontend-production.up.railway.app")
 print(f"   - {frontend_url}")
 print(f"   - Any *.railway.app subdomain")
 print("🔧 CORS allows all methods and headers")
+print("🚀 Backend fixes for CORS and 500 errors applied")
 
 # Add explicit OPTIONS handling for debugging
 @app.options("/{path:path}")
