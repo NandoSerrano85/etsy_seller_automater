@@ -21,51 +21,62 @@ class PrinterService:
     def create_printer(
         db: Session,
         user_id: UUID,
-        org_id: UUID,
+        org_id: Optional[UUID],
         printer_data: model.PrinterCreate
     ) -> Printer:
         """Create a new printer for user"""
         try:
             # If setting as default, unset other defaults
             if printer_data.is_default:
-                db.query(Printer).filter(
-                    Printer.user_id == user_id,
-                    Printer.org_id == org_id
-                ).update({Printer.is_default: False})
-            
-            printer = Printer(
-                user_id=user_id,
-                org_id=org_id,
-                name=printer_data.name,
-                printer_type=printer_data.printer_type.value,
-                manufacturer=printer_data.manufacturer,
-                model=printer_data.model,
-                description=printer_data.description,
-                max_width_inches=printer_data.max_width_inches,
-                max_height_inches=printer_data.max_height_inches,
-                dpi=printer_data.dpi,
-                supported_template_ids=printer_data.supported_template_ids,
-                is_default=printer_data.is_default
-            )
+                query = db.query(Printer).filter(Printer.user_id == user_id)
+                # Only filter by org_id if it exists (for backward compatibility)
+                if org_id is not None:
+                    query = query.filter(Printer.org_id == org_id)
+                query.update({Printer.is_default: False})
+
+            # Prepare printer data - handle both legacy and multi-tenant cases
+            printer_kwargs = {
+                "user_id": user_id,
+                "name": printer_data.name,
+                "printer_type": printer_data.printer_type.value,
+                "manufacturer": printer_data.manufacturer,
+                "model": printer_data.model,
+                "description": printer_data.description,
+                "max_width_inches": printer_data.max_width_inches,
+                "max_height_inches": printer_data.max_height_inches,
+                "dpi": printer_data.dpi,
+                "supported_template_ids": printer_data.supported_template_ids,
+                "is_default": printer_data.is_default
+            }
+
+            # Only add org_id if the entity supports it (multi-tenant enabled)
+            if hasattr(Printer, 'org_id') and org_id is not None:
+                printer_kwargs["org_id"] = org_id
+
+            printer = Printer(**printer_kwargs)
             db.add(printer)
             db.flush()
-            
-            # Log event
-            event = Event.create_event(
-                event_type=EventTypes.SYSTEM_INFO,
-                org_id=org_id,
-                user_id=user_id,
-                entity_type="Printer",
-                entity_id=printer.id,
-                payload={
-                    "action": "printer_created",
-                    "name": printer_data.name,
-                    "printer_type": printer_data.printer_type.value,
-                    "dpi": printer_data.dpi,
-                    "max_dimensions": f"{printer_data.max_width_inches}x{printer_data.max_height_inches}"
-                }
-            )
-            db.add(event)
+
+            # Log event - only if events are supported
+            try:
+                event = Event.create_event(
+                    event_type=EventTypes.SYSTEM_INFO,
+                    org_id=org_id,
+                    user_id=user_id,
+                    entity_type="Printer",
+                    entity_id=printer.id,
+                    payload={
+                        "action": "printer_created",
+                        "name": printer_data.name,
+                        "printer_type": printer_data.printer_type.value,
+                        "dpi": printer_data.dpi,
+                        "max_dimensions": f"{printer_data.max_width_inches}x{printer_data.max_height_inches}"
+                    }
+                )
+                db.add(event)
+            except Exception as e:
+                # Log event creation failure but don't fail the printer creation
+                logger.warning(f"Failed to create event for printer creation: {e}")
             
             db.commit()
             db.refresh(printer)
@@ -87,16 +98,17 @@ class PrinterService:
     def get_user_printers(
         db: Session,
         user_id: UUID,
-        org_id: UUID,
+        org_id: Optional[UUID],
         skip: int = 0,
         limit: int = 100,
         active_only: bool = True
     ) -> tuple[List[Printer], int]:
         """Get user's printers"""
-        query = db.query(Printer).filter(
-            Printer.user_id == user_id,
-            Printer.org_id == org_id
-        )
+        query = db.query(Printer).filter(Printer.user_id == user_id)
+
+        # Only filter by org_id if it exists (for backward compatibility)
+        if org_id is not None:
+            query = query.filter(Printer.org_id == org_id)
         
         if active_only:
             query = query.filter(Printer.is_active == True)
@@ -244,7 +256,7 @@ class PrinterService:
     def find_compatible_printers(
         db: Session,
         user_id: UUID,
-        org_id: UUID,
+        org_id: Optional[UUID],
         width_inches: float,
         height_inches: float,
         template_id: Optional[UUID] = None
@@ -252,11 +264,14 @@ class PrinterService:
         """Find printers that can handle given dimensions and template"""
         query = db.query(Printer).filter(
             Printer.user_id == user_id,
-            Printer.org_id == org_id,
             Printer.is_active == True,
             Printer.max_width_inches >= width_inches,
             Printer.max_height_inches >= height_inches
         )
+
+        # Only filter by org_id if it exists (for backward compatibility)
+        if org_id is not None:
+            query = query.filter(Printer.org_id == org_id)
         
         printers = query.order_by(Printer.is_default.desc(), Printer.dpi.desc()).all()
         
@@ -271,14 +286,19 @@ class PrinterService:
         return printers
 
     @staticmethod
-    def get_default_printer(db: Session, user_id: UUID, org_id: UUID) -> Optional[Printer]:
+    def get_default_printer(db: Session, user_id: UUID, org_id: Optional[UUID]) -> Optional[Printer]:
         """Get user's default printer"""
-        return db.query(Printer).filter(
+        query = db.query(Printer).filter(
             Printer.user_id == user_id,
-            Printer.org_id == org_id,
             Printer.is_default == True,
             Printer.is_active == True
-        ).first()
+        )
+
+        # Only filter by org_id if it exists (for backward compatibility)
+        if org_id is not None:
+            query = query.filter(Printer.org_id == org_id)
+
+        return query.first()
 
     @staticmethod
     def set_default_printer(
@@ -331,45 +351,70 @@ class PrinterService:
             raise
 
     @staticmethod
-    def get_printer_stats(db: Session, user_id: UUID, org_id: UUID) -> model.PrinterStatsResponse:
+    def get_printer_stats(db: Session, user_id: UUID, org_id: Optional[UUID]) -> model.PrinterStatsResponse:
         """Get printer statistics for user"""
         try:
-            # Total and active printers
-            total_printers = db.query(func.count(Printer.id)).filter(
+            # Build base query for user
+            base_query = db.query(func.count(Printer.id)).filter(Printer.user_id == user_id)
+
+            # Only filter by org_id if it exists (for backward compatibility)
+            if org_id is not None:
+                base_query = base_query.filter(Printer.org_id == org_id)
+
+            # Total printers
+            total_printers = base_query.scalar() or 0
+
+            # Active printers
+            active_query = db.query(func.count(Printer.id)).filter(
                 Printer.user_id == user_id,
-                Printer.org_id == org_id
-            ).scalar() or 0
-            
-            active_printers = db.query(func.count(Printer.id)).filter(
-                Printer.user_id == user_id,
-                Printer.org_id == org_id,
                 Printer.is_active == True
-            ).scalar() or 0
+            )
+
+            # Only filter by org_id if it exists (for backward compatibility)
+            if org_id is not None:
+                active_query = active_query.filter(Printer.org_id == org_id)
+
+            active_printers = active_query.scalar() or 0
             
             # Printers by type
-            type_stats = db.query(
+            type_query = db.query(
                 Printer.printer_type,
                 func.count(Printer.id).label('count')
             ).filter(
                 Printer.user_id == user_id,
-                Printer.org_id == org_id,
                 Printer.is_active == True
-            ).group_by(Printer.printer_type).all()
-            
+            )
+
+            # Only filter by org_id if it exists (for backward compatibility)
+            if org_id is not None:
+                type_query = type_query.filter(Printer.org_id == org_id)
+
+            type_stats = type_query.group_by(Printer.printer_type).all()
+
             # Default printer
-            default_printer = db.query(Printer).filter(
+            default_query = db.query(Printer).filter(
                 Printer.user_id == user_id,
-                Printer.org_id == org_id,
                 Printer.is_default == True,
                 Printer.is_active == True
-            ).first()
+            )
+
+            # Only filter by org_id if it exists (for backward compatibility)
+            if org_id is not None:
+                default_query = default_query.filter(Printer.org_id == org_id)
+
+            default_printer = default_query.first()
             
             # Average DPI
-            avg_dpi = db.query(func.avg(Printer.dpi)).filter(
+            avg_dpi_query = db.query(func.avg(Printer.dpi)).filter(
                 Printer.user_id == user_id,
-                Printer.org_id == org_id,
                 Printer.is_active == True
-            ).scalar()
+            )
+
+            # Only filter by org_id if it exists (for backward compatibility)
+            if org_id is not None:
+                avg_dpi_query = avg_dpi_query.filter(Printer.org_id == org_id)
+
+            avg_dpi = avg_dpi_query.scalar()
             
             return model.PrinterStatsResponse(
                 total_printers=total_printers,
