@@ -24,3 +24,7 @@ alembic
 psutil==5.9.6
 imagehash==4.3.1
 paramiko==3.4.0
+
+# Redis caching
+redis==5.0.1
+fastapi-cache2[redis]==0.2.1

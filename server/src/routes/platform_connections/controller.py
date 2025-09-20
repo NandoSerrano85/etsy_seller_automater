@@ -210,3 +210,22 @@ async def get_token_refresh_stats():
             "stats": None,
             "message": f"Failed to get token refresh stats: {e}"
         }
+
+# Cache monitoring
+@router.get("/cache/stats")
+async def get_cache_stats():
+    """Get statistics for the Redis cache service"""
+    try:
+        from server.src.services.cache_service import cache_service
+        stats = cache_service.get_stats()
+        return {
+            "cache_status": "enabled" if stats.get("enabled", False) else "disabled",
+            "stats": stats,
+            "message": "Cache service performance statistics"
+        }
+    except Exception as e:
+        return {
+            "cache_status": "error",
+            "stats": None,
+            "message": f"Failed to get cache stats: {e}"
+        }

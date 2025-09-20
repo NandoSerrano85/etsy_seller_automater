@@ -5,6 +5,7 @@ from typing import Optional
 from server.src.routes.auth.service import CurrentUser, verify_token, TokenData
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
+from server.src.services.cache_service import ApiCache
 from . import model
 from . import service
 import logging
@@ -81,8 +82,24 @@ async def verify_etsy_connection(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Verify if the current Etsy connection is valid"""
-    return service.verify_etsy_connection(current_user.get_uuid(), db)
+    """Verify if the current Etsy connection is valid (cached for 5 minutes)"""
+    user_id = str(current_user.get_uuid())
+
+    # Try to get from cache first
+    cached_result = await ApiCache.get_connection_cache(user_id)
+    if cached_result is not None:
+        logging.debug(f"Cache hit for verify-connection user {user_id}")
+        return cached_result
+
+    # Call service and cache result
+    result = service.verify_etsy_connection(current_user.get_uuid(), db)
+
+    # Cache successful results for 5 minutes, failed ones for 1 minute
+    ttl = 300 if result.get('connected', False) else 60
+    await ApiCache.set_connection_cache(user_id, result, ttl)
+
+    logging.debug(f"Cached verify-connection result for user {user_id}")
+    return result
 
 @router.post('/revoke-token')
 async def revoke_etsy_token(

@@ -7,6 +7,7 @@ from server.src.database.core import get_db
 from server.src.routes.auth.service import CurrentUser
 from server.src.message import InvalidUserToken
 from server.src.utils.progress_manager import progress_manager
+from server.src.services.cache_service import ApiCache
 from . import model
 from . import service
 import json
@@ -179,11 +180,27 @@ async def get_design_gallery(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get design gallery data including Etsy mockups and QNAP design files"""
+    """Get design gallery data including Etsy mockups and QNAP design files (cached for 30 minutes)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return await service.get_design_gallery_data(db, user_id)
+
+    user_id_str = str(user_id)
+
+    # Try to get from cache first (30 minutes TTL)
+    cached_result = await ApiCache.get_gallery_cache(user_id_str)
+    if cached_result is not None:
+        logging.debug(f"Cache hit for gallery user {user_id_str}")
+        return cached_result
+
+    # Get fresh data
+    result = await service.get_design_gallery_data(db, user_id)
+
+    # Cache the result for 30 minutes
+    await ApiCache.set_gallery_cache(user_id_str, 1, result, 1800)
+
+    logging.debug(f"Cached gallery result for user {user_id_str}")
+    return result
 
 @router.get('/nas-file/{shop_name}/{path:path}')
 async def serve_nas_file(

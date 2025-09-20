@@ -3,6 +3,7 @@ from server.src.routes.auth.service import CurrentUser, CurrentShopInfo
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
 from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
+from server.src.services.cache_service import ApiCache
 from datetime import datetime, timezone
 from . import model
 from . import service
@@ -45,9 +46,26 @@ async def get_monthly_analytics(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No Etsy shop ID found. Please reconnect your Etsy account."
         )
-    
+
+    # Use current year if not provided
+    if year is None:
+        year = datetime.now().year
+
+    user_id = str(current_user.get_uuid())
+
+    # Try to get from cache first (1 hour TTL)
+    cached_result = await ApiCache.get_analytics_cache(user_id, year)
+    if cached_result is not None:
+        return cached_result
+
+    # Get fresh data
     access_token = get_user_etsy_token(current_user, db)
-    return service.get_monthly_analytics(access_token, year, shop_info.shop_id)
+    result = service.get_monthly_analytics(access_token, year, shop_info.shop_id)
+
+    # Cache the result for 1 hour
+    await ApiCache.set_analytics_cache(user_id, year, result, 3600)
+
+    return result
 
 @router.get('/top-sellers', response_model=model.TopSellersResponse)
 async def get_top_sellers(
