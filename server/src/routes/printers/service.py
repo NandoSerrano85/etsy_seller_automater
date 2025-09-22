@@ -106,8 +106,8 @@ class PrinterService:
         """Get user's printers"""
         query = db.query(Printer).filter(Printer.user_id == user_id)
 
-        # Only filter by org_id if it exists (for backward compatibility)
-        if org_id is not None:
+        # Only filter by org_id if it exists and Printer entity supports it (for backward compatibility)
+        if org_id is not None and hasattr(Printer, 'org_id'):
             query = query.filter(Printer.org_id == org_id)
         
         if active_only:
@@ -135,11 +135,14 @@ class PrinterService:
             
             # If setting as default, unset other defaults for same user
             if printer_data.is_default:
-                db.query(Printer).filter(
+                query = db.query(Printer).filter(
                     Printer.user_id == printer.user_id,
-                    Printer.org_id == printer.org_id,
                     Printer.id != printer_id
-                ).update({Printer.is_default: False})
+                )
+                # Only filter by org_id if the field exists
+                if hasattr(Printer, 'org_id') and hasattr(printer, 'org_id'):
+                    query = query.filter(Printer.org_id == printer.org_id)
+                query.update({Printer.is_default: False})
             
             # Update fields
             update_data = printer_data.model_dump(exclude_unset=True)
@@ -269,8 +272,8 @@ class PrinterService:
             Printer.max_height_inches >= height_inches
         )
 
-        # Only filter by org_id if it exists (for backward compatibility)
-        if org_id is not None:
+        # Only filter by org_id if it exists and Printer entity supports it (for backward compatibility)
+        if org_id is not None and hasattr(Printer, 'org_id'):
             query = query.filter(Printer.org_id == org_id)
         
         printers = query.order_by(Printer.is_default.desc(), Printer.dpi.desc()).all()
@@ -294,8 +297,8 @@ class PrinterService:
             Printer.is_active == True
         )
 
-        # Only filter by org_id if it exists (for backward compatibility)
-        if org_id is not None:
+        # Only filter by org_id if it exists and Printer entity supports it (for backward compatibility)
+        if org_id is not None and hasattr(Printer, 'org_id'):
             query = query.filter(Printer.org_id == org_id)
 
         return query.first()
@@ -317,10 +320,11 @@ class PrinterService:
                 return None
             
             # Unset all other defaults for this user
-            db.query(Printer).filter(
-                Printer.user_id == user_id,
-                Printer.org_id == printer.org_id
-            ).update({Printer.is_default: False})
+            query = db.query(Printer).filter(Printer.user_id == user_id)
+            # Only filter by org_id if the field exists
+            if hasattr(Printer, 'org_id') and hasattr(printer, 'org_id'):
+                query = query.filter(Printer.org_id == printer.org_id)
+            query.update({Printer.is_default: False})
             
             # Set this printer as default
             printer.is_default = True

@@ -67,24 +67,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Warning: Failed to initialize cache service: {e}")
 
-    # Only start token refresh service in production
+    # Only start token refresh service in production after API is fully ready
     if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
         try:
             from server.src.services.token_refresh_service import start_token_refresh_service
-            print("🔄 Starting automatic token refresh service...")
+            print("🔄 Scheduling automatic token refresh service for delayed start...")
 
             # Start the token refresh service as a background task with error handling
+            # and delay to ensure API is fully ready first
             async def safe_token_service():
                 try:
+                    print("⏳ Waiting for API to be fully ready before starting token refresh...")
+                    await asyncio.sleep(60)  # Give extra time for API to be stable
                     await start_token_refresh_service()
                 except Exception as e:
                     print(f"⚠️  Token refresh service stopped due to error: {e}")
 
             token_refresh_task = asyncio.create_task(safe_token_service())
-            print("✅ Token refresh service started (with error handling)")
+            print("✅ Token refresh service scheduled for delayed start")
 
         except Exception as e:
-            print(f"⚠️  Warning: Failed to start token refresh service: {e}")
+            print(f"⚠️  Warning: Failed to schedule token refresh service: {e}")
     else:
         print("ℹ️  Skipping token refresh service in development mode")
 

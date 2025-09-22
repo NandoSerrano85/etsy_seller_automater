@@ -50,6 +50,10 @@ class TokenRefreshService:
         logger.info(f"   ⏱️  Check interval: {self.refresh_interval} seconds")
         logger.info(f"   ⚠️  Refresh threshold: {self.refresh_threshold} seconds before expiry")
 
+        # Add startup delay to allow database to be ready
+        logger.info("   ⏳  Waiting 30 seconds before first token check...")
+        await asyncio.sleep(30)
+
         try:
             while self.is_running:
                 await self._refresh_cycle()
@@ -70,9 +74,14 @@ class TokenRefreshService:
             self.stats['total_checks'] += 1
             self.stats['last_run'] = datetime.now(timezone.utc)
 
-            # Get database session with error handling
+            # Get database session with error handling and timeout
             try:
-                db: Session = next(get_db())
+                # Add timeout for database connection
+                db_task = asyncio.create_task(asyncio.to_thread(lambda: next(get_db())))
+                db: Session = await asyncio.wait_for(db_task, timeout=10.0)
+            except asyncio.TimeoutError:
+                logger.warning("Database connection timed out, skipping token refresh cycle")
+                return
             except Exception as db_error:
                 logger.warning(f"Database connection failed, skipping token refresh cycle: {db_error}")
                 return
@@ -122,9 +131,9 @@ class TokenRefreshService:
             valid_connections = []
             for row in raw_connections:
                 try:
-                    # Check if platform value is valid before processing
-                    platform_value = row.platform.lower() if row.platform else None
-                    if platform_value in ['etsy', 'shopify', 'amazon', 'ebay']:
+                    # Check if platform value is valid before processing (case insensitive)
+                    platform_value = row.platform.upper() if row.platform else None
+                    if platform_value in ['ETSY', 'SHOPIFY', 'AMAZON', 'EBAY']:
                         # Get the actual ORM object for this connection
                         conn = db.query(PlatformConnection).filter(PlatformConnection.id == row.id).first()
                         if conn:
@@ -154,22 +163,22 @@ class TokenRefreshService:
             platform_value = None
             platform_enum = None
 
-            if hasattr(connection, 'platform') and connection.platform:
+            if hasattr(connection, 'platform') and connection.platform is not None:
                 platform_enum = connection.platform
                 if hasattr(platform_enum, 'value'):
-                    platform_value = platform_enum.value.lower()
+                    platform_value = platform_enum.value.upper()
                 else:
-                    platform_value = str(platform_enum).lower()
+                    platform_value = str(platform_enum).upper()
             else:
                 logger.error(f"Connection {connection.id} has no platform information")
                 return
 
             logger.info(f"🔄 Refreshing {platform_value} token for user {user_id}")
 
-            # Direct platform value comparison (case-insensitive)
-            if platform_value == 'etsy':
+            # Direct platform value comparison (already uppercase)
+            if platform_value == 'ETSY':
                 await self._refresh_etsy_token(connection, db)
-            elif platform_value == 'shopify':
+            elif platform_value == 'SHOPIFY':
                 await self._refresh_shopify_token(connection, db)
             # Add other platforms as needed
             else:
@@ -206,9 +215,12 @@ class TokenRefreshService:
                 etsy_api.refresh_access_token()
 
                 # Update the platform connection with new token data
-                connection.access_token = etsy_api.oauth_token
-                connection.refresh_token = etsy_api.refresh_token
-                connection.token_expires_at = datetime.fromtimestamp(etsy_api.token_expiry, tz=timezone.utc)
+                if etsy_api.oauth_token:
+                    connection.access_token = etsy_api.oauth_token
+                if etsy_api.refresh_token:
+                    connection.refresh_token = etsy_api.refresh_token
+                if etsy_api.token_expiry:
+                    connection.token_expires_at = datetime.fromtimestamp(etsy_api.token_expiry, tz=timezone.utc)
                 connection.last_verified_at = datetime.now(timezone.utc)
 
                 # Commit the changes
