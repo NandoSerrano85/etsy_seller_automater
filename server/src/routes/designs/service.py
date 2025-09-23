@@ -181,7 +181,7 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 return []
         
         def build_hash_db(directory_path):
-            """Build a database of image hashes from a directory"""
+            """Build a database of image hashes from a directory with size/DPI normalization"""
             hash_db = {}
             try:
                 image_files = list_images_in_dir(directory_path)
@@ -189,7 +189,9 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                     image_path = os.path.join(directory_path, image_file)
                     try:
                         with Image.open(image_path) as img:
-                            img_hash = imagehash.phash(img, hash_size=16)  # Use consistent hash size
+                            # Resize to standard size for consistent comparison regardless of original size/DPI
+                            img_normalized = img.resize((256, 256), Image.Resampling.LANCZOS)
+                            img_hash = imagehash.phash(img_normalized, hash_size=16)  # Use consistent hash size
                             hash_db[image_path] = img_hash
                     except Exception as e:
                         logging.error(f"Error processing image {image_path}: {str(e)}")
@@ -199,11 +201,13 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
             return hash_db
         
         def check_for_duplicate(new_image_path, existing_hash_db, threshold=5):
-            """Check if a new image is a duplicate of any existing images"""
+            """Check if a new image is a duplicate of any existing images with size/DPI normalization"""
             try:
                 with Image.open(new_image_path) as new_img:
-                    new_hash = imagehash.phash(new_img)
-                    
+                    # Resize to standard size for consistent comparison regardless of original size/DPI
+                    new_img_normalized = new_img.resize((256, 256), Image.Resampling.LANCZOS)
+                    new_hash = imagehash.phash(new_img_normalized)
+
                     for existing_path, existing_hash in existing_hash_db.items():
                         hash_diff = new_hash - existing_hash
                         if hash_diff <= threshold:
@@ -284,8 +288,64 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
         if progress_callback:
             progress_callback(0, "Checking for duplicates")
 
-        # Build hash database of existing designs in the directory
-        existing_hash_db = build_hash_db(designs_path)
+        # Build comprehensive hash database from multiple sources
+        existing_hash_db = {}
+
+        # 1. Build hash from local directory files (if exists)
+        if os.path.exists(designs_path):
+            local_hash_db = build_hash_db(designs_path)
+            existing_hash_db.update(local_hash_db)
+            logging.info(f"Found {len(local_hash_db)} existing local files")
+
+        # 2. Build hash from NAS files for this template
+        nas_hash_db = {}
+        try:
+            if nas_storage.enabled:
+                # Get files from NAS for this specific template path
+                template_relative_path = f"Digital/{template.name}" if design_data.is_digital else template.name
+                nas_files = nas_storage.list_files(user.shop_name, template_relative_path)
+
+                if nas_files:
+                    logging.info(f"Found {len(nas_files)} files in NAS for template {template.name}")
+                    for file_info in nas_files:
+                        if isinstance(file_info, dict):
+                            filename = file_info.get('filename', '')
+                            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
+                                # Download file content from NAS for hashing
+                                try:
+                                    file_content = nas_storage.download_file_to_memory(user.shop_name, f"{template_relative_path}/{filename}")
+                                    if file_content:
+                                        # Create hash from NAS file content without DPI/size dependency
+                                        nparr = np.frombuffer(file_content, np.uint8)
+                                        nas_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+                                        if nas_image is not None:
+                                            # Normalize image for consistent hashing regardless of size/DPI
+                                            if len(nas_image.shape) == 3 and nas_image.shape[2] == 4:
+                                                # Convert BGRA to RGB for PIL
+                                                nas_image_rgb = cv2.cvtColor(nas_image, cv2.COLOR_BGRA2RGB)
+                                            elif len(nas_image.shape) == 3:
+                                                # Convert BGR to RGB for PIL
+                                                nas_image_rgb = cv2.cvtColor(nas_image, cv2.COLOR_BGR2RGB)
+                                            else:
+                                                nas_image_rgb = nas_image
+
+                                            pil_image = Image.fromarray(nas_image_rgb)
+                                            # Resize to standard size for consistent comparison regardless of original size/DPI
+                                            pil_image = pil_image.resize((256, 256), Image.Resampling.LANCZOS)
+                                            nas_hash = imagehash.phash(pil_image, hash_size=16)
+                                            nas_path = f"NAS:{user.shop_name}/{template_relative_path}/{filename}"
+                                            nas_hash_db[nas_path] = nas_hash
+                                            logging.info(f"Added NAS file to hash db: {filename}")
+                                except Exception as e:
+                                    logging.warning(f"Failed to hash NAS file {filename}: {e}")
+                                    continue
+
+                existing_hash_db.update(nas_hash_db)
+                logging.info(f"Added {len(nas_hash_db)} NAS files to hash database")
+        except Exception as e:
+            logging.warning(f"Failed to check NAS files for duplicates: {e}")
+
+        logging.info(f"Total files in hash database: {len(existing_hash_db)}")
 
         # Get existing phashes from database for this user
         from server.src.entities.designs import DesignImages
@@ -339,13 +399,19 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                 temp_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 
                 if temp_image is not None:
-                    # Convert to PIL for hash calculation
-                    if len(temp_image.shape) == 3:
-                        # BGR to RGB conversion for OpenCV->PIL
+                    # Normalize image for consistent hashing regardless of size/DPI
+                    if len(temp_image.shape) == 3 and temp_image.shape[2] == 4:
+                        # Convert BGRA to RGB for PIL
+                        temp_image_rgb = cv2.cvtColor(temp_image, cv2.COLOR_BGRA2RGB)
+                    elif len(temp_image.shape) == 3:
+                        # Convert BGR to RGB for PIL
                         temp_image_rgb = cv2.cvtColor(temp_image, cv2.COLOR_BGR2RGB)
-                        pil_image = Image.fromarray(temp_image_rgb)
                     else:
-                        pil_image = Image.fromarray(temp_image)
+                        temp_image_rgb = temp_image
+
+                    pil_image = Image.fromarray(temp_image_rgb)
+                    # Resize to standard size for consistent comparison regardless of original size/DPI
+                    pil_image = pil_image.resize((256, 256), Image.Resampling.LANCZOS)
 
                     # Calculate hash
                     file_hash = imagehash.phash(pil_image, hash_size=16)
@@ -357,10 +423,14 @@ async def create_design(db: Session, user_id: UUID, design_data: model.DesignIma
                     for existing_path, existing_hash in existing_hash_db.items():
                         hash_diff = file_hash - existing_hash
                         if hash_diff <= 5:  # threshold
-                            logging.warning(f"Skipping duplicate file: {file.filename} (matches existing file {os.path.basename(existing_path)})")
+                            if existing_path.startswith("NAS:"):
+                                logging.warning(f"Skipping duplicate file: {file.filename} (matches NAS file {existing_path.split('/')[-1]}, hash distance: {hash_diff})")
+                                duplicate_source = f"NAS file {existing_path.split('/')[-1]}"
+                            else:
+                                logging.warning(f"Skipping duplicate file: {file.filename} (matches local file {os.path.basename(existing_path)}, hash distance: {hash_diff})")
+                                duplicate_source = f"local file {os.path.basename(existing_path)}"
                             duplicate_count += 1
                             is_duplicate = True
-                            duplicate_source = f"local file {os.path.basename(existing_path)}"
                             break
 
                     # Check against database phashes

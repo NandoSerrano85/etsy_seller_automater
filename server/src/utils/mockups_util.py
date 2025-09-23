@@ -568,7 +568,12 @@ def create_mockups_for_etsy(
     if len(watermark_path) > 1:
         raise ValueError(f"More than one watermark file path {watermark_path}")
     mockup_file_paths = list(mockup_file_paths)
-    watermark_path = str(watermark_path.pop())
+
+    # Use default watermark if no watermark is set on mockup images
+    if len(watermark_path) == 0:
+        watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
+    else:
+        watermark_path = str(watermark_path.pop())
 
     design_file_paths = set()
     design_filenames = list()
