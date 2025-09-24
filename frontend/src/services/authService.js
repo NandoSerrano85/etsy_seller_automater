@@ -135,6 +135,50 @@ class AuthService {
     }
   }
 
+  async refreshJwtToken() {
+    const { userToken, setUserAuth, setUserError } = useAuthStore.getState();
+
+    if (!userToken) {
+      return { success: false, error: 'No token available' };
+    }
+
+    try {
+      console.log('🔄 Refreshing JWT token...');
+
+      const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${userToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Token refresh failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.access_token && data.user) {
+        console.log('✅ JWT token refreshed successfully');
+        setUserAuth(data.user, data.access_token);
+        return {
+          success: true,
+          access_token: data.access_token,
+          user: data.user,
+        };
+      } else {
+        throw new Error('Invalid refresh response');
+      }
+    } catch (error) {
+      console.error('❌ JWT token refresh failed:', error);
+      setUserError(error.message);
+      // Don't automatically log out on refresh failure - let the caller decide
+      return { success: false, error: error.message };
+    }
+  }
+
   async checkOrganizationSelectionRequired(token) {
     try {
       // Check if user has multiple organizations or no current organization selected
@@ -365,7 +409,7 @@ class AuthService {
 
   // API Helper Methods
   async makeAuthenticatedRequest(endpoint, options = {}) {
-    const { userToken, getValidEtsyToken } = useAuthStore.getState();
+    let { userToken, getValidEtsyToken } = useAuthStore.getState();
 
     if (!userToken) {
       throw new Error('User not authenticated');
@@ -399,24 +443,58 @@ class AuthService {
       }
     }
 
-    // Debug: Log token format for troubleshooting
-    console.log('🔐 Making authenticated request:', {
-      endpoint: finalEndpoint,
-      hasToken: !!userToken,
-      tokenPrefix: userToken ? userToken.substring(0, 20) + '...' : 'NO_TOKEN',
-      tokenLength: userToken ? userToken.length : 0,
-    });
+    // Attempt the request with current token
+    const makeRequest = async token => {
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...options.headers,
+      };
 
-    const headers = {
-      Authorization: `Bearer ${userToken}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
+      return fetch(`${API_BASE_URL}${finalEndpoint}`, {
+        ...options,
+        headers,
+      });
     };
 
-    const response = await fetch(`${API_BASE_URL}${finalEndpoint}`, {
-      ...options,
-      headers,
-    });
+    let response = await makeRequest(userToken);
+
+    // If we get 401 and it's not an Etsy token issue, try to refresh JWT token
+    if (response.status === 401) {
+      const errorText = await response.text();
+
+      // Check if this is a JWT token issue (not Etsy token issue)
+      const isEtsyTokenIssue = errorText.includes('etsy') || errorText.includes('Etsy') || needsEtsyToken;
+      const isJwtExpiredIssue = errorText.includes('Signature has expired') || errorText.includes('expired');
+
+      if (!isEtsyTokenIssue && (isJwtExpiredIssue || errorText.includes('JWT'))) {
+        console.log('🔄 JWT token appears expired, attempting refresh...');
+
+        try {
+          const refreshResult = await this.refreshJwtToken();
+          if (refreshResult.success) {
+            console.log('✅ JWT token refreshed, retrying request...');
+            // Retry the request with the new token
+            response = await makeRequest(refreshResult.access_token);
+          } else {
+            console.log('❌ JWT token refresh failed, logging out user');
+            this.logoutUser();
+            throw new Error('Session expired. Please log in again.');
+          }
+        } catch (refreshError) {
+          console.error('❌ JWT token refresh error:', refreshError);
+          this.logoutUser();
+          throw new Error('Session expired. Please log in again.');
+        }
+      } else if (isEtsyTokenIssue) {
+        // This is an Etsy token issue
+        throw new Error('Etsy session expired. Please reconnect your Etsy account.');
+      } else {
+        // Other authentication error
+        this.logoutUser();
+        throw new Error('Session expired. Please log in again.');
+      }
+    }
 
     if (!response.ok) {
       // Debug: Log detailed error information
@@ -428,17 +506,6 @@ class AuthService {
         errorText: errorText,
       });
 
-      if (response.status === 401) {
-        // Check if this is an Etsy token issue vs user token issue
-        if (errorText.includes('etsy') || errorText.includes('Etsy') || needsEtsyToken) {
-          // This is likely an Etsy token issue
-          throw new Error('Etsy session expired. Please reconnect your Etsy account.');
-        } else {
-          // User session expired
-          this.logoutUser();
-          throw new Error('Session expired. Please log in again.');
-        }
-      }
       throw new Error(`Request failed: ${response.status} - ${errorText}`);
     }
 

@@ -242,10 +242,49 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm, db: Session) ->
         raise AuthUserNotFound()
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(user.email, user.id, access_token_expires)
-    
+
     return AuthResponse(
-        access_token=access_token, 
-        token_type="bearer", 
+        access_token=access_token,
+        token_type="bearer",
         expires_in=int(access_token_expires.total_seconds()),
         user=create_user_profile(user)
     )
+
+def refresh_access_token(current_token: str, db: Session) -> AuthResponse:
+    """
+    Refresh a JWT access token.
+    This allows users to get a new token without re-authenticating,
+    which is especially useful for long-running operations like file uploads.
+    """
+    try:
+        # Verify the current token (even if expired, we can still extract user info)
+        # We'll decode without verification to get the payload first
+        unverified_payload = jwt.decode(current_token, options={"verify_signature": False})
+        user_id_str = unverified_payload.get("id")
+        user_email = unverified_payload.get("sub")
+
+        if not user_id_str or not user_email:
+            raise PyJWTError("Invalid token payload")
+
+        # Get the user from database to ensure they still exist and are active
+        from uuid import UUID
+        user_id = UUID(user_id_str)
+        user = db.query(User).filter(User.id == user_id, User.email == user_email, User.is_active == True).first()
+
+        if not user:
+            raise AuthUserNotFound()
+
+        # Create new token with full expiration time
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(user.email, user.id, access_token_expires)
+
+        return AuthResponse(
+            access_token=access_token,
+            token_type="bearer",
+            expires_in=int(access_token_expires.total_seconds()),
+            user=create_user_profile(user)
+        )
+
+    except Exception as e:
+        logging.error(f"Token refresh failed: {e}")
+        raise AuthVerifyTokenError(current_token)

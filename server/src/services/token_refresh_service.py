@@ -75,16 +75,26 @@ class TokenRefreshService:
             self.stats['last_run'] = datetime.now(timezone.utc)
 
             # Get database session with error handling and timeout
-            try:
-                # Add timeout for database connection
-                db_task = asyncio.create_task(asyncio.to_thread(lambda: next(get_db())))
-                db: Session = await asyncio.wait_for(db_task, timeout=10.0)
-            except asyncio.TimeoutError:
-                logger.warning("Database connection timed out, skipping token refresh cycle")
-                return
-            except Exception as db_error:
-                logger.warning(f"Database connection failed, skipping token refresh cycle: {db_error}")
-                return
+            db = None
+            for attempt in range(3):  # Try up to 3 times
+                try:
+                    # Increase timeout for Railway environment
+                    timeout = 30.0 if attempt == 0 else 45.0  # First attempt 30s, retries 45s
+                    db_task = asyncio.create_task(asyncio.to_thread(lambda: next(get_db())))
+                    db: Session = await asyncio.wait_for(db_task, timeout=timeout)
+                    break  # Success, break out of retry loop
+                except asyncio.TimeoutError:
+                    logger.debug(f"Database connection timeout attempt {attempt + 1}/3 ({timeout}s)")
+                    if attempt == 2:  # Last attempt
+                        logger.warning("Database connection timed out after 3 attempts, skipping token refresh cycle")
+                        return
+                    await asyncio.sleep(2)  # Wait 2 seconds before retry
+                except Exception as db_error:
+                    logger.debug(f"Database connection error attempt {attempt + 1}/3: {db_error}")
+                    if attempt == 2:  # Last attempt
+                        logger.warning(f"Database connection failed after 3 attempts: {db_error}")
+                        return
+                    await asyncio.sleep(2)  # Wait 2 seconds before retry
 
             try:
                 # Find tokens that need refreshing

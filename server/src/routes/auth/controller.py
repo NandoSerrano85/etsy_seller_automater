@@ -47,3 +47,17 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
 @router.get("/verify-token", response_model=model.TokenData)
 async def verify_token(token: str = Depends(OAuth2PasswordBearer(tokenUrl="/auth/login"))):
     return service.get_current_user(token)
+
+@router.post("/refresh-token", response_model=model.AuthResponse)
+async def refresh_token(request: Request, db: Session = Depends(get_db)):
+    """
+    Refresh a JWT access token.
+    Expects Authorization header with current token (even if expired).
+    """
+    # Extract token from Authorization header
+    authorization = request.headers.get("Authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+
+    current_token = authorization.replace("Bearer ", "")
+    return service.refresh_access_token(current_token, db)

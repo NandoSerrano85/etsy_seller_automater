@@ -43,9 +43,13 @@ try:
 except ImportError as e:
     logging.warning(f"Missing dependencies for image processing: {e}")
     DEPENDENCIES_AVAILABLE = False
-    # Create mock Session for type hints when dependencies are missing
+    # Create mock classes for type hints when dependencies are missing
     class Session:
         pass
+
+    class Image:
+        class Image:
+            pass
 
 # Import existing services
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -181,7 +185,7 @@ class ImageUploadWorkflow:
             self.logger.info(f"📦 Created {len(batches)} batches for processing")
 
             # Process batches in parallel
-            batch_results = self._process_batches_parallel(batches)
+            batch_results = self._process_batches_parallel(batches, design_data)
 
             # Calculate final statistics
             processing_time = time.time() - start_time
@@ -270,12 +274,13 @@ class ImageUploadWorkflow:
 
         return batches
 
-    def _process_batches_parallel(self, batches: List[List[UploadedImage]]) -> List[BatchResult]:
+    def _process_batches_parallel(self, batches: List[List[UploadedImage]], design_data=None) -> List[BatchResult]:
         """
         Process batches in parallel using thread pool
 
         Args:
             batches: List of image batches to process
+            design_data: Design configuration data to pass to batch processing
 
         Returns:
             List of batch processing results
