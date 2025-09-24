@@ -64,10 +64,23 @@ def discover_migrations():
 
     # Get migrations from our own migrations directory
     current_dir = os.path.dirname(__file__)
-    migrations_dir = os.path.join(current_dir, 'migrations')
 
-    if not os.path.exists(migrations_dir):
-        logger.warning(f"⚠️  Migrations directory not found: {migrations_dir}")
+    # Try different possible locations for migrations directory
+    possible_migrations_dirs = [
+        os.path.join(current_dir, 'migrations'),  # Local development: migration-service/migrations/
+        '/app/migration-service/migrations',       # Railway: /app/migration-service/migrations/
+        os.path.join('/app', 'migrations')        # Railway fallback: /app/migrations/
+    ]
+
+    migrations_dir = None
+    for dir_path in possible_migrations_dirs:
+        if os.path.exists(dir_path):
+            migrations_dir = dir_path
+            logger.info(f"📁 Using migrations directory: {migrations_dir}")
+            break
+
+    if migrations_dir is None:
+        logger.warning(f"⚠️  Migrations directory not found in any of: {possible_migrations_dirs}")
         return []
 
     migration_files = glob.glob(os.path.join(migrations_dir, '*.py'))
@@ -183,7 +196,24 @@ def run_nas_migration(engine):
         use_batched = os.getenv('NAS_USE_BATCHED', 'true').lower() == 'true'
 
         import importlib.util
-        migration_dir = os.path.join(os.path.dirname(__file__), 'migrations')
+
+        # Use the same directory discovery logic as discover_migrations()
+        current_dir = os.path.dirname(__file__)
+        possible_migrations_dirs = [
+            os.path.join(current_dir, 'migrations'),
+            '/app/migration-service/migrations',
+            os.path.join('/app', 'migrations')
+        ]
+
+        migration_dir = None
+        for dir_path in possible_migrations_dirs:
+            if os.path.exists(dir_path):
+                migration_dir = dir_path
+                break
+
+        if migration_dir is None:
+            logger.error("❌ Could not find migrations directory for NAS migration")
+            return False
 
         if use_batched:
             logger.info("📦 Using batched parallel processing for NAS migration")
