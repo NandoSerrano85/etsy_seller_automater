@@ -759,91 +759,95 @@ class ImageUploadWorkflow:
         successful_updates = []
 
         with self.db_lock:  # Serialize database operations
-            trans = None
-            try:
-                # Check if we have an active transaction
-                if not self.db_session.in_transaction():
-                    trans = self.db_session.begin()
+            now = datetime.now(timezone.utc)
+            shop_name = self._get_user_shop_name()
 
-                now = datetime.now(timezone.utc)
-                shop_name = self._get_user_shop_name()
+            # Check if multi-tenant is enabled
+            multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
-                # Check if multi-tenant is enabled
-                multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
+            for image in images:
+                # Use individual transactions for each image to prevent cascade failures
+                individual_trans = None
+                try:
+                    # Skip if image doesn't have required data
+                    if not image.final_filename or not image.phash:
+                        self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing filename or phash")
+                        continue
 
-                for image in images:
-                    try:
-                        # Skip if image doesn't have required data
-                        if not image.final_filename or not image.phash:
-                            self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing filename or phash")
-                            continue
+                    # Start a new transaction for this individual image
+                    individual_trans = self.db_session.begin()
 
-                        template_name = image.upload_info.template_id or "uploads"
-                        file_path = f"/share/Graphics/{shop_name}/{template_name}/{image.final_filename}"
+                    template_name = image.upload_info.template_id or "uploads"
+                    file_path = f"/share/Graphics/{shop_name}/{template_name}/{image.final_filename}"
 
-                        # Generate unique UUID for this design
-                        design_id = str(uuid.uuid4())
+                    # Generate unique UUID for this design
+                    design_id = str(uuid.uuid4())
 
-                        if multi_tenant:
-                            # Get user's org_id
-                            org_result = self.db_session.execute(text("""
-                                SELECT org_id FROM users WHERE id = :user_id
-                            """), {"user_id": self.user_id})
-                            org_row = org_result.fetchone()
-                            org_id = org_row[0] if org_row else None
+                    if multi_tenant:
+                        # Get user's org_id
+                        org_result = self.db_session.execute(text("""
+                            SELECT org_id FROM users WHERE id = :user_id
+                        """), {"user_id": self.user_id})
+                        org_row = org_result.fetchone()
+                        org_id = org_row[0] if org_row else None
 
-                            self.db_session.execute(text("""
-                                INSERT INTO design_images
-                                (id, user_id, org_id, filename, file_path, phash, is_active, created_at, updated_at)
-                                VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
-                                ON CONFLICT (phash) DO NOTHING
-                            """), {
-                                "id": design_id,
-                                "user_id": self.user_id,
-                                "org_id": org_id,
-                                "filename": image.final_filename,
-                                "file_path": file_path,
-                                "phash": image.phash,
-                                "is_active": True,
-                                "created_at": now,
-                                "updated_at": now
-                            })
-                        else:
-                            self.db_session.execute(text("""
-                                INSERT INTO design_images
-                                (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
-                                VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
-                                ON CONFLICT (phash) DO NOTHING
-                            """), {
-                                "id": design_id,
-                                "user_id": self.user_id,
-                                "filename": image.final_filename,
-                                "file_path": file_path,
-                                "phash": image.phash,
-                                "is_active": True,
-                                "created_at": now,
-                                "updated_at": now
-                            })
+                        self.db_session.execute(text("""
+                            INSERT INTO design_images
+                            (id, user_id, org_id, filename, file_path, phash, is_active, created_at, updated_at)
+                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                            ON CONFLICT (phash) DO NOTHING
+                        """), {
+                            "id": design_id,
+                            "user_id": self.user_id,
+                            "org_id": org_id,
+                            "filename": image.final_filename,
+                            "file_path": file_path,
+                            "phash": image.phash,
+                            "is_active": True,
+                            "created_at": now,
+                            "updated_at": now
+                        })
+                    else:
+                        self.db_session.execute(text("""
+                            INSERT INTO design_images
+                            (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
+                            VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                            ON CONFLICT (phash) DO NOTHING
+                        """), {
+                            "id": design_id,
+                            "user_id": self.user_id,
+                            "filename": image.final_filename,
+                            "file_path": file_path,
+                            "phash": image.phash,
+                            "is_active": True,
+                            "created_at": now,
+                            "updated_at": now
+                        })
 
-                        image.db_updated = True
-                        successful_updates.append(image)
+                    # Commit the individual transaction
+                    individual_trans.commit()
+                    individual_trans = None
 
-                        # Add to existing phashes to prevent duplicates in subsequent batches
-                        with self._existing_phashes_lock:
-                            if self._existing_phashes is not None and image.phash:
-                                self._existing_phashes.add(image.phash)
+                    image.db_updated = True
+                    successful_updates.append(image)
 
-                    except Exception as e:
-                        self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
+                    # Add to existing phashes to prevent duplicates in subsequent batches
+                    with self._existing_phashes_lock:
+                        if self._existing_phashes is not None and image.phash:
+                            self._existing_phashes.add(image.phash)
 
-                if trans:
-                    trans.commit()
-                self.logger.info(f"🗄️  Batch {batch_id}: Successfully updated {len(successful_updates)}/{len(images)} records")
+                except Exception as e:
+                    # Rollback the individual transaction if it exists
+                    if individual_trans:
+                        try:
+                            individual_trans.rollback()
+                        except Exception:
+                            pass  # Already failed, ignore rollback errors
 
-            except Exception as e:
-                if trans:
-                    trans.rollback()
-                self.logger.error(f"❌ Batch {batch_id} database update failed: {e}")
+                    self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
+                    # Continue processing other images - don't let one failure stop all
+
+            self.logger.info(f"🗄️  Batch {batch_id}: Successfully updated {len(successful_updates)}/{len(images)} records")
 
         return successful_updates
 
