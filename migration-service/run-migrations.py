@@ -68,8 +68,8 @@ def discover_migrations():
     # Try different possible locations for migrations directory
     possible_migrations_dirs = [
         os.path.join(current_dir, 'migrations'),  # Local development: migration-service/migrations/
-        '/app/migration-service/migrations',       # Railway: /app/migration-service/migrations/
-        os.path.join('/app', 'migrations')        # Railway fallback: /app/migrations/
+        '/app/migrations',                         # Railway: /app/migrations/ (from Dockerfile)
+        '/app/migration-service/migrations'       # Alternative Railway path
     ]
 
     migrations_dir = None
@@ -201,8 +201,8 @@ def run_nas_migration(engine):
         current_dir = os.path.dirname(__file__)
         possible_migrations_dirs = [
             os.path.join(current_dir, 'migrations'),
-            '/app/migration-service/migrations',
-            os.path.join('/app', 'migrations')
+            '/app/migrations',
+            '/app/migration-service/migrations'
         ]
 
         migration_dir = None

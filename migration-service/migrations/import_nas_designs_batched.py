@@ -29,10 +29,18 @@ import time
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 
-# Import NAS storage utility
+# Import NAS storage utility - handle different deployment paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
-server_dir = os.path.dirname(current_dir)
-sys.path.insert(0, server_dir)
+possible_server_dirs = [
+    os.path.join(current_dir, '..', '..', 'server'),  # Local: migration-service/migrations/../../../server
+    '/app/server',                                     # Railway: /app/server
+    os.path.join(current_dir, '..', 'server')        # Alternative: migrations/../server
+]
+
+for server_dir in possible_server_dirs:
+    if os.path.exists(server_dir):
+        sys.path.insert(0, server_dir)
+        break
 
 @dataclass
 class FileInfo:

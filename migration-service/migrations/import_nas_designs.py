@@ -15,12 +15,21 @@ from io import BytesIO
 import uuid
 from datetime import datetime, timezone
 
-# Import NAS storage utility
+# Import NAS storage utility - handle different deployment paths
 import sys
 import os
 current_dir = os.path.dirname(os.path.abspath(__file__))
-server_dir = os.path.dirname(current_dir)
-sys.path.insert(0, server_dir)
+possible_server_dirs = [
+    os.path.join(current_dir, '..', '..', 'server'),  # Local: migration-service/migrations/../../../server
+    '/app/server',                                     # Railway: /app/server
+    os.path.join(current_dir, '..', 'server')        # Alternative: migrations/../server
+]
+
+for server_dir in possible_server_dirs:
+    if os.path.exists(server_dir):
+        sys.path.insert(0, server_dir)
+        break
+
 from server.src.utils.nas_storage import nas_storage
 
 def calculate_phash_from_content(image_content: bytes, hash_size: int = 16) -> str:
