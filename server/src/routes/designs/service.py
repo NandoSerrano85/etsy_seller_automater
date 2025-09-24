@@ -76,6 +76,120 @@ def _validate_size_config(db: Session, product_template_id: UUID, size_config_id
 
 
 async def create_design(db: Session, user_id: UUID, design_data: model.DesignImageCreate, files: List[UploadFile], progress_callback=None) -> model.DesignImageListResponse:
+    """
+    Enhanced create_design function that integrates the new comprehensive workflow
+    while maintaining backward compatibility with existing frontend
+    """
+    # Check if we should use the new comprehensive workflow
+    use_new_workflow = os.getenv('USE_COMPREHENSIVE_WORKFLOW', 'true').lower() == 'true'
+
+    # Check minimum file threshold for comprehensive workflow
+    min_files = int(os.getenv('COMPREHENSIVE_WORKFLOW_MIN_FILES', '2'))
+
+    if use_new_workflow and len(files) >= min_files:
+        # Use the new comprehensive workflow for multiple files
+        return await _create_design_with_comprehensive_workflow(db, user_id, design_data, files, progress_callback)
+    else:
+        # Use original workflow for single files or when disabled
+        return await _create_design_original(db, user_id, design_data, files, progress_callback)
+
+
+async def _create_design_with_comprehensive_workflow(db: Session, user_id: UUID, design_data: model.DesignImageCreate, files: List[UploadFile], progress_callback=None) -> model.DesignImageListResponse:
+    """
+    New comprehensive workflow implementation
+    """
+    try:
+        from server.src.services.image_upload_workflow import create_workflow, UploadedImage
+        from datetime import datetime, timezone
+
+        if progress_callback:
+            progress_callback(0, "Starting comprehensive image processing workflow")
+
+        # Convert UploadFiles to UploadedImage objects for the workflow
+        uploaded_images = []
+        for file in files:
+            content = await file.read()
+            await file.seek(0)  # Reset for potential reuse
+
+            uploaded_image = UploadedImage(
+                original_filename=file.filename or "upload.png",
+                content=content,
+                size=len(content),
+                upload_time=datetime.now(timezone.utc),
+                user_id=str(user_id),
+                template_id=str(design_data.product_template_id) if design_data.product_template_id else None
+            )
+            uploaded_images.append(uploaded_image)
+
+        # Create workflow with database session
+        max_threads = int(os.getenv('COMPREHENSIVE_WORKFLOW_MAX_THREADS', '4'))
+        workflow = create_workflow(user_id=str(user_id), db_session=db, max_threads=max_threads)
+
+        # Create progress callback wrapper that matches existing interface
+        def workflow_progress_callback(step: int, message: str, total_steps: int = 4, file_progress: float = 0):
+            if progress_callback:
+                # Map workflow steps to existing frontend steps
+                step_mapping = {
+                    1: "Checking for duplicates",
+                    2: "Processing and formatting images",
+                    3: "Creating product mockups",
+                    4: "Uploading to Etsy store"
+                }
+                mapped_message = step_mapping.get(step, message)
+                progress_callback(step - 1, mapped_message, total_steps, file_progress)
+
+        # Process images through the comprehensive workflow
+        if progress_callback:
+            progress_callback(0, "Processing images with duplicate detection")
+
+        result = workflow.process_images(uploaded_images, design_data)
+
+        if progress_callback:
+            progress_callback(1, f"Processed {result.processed_images} images, skipped {result.skipped_duplicates} duplicates")
+
+        # Convert workflow results back to the expected format
+        design_results = []
+
+        # Get processed images from batch results and create database entries
+        for batch in result.batch_results:
+            for processed_image in getattr(batch, 'processed_images', []):
+                if hasattr(processed_image, 'db_updated') and processed_image.db_updated:
+                    # Query the database for the newly created design
+                    created_design = db.query(DesignImages).filter(
+                        DesignImages.user_id == user_id,
+                        DesignImages.filename == processed_image.final_filename,
+                        DesignImages.is_active == True
+                    ).first()
+
+                    if created_design:
+                        design_results.append(created_design)
+
+        # If no designs were found in DB (fallback), create them using original method
+        if not design_results:
+            logging.warning("Comprehensive workflow completed but no designs found in DB, falling back to original method")
+            return await _create_design_original(db, user_id, design_data, files, progress_callback)
+
+        if progress_callback:
+            progress_callback(2, f"Successfully created {len(design_results)} designs")
+
+        response = model.DesignImageListResponse(
+            designs=[model.DesignImageResponse.model_validate(design) for design in design_results],
+            total=len(design_results)
+        )
+
+        logging.info(f"Comprehensive workflow completed: {len(design_results)} designs created for user: {user_id}")
+        return response
+
+    except Exception as e:
+        logging.error(f"Comprehensive workflow failed, falling back to original: {e}")
+        # Fallback to original workflow if the new one fails
+        return await _create_design_original(db, user_id, design_data, files, progress_callback)
+
+
+async def _create_design_original(db: Session, user_id: UUID, design_data: model.DesignImageCreate, files: List[UploadFile], progress_callback=None) -> model.DesignImageListResponse:
+    """
+    Original design creation workflow (preserved for backward compatibility and single files)
+    """
     try:
         # Validate canvas config if provided
         if design_data.canvas_config_id:

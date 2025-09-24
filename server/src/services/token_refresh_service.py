@@ -133,7 +133,7 @@ class TokenRefreshService:
                 try:
                     # Check if platform value is valid before processing (case insensitive)
                     platform_value = row.platform.upper() if row.platform else None
-                    if platform_value in ['ETSY', 'SHOPIFY', 'AMAZON', 'EBAY']:
+                    if platform_value and platform_value.upper() in ['ETSY', 'SHOPIFY', 'AMAZON', 'EBAY']:
                         # Get the actual ORM object for this connection
                         conn = db.query(PlatformConnection).filter(PlatformConnection.id == row.id).first()
                         if conn:
