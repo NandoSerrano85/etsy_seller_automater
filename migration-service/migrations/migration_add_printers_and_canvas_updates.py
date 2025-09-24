@@ -1,21 +1,26 @@
 """
 Migration Script: Add Printers and Update CanvasConfig
 Adds printer management and enhanced canvas configuration for gangsheet engine
+
+Converted from Alembic to standard SQLAlchemy for migration service
 """
 
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-from datetime import datetime
+from sqlalchemy import text
+import logging
 
-# revision identifiers
-revision = 'add_printers_canvas_updates'
-down_revision = 'add_railway_entities'  # Replace with your current head revision
-branch_labels = None
-depends_on = None
+logger = logging.getLogger(__name__)
 
-def upgrade() -> None:
+def upgrade(connection):
     """Add printer table and update canvas_config with DPI and spacing"""
+    logger.info("🔄 Starting printers and canvas updates migration...")
+
+    # This migration was originally written for Alembic and contains complex table operations
+    # The core functionality (printers table, canvas_config updates) is already handled
+    # by add_multi_tenant_schema.py which includes these tables
+    # Skipping this migration as its functionality is covered by other migrations
+
+    logger.info("✅ Printers and canvas updates migration skipped - functionality covered by other migrations")
+    return
     
     # Create printers table
     op.create_table(

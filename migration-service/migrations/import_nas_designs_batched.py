@@ -7,7 +7,7 @@ of approximately 500MB, with parallel processing for optimal performance.
 
 Features:
 - Batch processing in ~500MB chunks
-- Parallel execution using multiprocessing
+- Parallel execution using threading (safer for database operations)
 - Progress tracking and detailed logging
 - Memory-efficient processing
 - Error isolation per batch
@@ -15,7 +15,7 @@ Features:
 
 import logging
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from sqlalchemy import text, create_engine
 from pathlib import Path
 import imagehash
@@ -483,16 +483,16 @@ def upgrade(connection):
             batch_size_mb = sum(f.size for f in batch) / (1024 * 1024)
             logging.info(f"  Batch {i+1}: {len(batch)} files ({batch_size_mb:.1f} MB)")
 
-        # Process batches in parallel
+        # Process batches in parallel using threads (safer for database operations)
         max_workers = min(mp.cpu_count(), len(batches), 4)  # Limit concurrent batches
-        logging.info(f"🚀 Processing batches with {max_workers} parallel workers...")
+        logging.info(f"🚀 Processing batches with {max_workers} parallel threads...")
 
         total_processed = 0
         total_skipped = 0
         total_errors = 0
         start_time = time.time()
 
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all batch processing tasks
             future_to_batch = {
                 executor.submit(process_batch, batch, i+1): i+1
