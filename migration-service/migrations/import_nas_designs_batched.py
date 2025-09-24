@@ -42,6 +42,9 @@ for server_dir in possible_server_dirs:
         sys.path.insert(0, server_dir)
         break
 
+# Global nas_storage object - will be initialized in upgrade function
+nas_storage = None
+
 @dataclass
 class FileInfo:
     """Information about a file to be processed"""
@@ -94,10 +97,12 @@ def design_exists(connection, user_id: str, filename: str) -> bool:
 def process_single_file(file_info: FileInfo) -> Tuple[bool, str, Optional[str]]:
     """
     Process a single file and return (success, error_message, phash)
-    This function runs in a separate process
+    This function runs in a thread and uses the global nas_storage object
     """
     try:
-        from server.src.utils.nas_storage import nas_storage
+        # Use the global nas_storage object initialized in upgrade function
+        if nas_storage is None:
+            return False, f"NAS storage not initialized", None
 
         # Download file content from NAS
         file_content = nas_storage.download_file_to_memory(
@@ -187,6 +192,7 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
         if successful_results:
             logging.info(f"📦 Batch {batch_id}: Writing {len(successful_results)} records to database...")
 
+            trans = None  # Initialize transaction variable
             try:
                 # Begin transaction for batch insert with deadlock prevention
                 trans = connection.begin()
@@ -308,7 +314,8 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                     logging.warning(f"⚠️  Batch {batch_id}: Expected {len(design_records)} records, found {actual_count} in database")
 
             except Exception as e:
-                trans.rollback()
+                if trans is not None:
+                    trans.rollback()
                 logging.error(f"❌ Batch {batch_id}: Database commit failed - {e}")
                 error_details.append(f"Batch database commit failed: {e}")
                 errors += len(successful_results)
@@ -371,7 +378,9 @@ def create_batches(files: List[FileInfo], target_size_mb: int = 500) -> List[Lis
 
 def collect_all_files(connection) -> List[FileInfo]:
     """Collect all files that need to be processed"""
-    from server.src.utils.nas_storage import nas_storage
+    if nas_storage is None:
+        logging.error("NAS storage not initialized")
+        return []
 
     # Get all users and templates
     users_result = connection.execute(text("""
@@ -443,9 +452,11 @@ def collect_all_files(connection) -> List[FileInfo]:
 
 def upgrade(connection):
     """Import designs from NAS using batch processing and parallel execution."""
+    global nas_storage
 
     try:
-        from server.src.utils.nas_storage import nas_storage
+        from server.src.utils.nas_storage import nas_storage as imported_nas_storage
+        nas_storage = imported_nas_storage  # Set global variable
 
         if not nas_storage.enabled:
             logging.info("NAS storage is not enabled. Skipping design import migration.")
