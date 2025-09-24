@@ -150,19 +150,31 @@ async def _create_design_with_comprehensive_workflow(db: Session, user_id: UUID,
         # Convert workflow results back to the expected format
         design_results = []
 
-        # Get processed images from batch results and create database entries
-        for batch in result.batch_results:
-            for processed_image in getattr(batch, 'processed_images', []):
-                if hasattr(processed_image, 'db_updated') and processed_image.db_updated:
-                    # Query the database for the newly created design
-                    created_design = db.query(DesignImages).filter(
-                        DesignImages.user_id == user_id,
-                        DesignImages.filename == processed_image.final_filename,
-                        DesignImages.is_active == True
-                    ).first()
+        # Query database for all recently created designs by this workflow
+        # Since the comprehensive workflow creates designs directly in the database during processing,
+        # we need to find them by querying for recent designs created in the last few minutes
 
-                    if created_design:
-                        design_results.append(created_design)
+        from datetime import timedelta
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+
+        try:
+            # Get all designs created recently by this user
+            recent_designs_query = db.query(DesignImages).filter(
+                DesignImages.user_id == user_id,
+                DesignImages.created_at >= recent_time,
+                DesignImages.is_active == True
+            ).order_by(DesignImages.created_at.desc())
+
+            recent_designs = recent_designs_query.limit(result.processed_images + 5).all()
+
+            # Take the most recent designs up to the number processed
+            design_results = recent_designs[:result.processed_images] if result.processed_images > 0 else []
+
+            logging.info(f"Found {len(design_results)} recently created designs for comprehensive workflow result")
+
+        except Exception as e:
+            logging.error(f"Error querying recent designs: {e}")
+            design_results = []
 
         # If no designs were found in DB (fallback), create them using original method
         if not design_results:

@@ -43,6 +43,9 @@ try:
 except ImportError as e:
     logging.warning(f"Missing dependencies for image processing: {e}")
     DEPENDENCIES_AVAILABLE = False
+    # Create mock Session for type hints when dependencies are missing
+    class Session:
+        pass
 
 # Import existing services
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -57,6 +60,7 @@ try:
 except ImportError as e:
     logging.warning(f"NAS storage not available: {e}")
     nas_storage = None
+    get_resizing_configs_from_db = None
     NAS_AVAILABLE = False
 
 try:
@@ -204,17 +208,36 @@ class ImageUploadWorkflow:
         try:
             self.logger.info("📊 Loading existing phashes from database...")
 
+            # Load all phashes for this user from design_images table
             result = self.db_session.execute(text("""
                 SELECT DISTINCT phash
                 FROM design_images
-                WHERE user_id = :user_id AND phash IS NOT NULL
+                WHERE user_id = :user_id
+                AND phash IS NOT NULL
+                AND phash != ''
+                AND is_active = true
             """), {"user_id": self.user_id})
 
-            self._existing_phashes = {row[0] for row in result.fetchall()}
-            self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing phashes")
+            # Store all phashes - these will be used for duplicate detection
+            raw_phashes = {row[0] for row in result.fetchall() if row[0]}
+
+            # Process phashes to handle both single and combined formats
+            self._existing_phashes = set()
+            for phash in raw_phashes:
+                if '|' in phash:
+                    # Split combined phash and add primary hash
+                    primary_phash = phash.split('|')[0]
+                    self._existing_phashes.add(primary_phash)
+                else:
+                    # Add single phash as-is
+                    self._existing_phashes.add(phash)
+
+            self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing phashes from {len(raw_phashes)} database records")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to load existing phashes: {e}")
+            import traceback
+            self.logger.error(f"❌ Traceback: {traceback.format_exc()}")
             self._existing_phashes = set()
 
     def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 100) -> List[List[UploadedImage]]:
@@ -270,7 +293,7 @@ class ImageUploadWorkflow:
                 # Small delay to stagger batch starts
                 if i > 0:
                     time.sleep(0.1)
-                future_to_batch[executor.submit(self._process_batch, batch, batch_id)] = batch_id
+                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data)] = batch_id
 
             # Collect results as they complete
             for future in as_completed(future_to_batch):
@@ -301,7 +324,7 @@ class ImageUploadWorkflow:
 
         return batch_results
 
-    def _process_batch(self, images: List[UploadedImage], batch_id: int) -> BatchResult:
+    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None) -> BatchResult:
         """
         Process a single batch of images through the complete workflow
 
@@ -437,7 +460,7 @@ class ImageUploadWorkflow:
 
             # Get resizing configuration (use existing utils if available)
             try:
-                if hasattr(self, 'db_session') and image.template_id:
+                if hasattr(self, 'db_session') and image.template_id and get_resizing_configs_from_db:
                     # Use existing resizing configuration system
                     canvas_config, _ = get_resizing_configs_from_db(
                         self.db_session,
@@ -518,7 +541,7 @@ class ImageUploadWorkflow:
     def _get_canvas_config(self, template_id: Optional[str]) -> Dict[str, Any]:
         """Get canvas configuration for image processing"""
         try:
-            if template_id and hasattr(self, 'db_session'):
+            if template_id and hasattr(self, 'db_session') and get_resizing_configs_from_db:
                 # Try to get from database if available
                 config, _ = get_resizing_configs_from_db(
                     self.db_session,
@@ -753,6 +776,9 @@ class ImageUploadWorkflow:
                         template_name = image.upload_info.template_id or "uploads"
                         file_path = f"/share/Graphics/{shop_name}/{template_name}/{image.final_filename}"
 
+                        # Generate unique UUID for this design
+                        design_id = str(uuid.uuid4())
+
                         if multi_tenant:
                             # Get user's org_id
                             org_result = self.db_session.execute(text("""
@@ -767,7 +793,7 @@ class ImageUploadWorkflow:
                                 VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
                                 ON CONFLICT (phash) DO NOTHING
                             """), {
-                                "id": str(uuid.uuid4()),
+                                "id": design_id,
                                 "user_id": self.user_id,
                                 "org_id": org_id,
                                 "filename": image.final_filename,
@@ -784,7 +810,7 @@ class ImageUploadWorkflow:
                                 VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
                                 ON CONFLICT (phash) DO NOTHING
                             """), {
-                                "id": str(uuid.uuid4()),
+                                "id": design_id,
                                 "user_id": self.user_id,
                                 "filename": image.final_filename,
                                 "file_path": file_path,
