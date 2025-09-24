@@ -26,13 +26,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Add server to Python path
+# Add server to Python path for Railway deployments
 sys.path.insert(0, '/app/server')
+# Add local server path for development
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'server'))
 
 def setup_database():
     """Setup database connection"""
     try:
-        from server.src.database.core import engine
+        # Try to import from server first (Railway deployment)
+        try:
+            from server.src.database.core import engine
+        except ImportError:
+            # Fallback: create engine directly from DATABASE_URL
+            from sqlalchemy import create_engine
+            database_url = os.getenv('DATABASE_URL')
+            if not database_url:
+                raise ValueError("DATABASE_URL environment variable is required")
+            engine = create_engine(database_url)
+
         from sqlalchemy import text
 
         # Test connection
@@ -46,26 +58,37 @@ def setup_database():
         raise
 
 def discover_migrations():
-    """Automatically discover all migration files"""
-    import os
+    """Automatically discover all migration files from migration-service/migrations/"""
     import glob
+    import importlib.util
 
-    # Get all Python files in migrations directory (except __init__.py and imports)
-    migrations_dir = '/app/server/migrations'
+    # Get migrations from our own migrations directory
+    current_dir = os.path.dirname(__file__)
+    migrations_dir = os.path.join(current_dir, 'migrations')
+
     if not os.path.exists(migrations_dir):
-        migrations_dir = 'server/migrations'  # Fallback for local development
+        logger.warning(f"⚠️  Migrations directory not found: {migrations_dir}")
+        return []
 
     migration_files = glob.glob(os.path.join(migrations_dir, '*.py'))
     migration_modules = []
 
     # Define dependency order for known migrations
     migration_order = [
+        # Core schema migrations (must run first)
         "add_multi_tenant_schema",        # Must run first for multi-tenant support
+        "migration_add_railway_entities", # Railway entities
+
+        # Platform-specific migrations
         "add_etsy_shop_id",               # Adds Etsy shop ID fields
-        "add_phash_to_designs",           # Adds phash column to designs
+        "separate_platform_connections",   # Separates platform connections
         "remove_shopify_unique_constraint", # Removes Shopify constraints
+
+        # Design-related migrations
+        "add_phash_to_designs",           # Adds phash column to designs
         "update_phash_hash_size",         # Updates phash column size
-        "separate_platform_connections"   # Separates platform connections
+        "run_canvas_size_migration",      # Canvas size updates
+        "migration_add_printers_and_canvas_updates", # Printer and canvas updates
     ]
 
     # Exclude certain files
@@ -76,10 +99,17 @@ def discover_migrations():
         "import_nas_designs_batched.py"  # Handled separately as NAS migration
     ]
 
+    # Add migrations directory to Python path for imports
+    if migrations_dir not in sys.path:
+        sys.path.insert(0, migrations_dir)
+
     # First, add known migrations in order
     for migration_name in migration_order:
-        module_name = f"server.migrations.{migration_name}"
-        migration_modules.append(module_name)
+        migration_file = os.path.join(migrations_dir, f"{migration_name}.py")
+        if os.path.exists(migration_file):
+            migration_modules.append(migration_name)
+        else:
+            logger.debug(f"🔍 Known migration not found: {migration_name}")
 
     # Then discover any new migrations not in the known list
     for file_path in migration_files:
@@ -88,11 +118,10 @@ def discover_migrations():
             continue
 
         migration_name = filename.replace('.py', '')
-        module_name = f"server.migrations.{migration_name}"
 
         # Add if not already in the list
-        if module_name not in migration_modules:
-            migration_modules.append(module_name)
+        if migration_name not in migration_modules:
+            migration_modules.append(migration_name)
             logger.info(f"🔍 Discovered new migration: {migration_name}")
 
     return migration_modules
@@ -112,7 +141,11 @@ def run_startup_migrations(engine):
             logger.info(f"  🔄 Running {migration_name}...")
 
             # Import and run migration
-            module = __import__(migration_name, fromlist=['upgrade'])
+            import importlib.util
+            migration_file_path = os.path.join(os.path.dirname(__file__), 'migrations', f"{migration_name}.py")
+            spec = importlib.util.spec_from_file_location(migration_name, migration_file_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
 
             with engine.connect() as conn:
                 # Start transaction
@@ -149,14 +182,20 @@ def run_nas_migration(engine):
         # Check if we should use batched processing
         use_batched = os.getenv('NAS_USE_BATCHED', 'true').lower() == 'true'
 
+        import importlib.util
+        migration_dir = os.path.join(os.path.dirname(__file__), 'migrations')
+
         if use_batched:
             logger.info("📦 Using batched parallel processing for NAS migration")
-            from server.migrations.import_nas_designs_batched import upgrade
+            migration_file = os.path.join(migration_dir, 'import_nas_designs_batched.py')
+            spec = importlib.util.spec_from_file_location('import_nas_designs_batched', migration_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
 
             # Batched migration handles its own transactions and connections
             try:
                 with engine.connect() as conn:
-                    upgrade(conn)
+                    module.upgrade(conn)
                 logger.info("✅ NAS migration completed successfully")
                 return True
             except Exception as e:
@@ -164,13 +203,16 @@ def run_nas_migration(engine):
                 return False
         else:
             logger.info("📄 Using sequential processing for NAS migration")
-            from server.migrations.import_nas_designs import upgrade
+            migration_file = os.path.join(migration_dir, 'import_nas_designs.py')
+            spec = importlib.util.spec_from_file_location('import_nas_designs', migration_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
 
             # Sequential migration uses single transaction
             with engine.connect() as conn:
                 trans = conn.begin()
                 try:
-                    upgrade(conn)
+                    module.upgrade(conn)
                     trans.commit()
                     logger.info("✅ NAS migration completed successfully")
                     return True
@@ -203,7 +245,11 @@ def run_complex_migrations(engine):
         try:
             logger.info(f"  🔄 Running {migration_name}...")
 
-            module = __import__(migration_name, fromlist=['upgrade'])
+            import importlib.util
+            migration_file_path = os.path.join(os.path.dirname(__file__), 'migrations', f"{migration_name}.py")
+            spec = importlib.util.spec_from_file_location(migration_name, migration_file_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
 
             with engine.connect() as conn:
                 trans = conn.begin()
