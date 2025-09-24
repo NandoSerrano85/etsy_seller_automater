@@ -5,8 +5,22 @@ from server.src.database.core import get_db
 from server.src.routes.auth.service import CurrentUser
 from server.src.entities.user import User
 from . import service, model
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 router = APIRouter(prefix="/third-party-listings", tags=["third-party-listings"])
+
+# Thread pool for background processing
+thread_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="third-party-listings-")
+
+def run_in_thread(func):
+    """Decorator to run sync functions in thread pool"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+    return wrapper
 
 
 @router.get("/", response_model=model.ListingsResponse)
@@ -18,19 +32,23 @@ async def get_shop_listings(
     db: Session = Depends(get_db)
 ):
     """
-    Get shop listings with pagination and filtering
+    Get shop listings with pagination and filtering (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
+
     request = model.GetListingsRequest(
         state=state,
         limit=limit,
         offset=offset
     )
-    
-    return service.get_shop_listings(user_id, db, request)
+
+    @run_in_thread
+    def get_shop_listings_threaded():
+        return service.get_shop_listings(user_id, db, request)
+
+    return await get_shop_listings_threaded()
 
 
 @router.get("/all", response_model=model.ListingsResponse)
@@ -40,15 +58,19 @@ async def get_all_shop_listings(
     db: Session = Depends(get_db)
 ):
     """
-    Get all shop listings (with automatic pagination)
+    Get all shop listings (with automatic pagination) (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
+
     request = model.GetAllListingsRequest(state=state)
-    
-    return service.get_all_shop_listings(user_id, db, request)
+
+    @run_in_thread
+    def get_all_shop_listings_threaded():
+        return service.get_all_shop_listings(user_id, db, request)
+
+    return await get_all_shop_listings_threaded()
 
 
 @router.get("/{listing_id}", response_model=model.ListingResponse)
@@ -58,13 +80,17 @@ async def get_listing_by_id(
     db: Session = Depends(get_db)
 ):
     """
-    Get a specific listing by ID
+    Get a specific listing by ID (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.get_listing_by_id(user_id, db, listing_id)
+
+    @run_in_thread
+    def get_listing_by_id_threaded():
+        return service.get_listing_by_id(user_id, db, listing_id)
+
+    return await get_listing_by_id_threaded()
 
 
 @router.patch("/{listing_id}", response_model=model.ListingResponse)

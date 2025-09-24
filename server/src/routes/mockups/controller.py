@@ -8,11 +8,25 @@ from server.src.message import InvalidUserToken
 from . import model
 from . import service
 import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 router = APIRouter(
     prefix='/mockups',
     tags=['Mockups']
 )
+
+# Thread pool for background processing
+thread_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="mockups-")
+
+def run_in_thread(func):
+    """Decorator to run sync functions in thread pool"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+    return wrapper
 
 # Mockups endpoints
 @router.get('/', response_model=model.MockupsListResponse)
@@ -22,11 +36,17 @@ async def get_mockups(
     skip: int = Query(0, ge=0, description="Number of mockups to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of mockups to return")
 ):
-    """Get all mockups for the current user with pagination"""
+    """Get all mockups for the current user with pagination (threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return service.get_mockups_by_user_id(db, user_id, skip, limit)
+
+    # Run database query in thread to prevent blocking
+    @run_in_thread
+    def get_mockups_threaded():
+        return service.get_mockups_by_user_id(db, user_id, skip, limit)
+
+    return await get_mockups_threaded()
 
 @router.post('/', response_model=model.MockupImageResponse, status_code=status.HTTP_201_CREATED)
 async def create_mockup(
@@ -34,11 +54,17 @@ async def create_mockup(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Create and store a complete mockup (image + DB record) for the current user"""
+    """Create and store a complete mockup (image + DB record) for the current user (threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return service.create_mockup(db, user_id, mockup_data)
+
+    # Run mockup creation in thread (involves image processing)
+    @run_in_thread
+    def create_mockup_threaded():
+        return service.create_mockup(db, user_id, mockup_data)
+
+    return await create_mockup_threaded()
 
 @router.post('/group', response_model=model.MockupsResponse, status_code=status.HTTP_201_CREATED)
 async def create_mockup_group(

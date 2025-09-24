@@ -13,11 +13,24 @@ from . import service
 import json
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 router = APIRouter(
     prefix='/designs',
     tags=['Designs']
 )
+
+# Thread pool for background processing
+thread_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="designs-")
+
+def run_in_thread(func):
+    """Decorator to run sync functions in thread pool"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+    return wrapper
 
 @router.post('/start-upload')
 async def start_upload(
@@ -132,11 +145,17 @@ async def get_designs(
     skip: int = Query(0, ge=0, description="Number of designs to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of designs to return")
 ):
-    """Get all designs for the current user with pagination"""
+    """Get all designs for the current user with pagination (threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return service.get_designs_by_user_id(db, user_id, skip, limit)
+
+    # Run database query in thread to prevent blocking
+    @run_in_thread
+    def get_designs_threaded():
+        return service.get_designs_by_user_id(db, user_id, skip, limit)
+
+    return await get_designs_threaded()
 
 @router.get('/by-id/{design_id}', response_model=model.DesignImageResponse)
 async def get_design(
@@ -144,11 +163,17 @@ async def get_design(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get a specific design by ID for the current user"""
+    """Get a specific design by ID for the current user (threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return service.get_design_by_id(db, design_id, user_id)
+
+    # Run database query in thread to prevent blocking
+    @run_in_thread
+    def get_design_threaded():
+        return service.get_design_by_id(db, design_id, user_id)
+
+    return await get_design_threaded()
 
 @router.put('/update/{design_id}', response_model=model.DesignImageResponse)
 async def update_design(
@@ -157,11 +182,17 @@ async def update_design(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Update a specific design by ID for the current user"""
+    """Update a specific design by ID for the current user (threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    return service.update_design(db, design_id, user_id, design_data)
+
+    # Run database update in thread to prevent blocking
+    @run_in_thread
+    def update_design_threaded():
+        return service.update_design(db, design_id, user_id, design_data)
+
+    return await update_design_threaded()
 
 @router.delete('/delete/{design_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_design(
@@ -169,18 +200,24 @@ async def delete_design(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Delete a specific design by ID for the current user (soft delete)"""
+    """Delete a specific design by ID for the current user (soft delete, threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    service.delete_design(db, design_id, user_id)
+
+    # Run database delete in thread to prevent blocking
+    @run_in_thread
+    def delete_design_threaded():
+        return service.delete_design(db, design_id, user_id)
+
+    await delete_design_threaded()
 
 @router.get('/gallery', response_model=model.DesignGalleryResponse)
 async def get_design_gallery(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get design gallery data including Etsy mockups and QNAP design files (cached for 30 minutes)"""
+    """Get design gallery data including Etsy mockups and QNAP design files (cached for 30 minutes, threaded)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
@@ -193,8 +230,12 @@ async def get_design_gallery(
         logging.debug(f"Cache hit for gallery user {user_id_str}")
         return cached_result
 
-    # Get fresh data
-    result = await service.get_design_gallery_data(db, user_id)
+    # Get fresh data in thread (heavy operation with multiple data sources)
+    @run_in_thread
+    def get_gallery_data_threaded():
+        return asyncio.run(service.get_design_gallery_data(db, user_id))
+
+    result = await get_gallery_data_threaded()
 
     # Cache the result for 30 minutes
     await ApiCache.set_gallery_cache(user_id_str, 1, result, 1800)
@@ -209,7 +250,7 @@ async def serve_nas_file(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Serve design files from QNAP NAS"""
+    """Serve design files from QNAP NAS (threaded for file operations)"""
     from fastapi.responses import StreamingResponse
     from server.src.utils.nas_storage import nas_storage
     import io
@@ -218,17 +259,27 @@ async def serve_nas_file(
     if not user_id:
         raise InvalidUserToken()
 
-    # Verify user owns this shop
-    user = service.get_user_by_id(db, user_id)
-    if not user or user.shop_name != shop_name:
-        raise InvalidUserToken()
+    # Verify user owns this shop (threaded database query)
+    @run_in_thread
+    def verify_user_shop():
+        user = service.get_user_by_id(db, user_id)
+        if not user or user.shop_name != shop_name:
+            raise InvalidUserToken()
+        return user
+
+    user = await verify_user_shop()
 
     try:
-        # Download file from NAS to memory
-        file_data = nas_storage.download_file_to_memory(shop_name, path)
-        if not file_data:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail="File not found")
+        # Download file from NAS to memory (threaded file operation)
+        @run_in_thread
+        def download_file_threaded():
+            file_data = nas_storage.download_file_to_memory(shop_name, path)
+            if not file_data:
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="File not found")
+            return file_data
+
+        file_data = await download_file_threaded()
 
         # Determine content type based on file extension
         import mimetypes
