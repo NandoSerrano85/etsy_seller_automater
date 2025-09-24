@@ -93,9 +93,9 @@ def delete_platform_connection(
         return False
 
     # Also delete associated stores
-    if connection.platform == PlatformType.ETSY:
+    if connection.platform.upper() == PlatformType.ETSY:
         db.query(EtsyStore).filter(EtsyStore.connection_id == connection_id).delete()
-    elif connection.platform == PlatformType.SHOPIFY:
+    elif connection.platform.upper() == PlatformType.SHOPIFY:
         db.query(ShopifyStore).filter(ShopifyStore.connection_id == connection_id).delete()
 
     db.delete(connection)
@@ -121,7 +121,7 @@ async def verify_platform_connection(
         if connection.is_token_expired():
             return model.ConnectionVerificationResponse(
                 is_valid=False,
-                platform=model.PlatformTypeEnum(connection.platform.value),
+                platform=model.PlatformTypeEnum(connection.platform.value.upper()),
                 last_verified_at=connection.last_verified_at,
                 error_message="Access token is expired"
             )
@@ -137,7 +137,7 @@ async def verify_platform_connection(
 
         return model.ConnectionVerificationResponse(
             is_valid=is_valid,
-            platform=model.PlatformTypeEnum(connection.platform.value),
+            platform=model.PlatformTypeEnum(connection.platform.value.upper()),
             last_verified_at=connection.last_verified_at,
             error_message=None if is_valid else "No valid access token"
         )
@@ -146,7 +146,7 @@ async def verify_platform_connection(
         logger.error(f"Error verifying connection {connection_id}: {e}")
         return model.ConnectionVerificationResponse(
             is_valid=False,
-            platform=model.PlatformTypeEnum(connection.platform.value),
+            platform=model.PlatformTypeEnum(connection.platform.value.upper()),
             error_message=f"Verification failed: {str(e)}"
         )
 
@@ -163,7 +163,7 @@ def create_etsy_store(
     """Create a new Etsy store"""
     # Verify the connection belongs to the user and is for Etsy
     connection = get_platform_connection(db, store_data.connection_id, user_id)
-    if not connection or connection.platform != PlatformType.ETSY:
+    if not connection or connection.platform.upper() != PlatformType.ETSY:
         raise ValueError("Invalid Etsy connection")
 
     store = EtsyStore(
@@ -302,7 +302,7 @@ async def setup_platform_connection(
 
         return model.PlatformSetupResponse(
             success=True,
-            message=f"Successfully set up {setup_data.platform.value} connection",
+            message=f"Successfully set up {setup_data.platform.value.upper()} connection",
             connection=model.PlatformConnectionResponse.model_validate(connection),
             store_id=store_id
         )
@@ -311,7 +311,7 @@ async def setup_platform_connection(
         logger.error(f"Error setting up platform connection: {e}")
         return model.PlatformSetupResponse(
             success=False,
-            message=f"Failed to set up {setup_data.platform.value} connection: {str(e)}",
+            message=f"Failed to set up {setup_data.platform.value.upper()} connection: {str(e)}",
             connection=None,
             store_id=None
         )

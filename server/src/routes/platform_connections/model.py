@@ -6,10 +6,10 @@ from enum import Enum
 
 class PlatformTypeEnum(str, Enum):
     """Supported third-party platforms"""
-    ETSY = "etsy"
-    SHOPIFY = "shopify"
-    AMAZON = "amazon"
-    EBAY = "ebay"
+    ETSY = "ETSY"
+    SHOPIFY = "SHOPIFY"
+    AMAZON = "AMAZON"
+    EBAY = "EBAY"
 
 class ConnectionTypeEnum(str, Enum):
     """Types of platform connections"""

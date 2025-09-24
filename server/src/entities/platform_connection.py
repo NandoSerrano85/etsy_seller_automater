@@ -8,10 +8,10 @@ import enum
 
 class PlatformType(enum.Enum):
     """Supported third-party platforms"""
-    ETSY = "etsy"
-    SHOPIFY = "shopify"
-    AMAZON = "amazon"
-    EBAY = "ebay"
+    ETSY = "ETSY"
+    SHOPIFY = "SHOPIFY"
+    AMAZON = "AMAZON"
+    EBAY = "EBAY"
 
 class ConnectionType(enum.Enum):
     """Types of platform connections"""
