@@ -28,6 +28,7 @@ import sys
 import time
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
+import threading
 
 # Import NAS storage utility - handle different deployment paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,6 +45,9 @@ for server_dir in possible_server_dirs:
 
 # Global nas_storage object - will be initialized in upgrade function
 nas_storage = None
+
+# Global lock for database operations to prevent deadlocks between batches
+db_lock = threading.Lock()
 
 @dataclass
 class FileInfo:
@@ -77,13 +81,16 @@ def calculate_phash_from_content(image_content: bytes, hash_size: int = 16) -> s
         raise Exception(f"Error calculating phash: {e}")
 
 def get_database_connection():
-    """Create a new database connection for this process"""
+    """Create a new database connection for this thread with clean transaction state"""
     database_url = os.getenv('DATABASE_URL')
     if not database_url:
         raise Exception("DATABASE_URL environment variable not set")
 
-    engine = create_engine(database_url)
-    return engine.connect()
+    # Create fresh engine and connection for each thread to avoid state conflicts
+    engine = create_engine(database_url, pool_pre_ping=True)
+    connection = engine.connect()
+
+    return connection
 
 def design_exists(connection, user_id: str, filename: str) -> bool:
     """Check if a design already exists for this user with this filename."""
@@ -194,15 +201,27 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
 
             trans = None  # Initialize transaction variable
             try:
+                # Ensure we start with a clean transaction state
+                if connection.in_transaction():
+                    # If there's already a transaction, commit or rollback first
+                    try:
+                        connection.commit()
+                    except:
+                        connection.rollback()
+
                 # Begin transaction for batch insert with deadlock prevention
                 trans = connection.begin()
 
                 # Set transaction isolation level to avoid deadlocks
                 connection.execute(text("SET TRANSACTION ISOLATION LEVEL READ COMMITTED"))
 
-                # Use advisory lock to prevent concurrent batch processing conflicts
+                # Use advisory lock with batch_id ordering to prevent deadlocks
+                # Always acquire locks in ascending order of batch_id to prevent deadlocks
+                lock_key = (hash(f"nas_migration_batch_{batch_id}") % 2147483647)
                 connection.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"),
-                                 {"lock_key": hash(f"nas_migration_batch_{batch_id}") % 2147483647})
+                                 {"lock_key": lock_key})
+
+                logging.info(f"📦 Batch {batch_id}: Acquired database lock {lock_key}")
 
                 now = datetime.now(timezone.utc)
 
@@ -504,11 +523,14 @@ def upgrade(connection):
         start_time = time.time()
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all batch processing tasks
-            future_to_batch = {
-                executor.submit(process_batch, batch, i+1): i+1
-                for i, batch in enumerate(batches)
-            }
+            # Submit batch processing tasks with staggered start to reduce contention
+            future_to_batch = {}
+            for i, batch in enumerate(batches):
+                batch_id = i + 1
+                # Add small delay between batch submissions to stagger database access
+                if i > 0:
+                    time.sleep(0.1)  # 100ms delay between batch starts
+                future_to_batch[executor.submit(process_batch, batch, batch_id)] = batch_id
 
             # Process results as they complete
             for future in as_completed(future_to_batch):
