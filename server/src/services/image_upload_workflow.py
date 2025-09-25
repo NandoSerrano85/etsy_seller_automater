@@ -197,6 +197,14 @@ class ImageUploadWorkflow:
         self._total_files = len(uploaded_images)
         self._processed_files = 0
 
+        # Initialize starting_name from design_data for proper filename numbering
+        if design_data and hasattr(design_data, 'starting_name'):
+            self._design_starting_name = design_data.starting_name
+            self.logger.info(f"Using mockup starting_name: {self._design_starting_name}")
+        else:
+            self._design_starting_name = 100  # Default starting number
+            self.logger.info(f"Using default starting_name: {self._design_starting_name}")
+
         self.logger.info(f"🚀 Starting image upload workflow for {len(uploaded_images)} images")
         self._send_progress(1, f"Starting workflow for {len(uploaded_images)} images")
 
@@ -328,12 +336,14 @@ class ImageUploadWorkflow:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit batches with staggered start
             future_to_batch = {}
+            file_counter = 0
             for i, batch in enumerate(batches):
                 batch_id = i + 1
                 # Small delay to stagger batch starts
                 if i > 0:
                     time.sleep(0.1)
-                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data)] = batch_id
+                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data, file_counter)] = batch_id
+                file_counter += len(batch)
 
             # Collect results as they complete
             for future in as_completed(future_to_batch):
@@ -364,7 +374,7 @@ class ImageUploadWorkflow:
 
         return batch_results
 
-    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None) -> BatchResult:
+    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None, batch_file_start_index: int = 0) -> BatchResult:
         """
         Process a single batch of images through the complete workflow
 
@@ -403,7 +413,7 @@ class ImageUploadWorkflow:
                             i / len(images) if images else 0
                         )
 
-                    processed_image = self._process_single_image(image, design_data)
+                    processed_image = self._process_single_image(image, design_data, batch_file_start_index + i)
 
                     # Only check for duplicates if processing was successful
                     if processed_image.phash and not processed_image.error:
@@ -482,7 +492,7 @@ class ImageUploadWorkflow:
             error_details=error_details
         )
 
-    def _process_single_image(self, image: UploadedImage, design_data=None) -> ProcessedImage:
+    def _process_single_image(self, image: UploadedImage, design_data=None, file_index: int = 0) -> ProcessedImage:
         """
         Process a single image: resize and generate phash
 
@@ -569,8 +579,8 @@ class ImageUploadWorkflow:
             # Store only phash to fit database column constraint (64 chars max)
             processed.phash = phash
 
-            # Generate filename using template name
-            final_filename = self._generate_filename(image.original_filename, image.template_id)
+            # Generate filename using template name and file index
+            final_filename = self._generate_filename(image.original_filename, image.template_id, file_index)
 
             # Update processed image
             processed.resized_content = resized_content
@@ -1052,40 +1062,29 @@ class ImageUploadWorkflow:
         # Fallback to "uploads" if template not found
         return "uploads"
 
-    def _generate_filename(self, original_filename: str, template_id: str, starting_number: int = None) -> str:
-        """Generate filename in the mockup-compatible format: UV/DTF number templatename_number.png"""
+    def _generate_filename(self, original_filename: str, template_id: str, file_index: int = 0) -> str:
+        """Generate filename with proper mockup numbering using starting_name from design_data"""
         try:
-            # Get template name
+            # Get template name for folder organization
             template_name = self._get_template_name(template_id) if template_id else "uploads"
 
-            # Determine prefix based on template name (UV for UV DTF templates, DTF otherwise)
-            type_pattern = r"UV\s*DTF|UV"
-            import re
-            prefix = "UV" if re.search(type_pattern, template_name, re.IGNORECASE) else "DTF"
+            # Get mockup starting_name and increment for batch processing
+            starting_name = getattr(self, '_design_starting_name', 100)  # Default to 100 if not set
+            current_id = starting_name + file_index
+            current_id_str = str(current_id).zfill(3)
 
-            # Generate a number (use timestamp-based approach if no starting_number provided)
-            if starting_number is None:
-                # Generate based on timestamp to ensure uniqueness
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%H%M%S")[-3:]  # Last 3 digits of time
-                number = timestamp
-            else:
-                number = str(starting_number).zfill(3)
-
-            # Clean template name for filename (replace spaces with underscores)
+            # Generate proper filename: "UV {id} {template}_{id}.png"
+            # Clean template name for filename
             clean_template = template_name.replace(" ", "_")
+            final_filename = f"UV {current_id_str} {clean_template}_{current_id_str}.png"
 
-            # Generate filename: "UV 123 TemplateName_123.png"
-            new_filename = f"{prefix} {number} {clean_template}_{number}.png"
-
-            self.logger.debug(f"Generated filename: {original_filename} -> {new_filename}")
-            return new_filename
+            self.logger.debug(f"Generated filename: {original_filename} -> {final_filename} (starting_name: {starting_name}, index: {file_index})")
+            return final_filename
 
         except Exception as e:
             self.logger.error(f"Error generating filename: {e}")
-            # Fallback to simplified format
-            template_name = self._get_template_name(template_id) if template_id else "uploads"
-            return f"{Path(original_filename).stem}_{template_name}.png"
+            # Fallback to original filename
+            return original_filename
 
     def _compile_workflow_result(self,
                                 original_images: List[UploadedImage],
