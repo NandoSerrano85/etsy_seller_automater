@@ -715,7 +715,7 @@ class ImageUploadWorkflow:
             return combined_hash.split('|')[0]
         return combined_hash
 
-    def _is_duplicate_in_set(self, phash: str, phash_set: Set[str], hamming_threshold: int = 5) -> bool:
+    def _is_duplicate_in_set(self, phash: str, phash_set: Set[str], hamming_threshold: int = 2) -> bool:
         """Check if phash is duplicate within a set using Hamming distance"""
         if not phash:
             return False
@@ -750,7 +750,7 @@ class ImageUploadWorkflow:
             self.logger.debug(f"Error comparing phashes: {e}")
             return False
 
-    def _is_duplicate_in_existing(self, phash: str, hamming_threshold: int = 5) -> bool:
+    def _is_duplicate_in_existing(self, phash: str, hamming_threshold: int = 2) -> bool:
         """Check if phash is duplicate within existing database hashes"""
         if not phash or not self._existing_phashes:
             return False
@@ -800,8 +800,8 @@ class ImageUploadWorkflow:
             dup_phash = self._extract_primary_phash(dup_img.phash)
             is_truly_duplicate = False
 
-            # Use stricter threshold for secondary check (Hamming distance <= 3)
-            strict_threshold = 3
+            # Use stricter threshold for secondary check (Hamming distance <= 1)
+            strict_threshold = 1
 
             try:
                 dup_phash_int = int(dup_phash, 16)
@@ -929,21 +929,9 @@ class ImageUploadWorkflow:
                     # Generate unique UUID for this design
                     design_id = str(uuid.uuid4())
 
-                    # Check if the phash already exists to avoid duplicates manually
-                    # since there's no unique constraint on phash column
-                    existing_design = None
-                    if image.phash:
-                        existing_result = self.db_session.execute(text("""
-                            SELECT id FROM design_images
-                            WHERE user_id = :user_id AND phash = :phash AND is_active = true
-                            LIMIT 1
-                        """), {"user_id": self.user_id, "phash": image.phash})
-                        existing_design = existing_result.fetchone()
-
-                    # Skip if duplicate found
-                    if existing_design:
-                        self.logger.debug(f"   🔄 Duplicate phash found, skipping: {image.final_filename}")
-                        continue
+                    # Note: Duplicate checking has already been done in the workflow
+                    # These images have passed duplicate detection, so we should save them
+                    self.logger.debug(f"   💾 Saving unique image: {image.final_filename}")
 
                     if multi_tenant:
                         # Get user's org_id
