@@ -25,6 +25,18 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   // Smooth progress simulation
   const progress = useProgressSimulation(rawProgress, uploading && isConnected);
 
+  // Enhanced logging and progress state
+  const [logs, setLogs] = useState([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const [detailedProgress, setDetailedProgress] = useState({
+    currentFile: '',
+    filesProcessed: 0,
+    totalFiles: 0,
+    currentOperation: '',
+    warnings: [],
+    errors: [],
+  });
+
   // Define upload steps for progress tracking
   const uploadSteps = [
     'Checking for duplicates',
@@ -41,11 +53,103 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const [selectedMockup, setSelectedMockup] = useState(null);
   const [loadingMockups, setLoadingMockups] = useState(false);
 
+  // Helper functions for enhanced logging
+  const addLog = (type, message, details = null) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = {
+      id: Date.now() + Math.random(),
+      timestamp,
+      type, // 'info', 'success', 'warning', 'error'
+      message,
+      details,
+    };
+    setLogs(prev => [...prev, logEntry]);
+    console.log(`[${type.toUpperCase()}] ${message}`, details);
+  };
+
+  const updateDetailedProgress = updates => {
+    setDetailedProgress(prev => ({ ...prev, ...updates }));
+  };
+
+  const resetUploadState = () => {
+    setLogs([]);
+    setDetailedProgress({
+      currentFile: '',
+      filesProcessed: 0,
+      totalFiles: 0,
+      currentOperation: '',
+      warnings: [],
+      errors: [],
+    });
+    setShowLogs(false);
+  };
+
+  // Auto-scroll logs to bottom
+  useEffect(() => {
+    if (showLogs && logs.length > 0) {
+      const logsContainer = document.querySelector('.logs-container');
+      if (logsContainer) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+      }
+    }
+  }, [logs, showLogs]);
+
   useEffect(() => {
     if (isOpen) {
       fetchTemplates();
+      resetUploadState(); // Reset upload state when modal opens
+    } else {
+      resetUploadState(); // Reset upload state when modal closes
     }
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Monitor progress updates for enhanced logging
+  useEffect(() => {
+    if (rawProgress && uploading) {
+      const { message, step, totalSteps, progressPercent, elapsedTime, remainingTime } = rawProgress;
+
+      if (message) {
+        // Update detailed progress based on message content
+        if (message.includes('duplicate')) {
+          updateDetailedProgress({ currentOperation: 'Checking for duplicates' });
+        } else if (message.includes('processing') || message.includes('resize')) {
+          updateDetailedProgress({ currentOperation: 'Processing and formatting images' });
+        } else if (message.includes('mockup') || message.includes('generate')) {
+          updateDetailedProgress({ currentOperation: 'Creating product mockups' });
+        } else if (message.includes('upload') || message.includes('etsy')) {
+          updateDetailedProgress({ currentOperation: 'Uploading to Etsy store' });
+        }
+
+        // Add progress log entry
+        addLog('info', `Step ${step}/${totalSteps}: ${message}`, {
+          progressPercent: Math.round(progressPercent || 0),
+          elapsedTime: Math.round(elapsedTime || 0),
+          remainingTime: Math.round(remainingTime || 0),
+        });
+      }
+    }
+  }, [rawProgress, uploading]);
+
+  // Monitor connection status
+  useEffect(() => {
+    if (sessionId) {
+      if (isConnected) {
+        addLog('success', 'Connected to progress stream', { sessionId });
+      } else if (uploading) {
+        addLog('warning', 'Attempting to connect to progress stream...', { sessionId });
+      }
+    }
+  }, [isConnected, sessionId, uploading]);
+
+  // Monitor errors
+  useEffect(() => {
+    if (progressError && uploading) {
+      addLog('error', `Progress tracking error: ${progressError}`);
+      updateDetailedProgress({
+        errors: [...detailedProgress.errors, progressError],
+      });
+    }
+  }, [progressError, uploading, detailedProgress.errors]);
 
   const fetchTemplates = async () => {
     try {
@@ -202,12 +306,32 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         }
       }
 
+      // Initialize upload state
+      resetUploadState();
       setUploading(true);
 
+      // Update detailed progress with file information
+      updateDetailedProgress({
+        totalFiles: files.length,
+        filesProcessed: 0,
+        currentOperation: 'Starting upload...',
+      });
+
       try {
+        addLog('info', `Starting upload of ${files.length} files`, {
+          fileNames: files.map(f => f.name),
+          totalSize: `${(totalSize / 1024 / 1024).toFixed(1)}MB`,
+        });
+
         // Start SSE progress session with file information
+        addLog('info', 'Initializing progress tracking...');
         const sessionData = await startProgressSession(files);
         connectToProgressStream(sessionData.sessionId);
+
+        addLog('success', 'Progress tracking initialized', {
+          sessionId: sessionData.sessionId,
+          estimatedTime: `${sessionData.estimated_time}s`,
+        });
 
         // First, save the design information
         const designData = {
@@ -227,8 +351,15 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         uploadFormData.append('design_data', JSON.stringify(designData));
         uploadFormData.append('session_id', sessionData.sessionId);
 
-        // Use retry logic for file uploads
+        // Upload files with detailed logging
+        addLog('info', 'Uploading design files...', { fileCount: files.length });
+        updateDetailedProgress({ currentOperation: 'Uploading design files...' });
+
         const designResponse = await api.postFormDataWithRetry('/designs/', uploadFormData);
+
+        addLog('success', `Successfully uploaded ${designResponse.designs?.length || 0} designs`, {
+          designIds: designResponse.designs?.map(d => d.id) || [],
+        });
 
         const productData = {
           product_template_id: selectedTemplate.id,
@@ -242,7 +373,17 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         mockupFormData.append('product_data', JSON.stringify(productData));
 
+        addLog('info', 'Creating product mockups...', {
+          templateId: selectedTemplate.id,
+          mockupId: selectedMockup.id,
+        });
+        updateDetailedProgress({ currentOperation: 'Creating product mockups...' });
+
         const result = await api.postFormDataWithRetry('/mockups/upload-mockup', mockupFormData);
+
+        addLog('success', 'Mockup generation completed', {
+          result: result.result?.message || 'Mockups created successfully',
+        });
 
         let successMessage = 'Design saved and files uploaded successfully!';
         if (result.result?.digital_message) {
@@ -251,6 +392,17 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
         if (result.result?.message) {
           successMessage += `\n${result.result.message}`;
         }
+
+        // Log final success
+        addLog('success', 'Upload process completed successfully!', {
+          digitalMessage: result.result?.digital_message,
+          finalMessage: result.result?.message,
+        });
+
+        updateDetailedProgress({
+          filesProcessed: files.length,
+          currentOperation: 'Upload completed',
+        });
 
         alert(successMessage);
 
@@ -263,13 +415,29 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
       } catch (err) {
         console.error('Upload error:', err);
 
+        // Log detailed error information
+        addLog('error', 'Upload failed', {
+          error: err.message,
+          stack: err.stack,
+          timestamp: new Date().toISOString(),
+        });
+
+        updateDetailedProgress({
+          currentOperation: 'Upload failed',
+          errors: [...detailedProgress.errors, err.message],
+        });
+
         // Provide specific feedback for different types of errors
         let errorMessage = err.message || 'Unknown error';
         if (err.message && err.message.includes('ERR_CONNECTION_RESET')) {
           errorMessage =
             "Connection was reset during upload. The upload may have completed successfully on the server, but we couldn't confirm it. Please check your designs list to see if the upload succeeded, or try uploading again.";
+          addLog('warning', 'Connection reset detected - upload may have completed', {
+            recommendation: 'Check designs list to verify upload status',
+          });
         } else if (err.message && err.message.includes('Failed to fetch')) {
           errorMessage = 'Network error during upload. Please check your internet connection and try again.';
+          addLog('error', 'Network connectivity issue detected');
         }
 
         alert(`Upload failed: ${errorMessage}`);
@@ -357,7 +525,11 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 mt-0">
-      <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div
+        className={`bg-white rounded-lg p-6 w-full overflow-y-auto transition-all duration-300 ${
+          showLogs && uploading ? 'max-w-4xl max-h-[95vh]' : 'max-w-2xl max-h-[90vh]'
+        }`}
+      >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
             {stage === 'template' ? 'Select Template' : 'Select Mockup'}
@@ -509,18 +681,43 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
                 }`}
               >
                 {uploading ? (
-                  <div className="flex flex-col items-center">
-                    {/* Connection status indicator */}
-                    {sessionId && (
-                      <div className="flex items-center mb-2 text-xs">
-                        <div
-                          className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}
-                        ></div>
-                        <span className="text-gray-600">
-                          {isConnected ? 'Connected to progress stream' : 'Connecting...'}
-                        </span>
+                  <div className="flex flex-col items-center w-full">
+                    {/* Enhanced status header with logs toggle */}
+                    <div className="w-full mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center text-sm">
+                          {sessionId && (
+                            <>
+                              <div
+                                className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-500' : 'bg-yellow-500'}`}
+                              ></div>
+                              <span className="text-gray-600">
+                                {isConnected ? 'Connected to progress stream' : 'Connecting...'}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setShowLogs(!showLogs)}
+                          className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                        >
+                          {showLogs ? 'Hide Logs' : 'Show Logs'}
+                        </button>
                       </div>
-                    )}
+
+                      {/* Detailed progress info */}
+                      <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            Files: {detailedProgress.filesProcessed}/{detailedProgress.totalFiles}
+                          </div>
+                          <div>Operation: {detailedProgress.currentOperation || 'Initializing...'}</div>
+                        </div>
+                        {detailedProgress.currentFile && (
+                          <div className="mt-1 truncate">Current: {detailedProgress.currentFile}</div>
+                        )}
+                      </div>
+                    </div>
 
                     {/* Step indicators */}
                     <div className="flex justify-between w-full mb-3 text-xs">
@@ -580,9 +777,83 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
                       <span className="font-medium">{Math.round(progress.progressPercent || 0)}%</span>
                     </div>
 
+                    {/* Logs display */}
+                    {showLogs && (
+                      <div className="w-full mt-4 max-h-48 overflow-y-auto bg-gray-900 text-green-400 p-3 rounded text-xs font-mono logs-container">
+                        <div className="flex justify-between items-center mb-2 text-gray-300">
+                          <span className="font-semibold">Upload Logs ({logs.length})</span>
+                          <button
+                            onClick={() => setLogs([])}
+                            className="text-xs px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        {logs.length === 0 ? (
+                          <div className="text-gray-500">No logs yet...</div>
+                        ) : (
+                          <div className="space-y-1">
+                            {logs.map(log => (
+                              <div
+                                key={log.id}
+                                className={`flex items-start space-x-2 ${
+                                  log.type === 'error'
+                                    ? 'text-red-400'
+                                    : log.type === 'warning'
+                                      ? 'text-yellow-400'
+                                      : log.type === 'success'
+                                        ? 'text-green-400'
+                                        : 'text-blue-400'
+                                }`}
+                              >
+                                <span className="text-gray-500 min-w-0">[{log.timestamp}]</span>
+                                <span
+                                  className={`inline-block w-1 h-1 rounded-full mt-2 ${
+                                    log.type === 'error'
+                                      ? 'bg-red-400'
+                                      : log.type === 'warning'
+                                        ? 'bg-yellow-400'
+                                        : log.type === 'success'
+                                          ? 'bg-green-400'
+                                          : 'bg-blue-400'
+                                  }`}
+                                ></span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="break-words">{log.message}</div>
+                                  {log.details && (
+                                    <div className="text-gray-500 mt-1 pl-2 border-l border-gray-700">
+                                      {typeof log.details === 'string'
+                                        ? log.details
+                                        : JSON.stringify(log.details, null, 2)}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Error display */}
                     {progressError && (
                       <div className="text-xs text-red-600 mt-2">Progress tracking error: {progressError}</div>
+                    )}
+
+                    {/* Errors and warnings summary */}
+                    {(detailedProgress.errors.length > 0 || detailedProgress.warnings.length > 0) && !showLogs && (
+                      <div className="w-full mt-2 text-xs">
+                        {detailedProgress.errors.length > 0 && (
+                          <div className="text-red-600">
+                            ⚠️ {detailedProgress.errors.length} error(s) - Click "Show Logs" for details
+                          </div>
+                        )}
+                        {detailedProgress.warnings.length > 0 && (
+                          <div className="text-yellow-600">
+                            ⚠️ {detailedProgress.warnings.length} warning(s) - Click "Show Logs" for details
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 ) : stage === 'template' ? (

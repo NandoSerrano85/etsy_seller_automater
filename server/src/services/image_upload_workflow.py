@@ -777,6 +777,22 @@ class ImageUploadWorkflow:
                     # Generate unique UUID for this design
                     design_id = str(uuid.uuid4())
 
+                    # Check if the phash already exists to avoid duplicates manually
+                    # since there's no unique constraint on phash column
+                    existing_design = None
+                    if image.phash:
+                        existing_result = self.db_session.execute(text("""
+                            SELECT id FROM design_images
+                            WHERE user_id = :user_id AND phash = :phash AND is_active = true
+                            LIMIT 1
+                        """), {"user_id": self.user_id, "phash": image.phash})
+                        existing_design = existing_result.fetchone()
+
+                    # Skip if duplicate found
+                    if existing_design:
+                        self.logger.debug(f"   🔄 Duplicate phash found, skipping: {image.final_filename}")
+                        continue
+
                     if multi_tenant:
                         # Get user's org_id
                         org_result = self.db_session.execute(text("""
@@ -787,9 +803,8 @@ class ImageUploadWorkflow:
 
                         self.db_session.execute(text("""
                             INSERT INTO design_images
-                            (id, user_id, org_id, filename, file_path, phash, is_active, created_at, updated_at)
-                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
-                            ON CONFLICT (phash) DO NOTHING
+                            (id, user_id, org_id, filename, file_path, phash, is_active, is_digital, created_at, updated_at)
+                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :is_digital, :created_at, :updated_at)
                         """), {
                             "id": design_id,
                             "user_id": self.user_id,
@@ -798,15 +813,15 @@ class ImageUploadWorkflow:
                             "file_path": file_path,
                             "phash": image.phash,
                             "is_active": True,
+                            "is_digital": False,
                             "created_at": now,
                             "updated_at": now
                         })
                     else:
                         self.db_session.execute(text("""
                             INSERT INTO design_images
-                            (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
-                            VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
-                            ON CONFLICT (phash) DO NOTHING
+                            (id, user_id, filename, file_path, phash, is_active, is_digital, created_at, updated_at)
+                            VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :is_digital, :created_at, :updated_at)
                         """), {
                             "id": design_id,
                             "user_id": self.user_id,
@@ -814,6 +829,7 @@ class ImageUploadWorkflow:
                             "file_path": file_path,
                             "phash": image.phash,
                             "is_active": True,
+                            "is_digital": False,
                             "created_at": now,
                             "updated_at": now
                         })
