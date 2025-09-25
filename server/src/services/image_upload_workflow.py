@@ -898,7 +898,18 @@ class ImageUploadWorkflow:
                     self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
                     # Continue processing other images - don't let one failure stop all
 
-            self.logger.info(f"🗄️  Batch {batch_id}: Successfully updated {len(successful_updates)}/{len(images)} records")
+            # Commit all database changes
+            try:
+                self.db_session.commit()
+                self.logger.info(f"🗄️  Batch {batch_id}: Successfully committed {len(successful_updates)}/{len(images)} records to database")
+            except Exception as e:
+                self.logger.error(f"   ❌ Failed to commit database changes: {e}")
+                try:
+                    self.db_session.rollback()
+                except Exception:
+                    pass
+                # Return empty list if commit failed
+                return []
 
         return successful_updates
 
