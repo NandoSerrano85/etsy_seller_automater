@@ -572,10 +572,8 @@ class ImageUploadWorkflow:
             # Store only phash to fit database column constraint (64 chars max)
             processed.phash = phash
 
-            # Generate secure filename
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # Include milliseconds
-            safe_basename = self._sanitize_filename(Path(image.original_filename).stem)
-            final_filename = f"{safe_basename}_{timestamp}_{image.temp_id[:8]}.{file_ext}"
+            # Generate filename using template name
+            final_filename = self._generate_filename(image.original_filename, image.template_id)
 
             # Update processed image
             processed.resized_content = resized_content
@@ -759,9 +757,9 @@ class ImageUploadWorkflow:
                             self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing content or filename")
                             continue
 
-                        # Get user shop name for NAS path
+                        # Get user shop name and template name for NAS path
                         shop_name = self._get_user_shop_name()
-                        template_name = image.upload_info.template_id or "uploads"
+                        template_name = self._get_template_name(image.upload_info.template_id)
 
                         # Upload to NAS using the correct method
                         success = nas_storage.upload_file_content(
@@ -822,7 +820,7 @@ class ImageUploadWorkflow:
                         self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing filename or phash")
                         continue
 
-                    template_name = image.upload_info.template_id or "uploads"
+                    template_name = self._get_template_name(image.upload_info.template_id)
                     file_path = f"/share/Graphics/{shop_name}/{template_name}/{image.final_filename}"
 
                     # Generate unique UUID for this design
@@ -972,7 +970,7 @@ class ImageUploadWorkflow:
             if MOCKUP_SERVICE_AVAILABLE and mockup_service:
                 # Get shop name and build paths
                 shop_name = self._get_user_shop_name()
-                template_name = image.upload_info.template_id or "uploads"
+                template_name = self._get_template_name(image.upload_info.template_id)
                 design_path = f"{shop_name}/{template_name}/{image.final_filename}"
 
                 # Generate mockup using the existing service
@@ -1041,6 +1039,50 @@ class ImageUploadWorkflow:
 
         # Fallback to user ID-based shop name
         return f"user_{self.user_id[:8]}"
+
+    def _get_template_name(self, template_id: str) -> str:
+        """Get the template name from template_id"""
+        try:
+            if DEPENDENCIES_AVAILABLE and template_id:
+                result = self.db_session.execute(text("""
+                    SELECT name FROM etsy_product_templates WHERE id = :template_id
+                """), {"template_id": template_id})
+
+                row = result.fetchone()
+                if row and row[0]:
+                    return row[0]
+
+        except Exception as e:
+            self.logger.debug(f"Could not get template name from database: {e}")
+
+        # Fallback to "uploads" if template not found
+        return "uploads"
+
+    def _generate_filename(self, original_filename: str, template_id: str) -> str:
+        """Generate filename in the format: original_base template_name.ext"""
+        try:
+            # Get template name
+            template_name = self._get_template_name(template_id) if template_id else "uploads"
+
+            # Extract base name and extension from original filename
+            base_name = Path(original_filename).stem
+            extension = Path(original_filename).suffix or '.png'
+
+            # Clean the base name to remove any existing timestamp/UUID suffixes
+            # Remove patterns like _20250925_061616_241_6b0cd667
+            import re
+            clean_base = re.sub(r'_\d{8}_\d{6}_\d+_[a-f0-9]+$', '', base_name)
+
+            # Generate new filename: "base template_name.ext"
+            new_filename = f"{clean_base} {template_name}{extension}"
+
+            self.logger.debug(f"Generated filename: {original_filename} -> {new_filename}")
+            return new_filename
+
+        except Exception as e:
+            self.logger.error(f"Error generating filename: {e}")
+            # Fallback to original filename
+            return original_filename
 
     def _compile_workflow_result(self,
                                 original_images: List[UploadedImage],
