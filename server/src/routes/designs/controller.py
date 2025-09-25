@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status, Query, UploadFile, File, Depends, Form
+from fastapi import APIRouter, status, Query, UploadFile, File, Depends, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
 from uuid import UUID
@@ -36,34 +36,62 @@ def run_in_thread(func):
 async def start_upload(
     current_user: CurrentUser,
     db: Session = Depends(get_db),
-    files: List[UploadFile] = File(None)
+    files: List[UploadFile] = File(default=[])
 ):
-    """Start a new upload session with file size estimation for progress tracking"""
+    """Start a new upload session with file size estimation for progress tracking (threaded)"""
+    logging.info(f"start_upload called for user")
     user_id = current_user.get_uuid()
     if not user_id:
+        logging.error("User not authenticated in start_upload")
         raise InvalidUserToken()
 
-    # Calculate total file size for time estimation
-    total_size_bytes = 0
-    file_count = 0
-    if files:
-        for file in files:
-            file_count += 1
-            # Read file size
-            file.file.seek(0, 2)  # Seek to end
-            size = file.file.tell()
-            file.file.seek(0)  # Reset to beginning
-            total_size_bytes += size
+    logging.info(f"start_upload: user_id={user_id}, files_count={len(files) if files else 0}")
 
-    total_size_mb = total_size_bytes / (1024 * 1024)  # Convert to MB
+    @run_in_thread
+    def start_upload_threaded():
+        try:
+            # Calculate total file size for time estimation
+            total_size_bytes = 0
+            file_count = 0
 
-    session_id = progress_manager.create_session(total_size_mb, file_count)
-    return {
-        "session_id": session_id,
-        "estimated_time": progress_manager._file_info[session_id]['estimated_time'],
-        "total_size_mb": total_size_mb,
-        "file_count": file_count
-    }
+            # Handle empty or None files list
+            if files and len(files) > 0:
+                # Filter out any files that might be None or empty
+                valid_files = [f for f in files if f is not None and hasattr(f, 'file')]
+
+                for file in valid_files:
+                    file_count += 1
+                    # Read file size safely
+                    try:
+                        if file.file:
+                            file.file.seek(0, 2)  # Seek to end
+                            size = file.file.tell()
+                            file.file.seek(0)  # Reset to beginning
+                            total_size_bytes += size
+                        else:
+                            logging.warning(f"File {file.filename} has no file object")
+                    except Exception as e:
+                        logging.error(f"Error reading file size for {getattr(file, 'filename', 'unknown')}: {e}")
+                        # Continue with 0 size for this file
+            else:
+                logging.info("No files provided for start-upload session")
+
+            total_size_mb = total_size_bytes / (1024 * 1024)  # Convert to MB
+
+            session_id = progress_manager.create_session(total_size_mb, file_count)
+            result = {
+                "session_id": session_id,
+                "estimated_time": progress_manager._file_info[session_id]['estimated_time'],
+                "total_size_mb": total_size_mb,
+                "file_count": file_count
+            }
+            logging.info(f"start_upload successful: session_id={session_id}, size={total_size_mb}MB, count={file_count}")
+            return result
+        except Exception as e:
+            logging.error(f"Error in start_upload: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to start upload session: {str(e)}")
+
+    return await start_upload_threaded()
 
 @router.get('/progress/{session_id}')
 async def get_upload_progress(

@@ -7,11 +7,25 @@ from server.src.services.cache_service import ApiCache
 from datetime import datetime, timezone
 from . import model
 from . import service
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 router = APIRouter(
     prefix='/dashboard',
     tags=['Dashboard']
 )
+
+# Thread pool for background processing
+thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="dashboard-")
+
+def run_in_thread(func):
+    """Decorator to run sync functions in thread pool"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+    return wrapper
 
 def get_user_etsy_token(current_user: CurrentUser, db: Session) -> str:
     """Get user's Etsy access token from database."""
@@ -58,9 +72,13 @@ async def get_monthly_analytics(
     if cached_result is not None:
         return cached_result
 
-    # Get fresh data
-    access_token = get_user_etsy_token(current_user, db)
-    result = service.get_monthly_analytics(access_token, year, shop_info.shop_id)
+    # Get fresh data in thread
+    @run_in_thread
+    def get_monthly_analytics_threaded():
+        access_token = get_user_etsy_token(current_user, db)
+        return service.get_monthly_analytics(access_token, year, shop_info.shop_id)
+
+    result = await get_monthly_analytics_threaded()
 
     # Cache the result for 1 hour
     await ApiCache.set_analytics_cache(user_id, year, result, 3600)
@@ -74,14 +92,19 @@ async def get_top_sellers(
     year: int = Query(None, description="Year for top sellers"),
     db: Session = Depends(get_db)
 ):
+    """Get top sellers (threaded)"""
     if not shop_info.has_shop_id():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No Etsy shop ID found. Please reconnect your Etsy account."
         )
-    
-    access_token = get_user_etsy_token(current_user, db)
-    return service.get_top_sellers(access_token, year, shop_info.shop_id)
+
+    @run_in_thread
+    def get_top_sellers_threaded():
+        access_token = get_user_etsy_token(current_user, db)
+        return service.get_top_sellers(access_token, year, shop_info.shop_id)
+
+    return await get_top_sellers_threaded()
 
 @router.get('/shop-listings', response_model=model.ShopListingsResponse)
 async def get_shop_listings(
@@ -91,11 +114,16 @@ async def get_shop_listings(
     offset: int = Query(0, ge=0, description="Offset for pagination"),
     db: Session = Depends(get_db)
 ):
+    """Get shop listings (threaded)"""
     if not shop_info.has_shop_id():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No Etsy shop ID found. Please reconnect your Etsy account."
         )
-    
-    access_token = get_user_etsy_token(current_user, db)
-    return service.get_shop_listings(access_token, limit, offset, shop_info.shop_id)
+
+    @run_in_thread
+    def get_shop_listings_threaded():
+        access_token = get_user_etsy_token(current_user, db)
+        return service.get_shop_listings(access_token, limit, offset, shop_info.shop_id)
+
+    return await get_shop_listings_threaded()

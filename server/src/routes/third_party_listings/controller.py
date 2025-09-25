@@ -101,13 +101,17 @@ async def update_listing(
     db: Session = Depends(get_db)
 ):
     """
-    Update a specific listing
+    Update a specific listing (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.update_listing(user_id, db, listing_id, update_request)
+
+    @run_in_thread
+    def update_listing_threaded():
+        return service.update_listing(user_id, db, listing_id, update_request)
+
+    return await update_listing_threaded()
 
 
 @router.post("/bulk-update", response_model=model.BulkUpdateResponse)
@@ -117,16 +121,20 @@ async def bulk_update_listings(
     db: Session = Depends(get_db)
 ):
     """
-    Update multiple listings with the same data
-    
+    Update multiple listings with the same data (threaded)
+
     This endpoint allows you to update multiple listings at once with the same field values.
     For example, you can update the price, description, or tags for multiple listings simultaneously.
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.bulk_update_listings(user_id, db, request)
+
+    @run_in_thread
+    def bulk_update_listings_threaded():
+        return service.bulk_update_listings(user_id, db, request)
+
+    return await bulk_update_listings_threaded()
 
 
 @router.post("/selected-update", response_model=model.BulkUpdateResponse)
@@ -136,16 +144,20 @@ async def update_selected_listings(
     db: Session = Depends(get_db)
 ):
     """
-    Update specific listings with individual update data
-    
+    Update specific listings with individual update data (threaded)
+
     This endpoint allows you to update multiple listings with different field values for each listing.
     Each listing update should contain 'listing_id' and the specific fields to update for that listing.
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.update_selected_listings(user_id, db, request)
+
+    @run_in_thread
+    def update_selected_listings_threaded():
+        return service.update_selected_listings(user_id, db, request)
+
+    return await update_selected_listings_threaded()
 
 
 @router.get("/options/taxonomies", response_model=model.TaxonomiesResponse)
@@ -154,13 +166,17 @@ async def get_taxonomies(
     db: Session = Depends(get_db)
 ):
     """
-    Get all available taxonomies (categories) for listings
+    Get all available taxonomies (categories) for listings (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.get_taxonomies(user_id, db)
+
+    @run_in_thread
+    def get_taxonomies_threaded():
+        return service.get_taxonomies(user_id, db)
+
+    return await get_taxonomies_threaded()
 
 
 @router.get("/options/shipping-profiles", response_model=model.ShippingProfilesResponse)
@@ -169,13 +185,17 @@ async def get_shipping_profiles(
     db: Session = Depends(get_db)
 ):
     """
-    Get all available shipping profiles
+    Get all available shipping profiles (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.get_shipping_profiles(user_id, db)
+
+    @run_in_thread
+    def get_shipping_profiles_threaded():
+        return service.get_shipping_profiles(user_id, db)
+
+    return await get_shipping_profiles_threaded()
 
 
 @router.get("/options/shop-sections", response_model=model.ShopSectionsResponse)
@@ -184,10 +204,14 @@ async def get_shop_sections(
     db: Session = Depends(get_db)
 ):
     """
-    Get all available shop sections
+    Get all available shop sections (threaded)
     """
     user_id = current_user.get_uuid()
     if user_id is None:
         raise HTTPException(status_code=401, detail="User not authenticated")
-    
-    return service.get_shop_sections(user_id, db)
+
+    @run_in_thread
+    def get_shop_sections_threaded():
+        return service.get_shop_sections(user_id, db)
+
+    return await get_shop_sections_threaded()

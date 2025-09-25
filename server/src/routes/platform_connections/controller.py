@@ -10,11 +10,25 @@ from server.src.entities.etsy_store import EtsyStore
 from server.src.entities.shopify_store import ShopifyStore
 from . import model
 from . import service
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+import functools
 
 router = APIRouter(
     prefix='/api/platform-connections',
     tags=['platform-connections']
 )
+
+# Thread pool for background processing
+thread_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="platform-connections-")
+
+def run_in_thread(func):
+    """Decorator to run sync functions in thread pool"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+    return wrapper
 
 # Platform Connection Management
 @router.get("/", response_model=model.PlatformConnectionListResponse)
@@ -23,12 +37,16 @@ async def get_platform_connections(
     db: Session = Depends(get_db),
     platform: Optional[model.PlatformTypeEnum] = None
 ):
-    """Get all platform connections for the current user"""
-    connections = service.get_user_platform_connections(db, current_user.user_id, platform)
-    return model.PlatformConnectionListResponse(
-        connections=[model.PlatformConnectionResponse.model_validate(conn) for conn in connections],
-        total=len(connections)
-    )
+    """Get all platform connections for the current user (threaded)"""
+    @run_in_thread
+    def get_platform_connections_threaded():
+        connections = service.get_user_platform_connections(db, current_user.user_id, platform)
+        return model.PlatformConnectionListResponse(
+            connections=[model.PlatformConnectionResponse.model_validate(conn) for conn in connections],
+            total=len(connections)
+        )
+
+    return await get_platform_connections_threaded()
 
 @router.post("/", response_model=model.PlatformConnectionResponse, status_code=status.HTTP_201_CREATED)
 async def create_platform_connection(
@@ -36,9 +54,13 @@ async def create_platform_connection(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Create a new platform connection"""
-    connection = service.create_platform_connection(db, current_user.user_id, connection_data)
-    return model.PlatformConnectionResponse.model_validate(connection)
+    """Create a new platform connection (threaded)"""
+    @run_in_thread
+    def create_platform_connection_threaded():
+        connection = service.create_platform_connection(db, current_user.user_id, connection_data)
+        return model.PlatformConnectionResponse.model_validate(connection)
+
+    return await create_platform_connection_threaded()
 
 @router.get("/{connection_id}", response_model=model.PlatformConnectionResponse)
 async def get_platform_connection(
@@ -46,11 +68,15 @@ async def get_platform_connection(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get a specific platform connection"""
-    connection = service.get_platform_connection(db, connection_id, current_user.user_id)
-    if not connection:
-        raise HTTPException(status_code=404, detail="Platform connection not found")
-    return model.PlatformConnectionResponse.model_validate(connection)
+    """Get a specific platform connection (threaded)"""
+    @run_in_thread
+    def get_platform_connection_threaded():
+        connection = service.get_platform_connection(db, connection_id, current_user.user_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Platform connection not found")
+        return model.PlatformConnectionResponse.model_validate(connection)
+
+    return await get_platform_connection_threaded()
 
 @router.put("/{connection_id}", response_model=model.PlatformConnectionResponse)
 async def update_platform_connection(
@@ -59,11 +85,15 @@ async def update_platform_connection(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Update a platform connection"""
-    connection = service.update_platform_connection(db, connection_id, current_user.user_id, update_data)
-    if not connection:
-        raise HTTPException(status_code=404, detail="Platform connection not found")
-    return model.PlatformConnectionResponse.model_validate(connection)
+    """Update a platform connection (threaded)"""
+    @run_in_thread
+    def update_platform_connection_threaded():
+        connection = service.update_platform_connection(db, connection_id, current_user.user_id, update_data)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Platform connection not found")
+        return model.PlatformConnectionResponse.model_validate(connection)
+
+    return await update_platform_connection_threaded()
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_platform_connection(
@@ -71,10 +101,14 @@ async def delete_platform_connection(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Delete a platform connection"""
-    success = service.delete_platform_connection(db, connection_id, current_user.user_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Platform connection not found")
+    """Delete a platform connection (threaded)"""
+    @run_in_thread
+    def delete_platform_connection_threaded():
+        success = service.delete_platform_connection(db, connection_id, current_user.user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Platform connection not found")
+
+    await delete_platform_connection_threaded()
 
 @router.post("/{connection_id}/verify", response_model=model.ConnectionVerificationResponse)
 async def verify_platform_connection(
