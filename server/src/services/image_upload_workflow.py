@@ -515,12 +515,11 @@ class ImageUploadWorkflow:
 
             resized_content = buffer.getvalue()
 
-            # Generate multiple hashes for better duplicate detection
+            # Generate phash for duplicate detection (limited to 64 chars for DB)
             phash = str(imagehash.phash(resized_image, hash_size=self.phash_size))
-            dhash = str(imagehash.dhash(resized_image, hash_size=self.phash_size))
 
-            # Use phash as primary, but store both for advanced duplicate detection
-            processed.phash = f"{phash}|{dhash}"
+            # Store only phash to fit database column constraint (64 chars max)
+            processed.phash = phash
 
             # Generate secure filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # Include milliseconds
@@ -828,6 +827,12 @@ class ImageUploadWorkflow:
                             self._existing_phashes.add(image.phash)
 
                 except Exception as e:
+                    # Rollback transaction on error to prevent failed transaction state
+                    try:
+                        self.db_session.rollback()
+                    except Exception:
+                        pass  # Ignore rollback errors
+
                     self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
                     # Continue processing other images - don't let one failure stop all
 
