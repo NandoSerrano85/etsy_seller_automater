@@ -2,16 +2,15 @@
 """
 Comprehensive Image Upload Workflow System
 
-This service handles the complete pipeline for uploading and processing images:
-1. Batch Processing (8 threads)
-2. Image Resizing
-3. pHash Generation
-4. Duplicate Detection (local and database)
-5. NAS Upload
-6. Database Updates
-7. Mockup Generation
-8. Mockup Storage
-9. Etsy Product Creation
+This service handles the image processing pipeline before mockup generation:
+1. Batch Processing (multi-threaded)
+2. Image Resizing and Processing
+3. Perceptual Hash (pHash) Generation
+4. Duplicate Detection (local and database-based)
+5. NAS Upload with proper naming conventions
+6. Database Storage
+
+Note: Mockup generation and Etsy uploads are handled separately by the /mockups/upload-mockup endpoint
 
 Architecture:
 - Multi-threaded batch processing for performance
@@ -223,8 +222,8 @@ class ImageUploadWorkflow:
 
             # Send final progress update
             self._send_progress(
-                4,
-                f"Workflow completed: {workflow_result.processed_images} processed, {workflow_result.skipped_duplicates} duplicates skipped",
+                3,
+                f"Images ready for mockup generation: {workflow_result.processed_images} processed, {workflow_result.skipped_duplicates} duplicates skipped",
                 "",
                 1.0
             )
@@ -457,10 +456,8 @@ class ImageUploadWorkflow:
             db_success = self._update_database_batch(nas_success, batch_id)
             db_updates = len(db_success)
 
-            # Step 5: Generate mockups
-            if batch_id == 1:
-                self._send_progress(3, f"Creating mockups for {len(db_success)} designs")
-            mockup_success = self._generate_mockups_batch(db_success, batch_id)
+            # Step 5: Skip mockup generation - handled by separate mockup service
+            mockup_success = db_success  # All database-stored images are considered "mockup ready"
             mockups_created = len(mockup_success)
 
             processed = len(processed_images) - skipped_local - skipped_db - errors
@@ -962,27 +959,13 @@ class ImageUploadWorkflow:
 
     def _generate_single_mockup(self, image: ProcessedImage) -> bool:
         """
-        Generate a single mockup for an image
-        This integrates with your existing mockup generation system
+        Generate a single mockup for an image using the existing mockup service
         """
         try:
-            # Integration with existing mockup service
-            if MOCKUP_SERVICE_AVAILABLE and mockup_service:
-                # Get shop name and build paths
-                shop_name = self._get_user_shop_name()
-                template_name = self._get_template_name(image.upload_info.template_id)
-                design_path = f"{shop_name}/{template_name}/{image.final_filename}"
-
-                # Generate mockup using the existing service
-                # This is a simplified call - adjust based on your actual mockup service API
-                mockup_result = self._call_mockup_service(design_path, image)
-
-                return mockup_result
-
-            else:
-                # Fallback: simulate mockup generation for testing
-                time.sleep(0.05)  # Simulate processing time
-                return True
+            # For now, skip mockup generation in the comprehensive workflow
+            # The mockups will be generated later by the existing mockup endpoint
+            self.logger.debug(f"Skipping mockup generation for {image.final_filename} - will be handled by mockup service")
+            return True
 
         except Exception as e:
             self.logger.error(f"Failed to generate mockup for {image.final_filename}: {e}")
@@ -1058,31 +1041,40 @@ class ImageUploadWorkflow:
         # Fallback to "uploads" if template not found
         return "uploads"
 
-    def _generate_filename(self, original_filename: str, template_id: str) -> str:
-        """Generate filename in the format: original_base template_name.ext"""
+    def _generate_filename(self, original_filename: str, template_id: str, starting_number: int = None) -> str:
+        """Generate filename in the mockup-compatible format: UV/DTF number templatename_number.png"""
         try:
             # Get template name
             template_name = self._get_template_name(template_id) if template_id else "uploads"
 
-            # Extract base name and extension from original filename
-            base_name = Path(original_filename).stem
-            extension = Path(original_filename).suffix or '.png'
-
-            # Clean the base name to remove any existing timestamp/UUID suffixes
-            # Remove patterns like _20250925_061616_241_6b0cd667
+            # Determine prefix based on template name (UV for UV DTF templates, DTF otherwise)
+            type_pattern = r"UV\s*DTF|UV"
             import re
-            clean_base = re.sub(r'_\d{8}_\d{6}_\d+_[a-f0-9]+$', '', base_name)
+            prefix = "UV" if re.search(type_pattern, template_name, re.IGNORECASE) else "DTF"
 
-            # Generate new filename: "base template_name.ext"
-            new_filename = f"{clean_base} {template_name}{extension}"
+            # Generate a number (use timestamp-based approach if no starting_number provided)
+            if starting_number is None:
+                # Generate based on timestamp to ensure uniqueness
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%H%M%S")[-3:]  # Last 3 digits of time
+                number = timestamp
+            else:
+                number = str(starting_number).zfill(3)
+
+            # Clean template name for filename (replace spaces with underscores)
+            clean_template = template_name.replace(" ", "_")
+
+            # Generate filename: "UV 123 TemplateName_123.png"
+            new_filename = f"{prefix} {number} {clean_template}_{number}.png"
 
             self.logger.debug(f"Generated filename: {original_filename} -> {new_filename}")
             return new_filename
 
         except Exception as e:
             self.logger.error(f"Error generating filename: {e}")
-            # Fallback to original filename
-            return original_filename
+            # Fallback to simplified format
+            template_name = self._get_template_name(template_id) if template_id else "uploads"
+            return f"{Path(original_filename).stem}_{template_name}.png"
 
     def _compile_workflow_result(self,
                                 original_images: List[UploadedImage],
