@@ -21,6 +21,9 @@ os.environ['ENABLE_MULTI_TENANT'] = 'true'
 
 from server.src.database.core import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 from server.src.api import register_routes
 from server.src.app_logging import config_logging, LogLevels
 from server.src import message
@@ -113,8 +116,39 @@ print("📋 Creating FastAPI application...")
 app = FastAPI(lifespan=lifespan)
 print("✅ FastAPI application created")
 
+# Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Security headers for production
+        if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+            # Content Security Policy - allow specific domains for frontend
+            frontend_domains = [
+                "https://printer-automation-frontend-production.up.railway.app",
+                "https://printer-automater.netlify.app",
+                "https://comforting-cocada-88dd8c.netlify.app"
+            ]
+            csp_sources = " ".join(frontend_domains)
+            response.headers["Content-Security-Policy"] = f"default-src 'self' {csp_sources}; script-src 'self' 'unsafe-inline' 'unsafe-eval' {csp_sources}; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' {csp_sources}"
+
+            # Cross-Origin policies
+            response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+            response.headers["Cross-Origin-Resource-Policy"] = "cross-origin"
+
+        return response
+
 # Get frontend URL from environment variable
 frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
+# Add security middleware first
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

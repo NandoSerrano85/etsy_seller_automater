@@ -1,0 +1,15 @@
+User-agent: *
+Allow: /
+
+# Sitemap location (update with actual URL when available)
+# Sitemap: https://craftflow.com/sitemap.xml
+
+# Allow search engines to index public pages
+Allow: /login
+Allow: /oauth/redirect
+
+# Disallow private user areas
+Disallow: /account
+Disallow: /admin
+Disallow: /organizations
+Disallow: /printers

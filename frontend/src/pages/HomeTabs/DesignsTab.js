@@ -3,17 +3,11 @@ import MockupsGallery from '../../components/MockupsGallery';
 import DesignFilesGallery from '../../components/DesignFilesGallery';
 import DesignUploadModal from '../../components/DesignUploadModal';
 import BackToTop from '../../components/BackToTop';
-import { FeatureGate, TierBadge } from '../../components/subscription';
-import { useSubscription } from '../../hooks/useSubscription';
-import { useSearchParams } from 'react-router-dom';
 
-const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, defaultTab = 'gallery' }) => {
+const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh }) => {
   const [showDesignUploadModal, setShowDesignUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [designsTab, setDesignsTab] = useState('mockups');
-  const { hasFeature, FEATURES } = useSubscription();
-  // const [searchParams] = useSearchParams();
-  // const activeSubTab = searchParams.get('subtab') || defaultTab;
   console.log(designs);
 
   if (!isConnected) {
@@ -40,7 +34,11 @@ const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, 
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
         <p className="text-rose-700">{error}</p>
-        <button onClick={onRefresh} className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline">
+        <button
+          onClick={onRefresh}
+          className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
+          aria-label="Retry loading designs data"
+        >
           Try again
         </button>
       </div>
@@ -77,12 +75,18 @@ const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, 
         <button
           className={`tab-button whitespace-nowrap text-sm sm:text-base ${designsTab === 'mockups' ? 'active' : ''}`}
           onClick={() => setDesignsTab('mockups')}
+          aria-label="View mockups gallery"
+          role="tab"
+          aria-selected={designsTab === 'mockups'}
         >
           Mockups
         </button>
         <button
           className={`tab-button whitespace-nowrap text-sm sm:text-base ${designsTab === 'designFiles' ? 'active' : ''}`}
           onClick={() => setDesignsTab('designFiles')}
+          aria-label="View design files gallery"
+          role="tab"
+          aria-selected={designsTab === 'designFiles'}
         >
           Design Files
         </button>
@@ -98,7 +102,7 @@ const DesignsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh, 
       <DesignUploadModal
         isOpen={showDesignUploadModal}
         onClose={() => setShowDesignUploadModal(false)}
-        onUpload={data => {
+        onUpload={() => {
           setUploading(false);
           onRefresh();
         }}

@@ -142,7 +142,11 @@ const AnalyticsTab = ({ isConnected, authUrl, monthlyAnalytics, topSellers, load
     return (
       <div className="bg-rose-50 border border-rose-200 rounded-lg p-6">
         <p className="text-rose-700">{error}</p>
-        <button onClick={onRefresh} className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline">
+        <button
+          onClick={onRefresh}
+          className="mt-2 text-rose-600 hover:text-rose-700 text-sm underline"
+          aria-label="Retry loading analytics data"
+        >
           Try again
         </button>
       </div>

@@ -32,7 +32,7 @@ export const useProgressSimulation = (actualProgress, isActive) => {
           elapsedTime: (actualProgress.elapsedTime || 0) + 0.5,
         };
       });
-    }, 500); // Update every 500ms for smooth animation
+    }, 1000); // Update every 1000ms to reduce main thread work
   }, [actualProgress]);
 
   const stopSimulation = useCallback(() => {
