@@ -419,22 +419,27 @@ class ImageUploadWorkflow:
                     if processed_image.phash and not processed_image.error:
                         # Extract primary phash for comparison
                         primary_phash = self._extract_primary_phash(processed_image.phash)
+                        self.logger.info(f"   🔍 Checking duplicates for {processed_image.final_filename}, phash: {primary_phash[:12]}...")
 
                         # Check for local duplicates within this batch
                         if self._is_duplicate_in_set(primary_phash, local_phashes):
                             processed_image.is_duplicate_local = True
                             skipped_local += 1
-                            self.logger.debug(f"   🔄 Local duplicate: {processed_image.final_filename}")
+                            self.logger.info(f"   🔄 LOCAL DUPLICATE FOUND: {processed_image.final_filename} matches existing in batch")
                         else:
                             local_phashes.add(primary_phash)
+                            self.logger.debug(f"   ✅ Not a local duplicate: {processed_image.final_filename}")
 
                             # Check for database duplicates
                             with self._existing_phashes_lock:
                                 if self._is_duplicate_in_existing(primary_phash):
                                     processed_image.is_duplicate_db = True
                                     skipped_db += 1
-                                    self.logger.debug(f"   🔄 DB duplicate: {processed_image.final_filename}")
+                                    self.logger.info(f"   🔄 DATABASE DUPLICATE FOUND: {processed_image.final_filename} matches existing in DB")
+                                else:
+                                    self.logger.debug(f"   ✅ Not a DB duplicate: {processed_image.final_filename}")
                     else:
+                        self.logger.warning(f"   ⚠️  Skipping duplicate check for {processed_image.final_filename}: phash={processed_image.phash}, error={processed_image.error}")
                         # Count failed processing as error
                         if processed_image.error:
                             errors += 1
@@ -446,13 +451,38 @@ class ImageUploadWorkflow:
                     error_details.append(f"Processing {image.original_filename}: {e}")
                     self.logger.error(f"   ❌ Error processing {image.original_filename}: {e}")
 
-            # Step 2: Filter unique images
-            unique_images = [
-                img for img in processed_images
-                if not img.is_duplicate_local and not img.is_duplicate_db
-            ]
+            # Step 2: Filter unique images with detailed logging
+            self.logger.info(f"📦 Batch {batch_id}: Filtering results from {len(processed_images)} processed images")
 
-            self.logger.info(f"📦 Batch {batch_id}: {len(unique_images)} unique images to process")
+            unique_images = []
+            duplicate_images = []
+            error_images = []
+
+            for img in processed_images:
+                if img.error:
+                    error_images.append(img)
+                    self.logger.info(f"   ❌ ERROR: {img.final_filename} - {img.error}")
+                elif img.is_duplicate_local:
+                    duplicate_images.append(img)
+                    self.logger.info(f"   🔄 LOCAL DUP: {img.final_filename}")
+                elif img.is_duplicate_db:
+                    duplicate_images.append(img)
+                    self.logger.info(f"   🔄 DB DUP: {img.final_filename}")
+                else:
+                    unique_images.append(img)
+                    self.logger.info(f"   ✅ UNIQUE: {img.final_filename}")
+
+            self.logger.info(f"📦 Batch {batch_id} SUMMARY: {len(unique_images)} unique, {len(duplicate_images)} duplicates, {len(error_images)} errors")
+
+            # Secondary validation: Double-check duplicate detection
+            if len(duplicate_images) > 0:
+                self.logger.info(f"🔍 Secondary validation: Re-checking {len(duplicate_images)} detected duplicates")
+                false_positives = self._secondary_duplicate_validation(duplicate_images, unique_images)
+                if false_positives:
+                    self.logger.warning(f"⚠️  Found {len(false_positives)} false positive duplicates! Adding back to unique images")
+                    unique_images.extend(false_positives)
+                    for fp in false_positives:
+                        self.logger.info(f"   🔄➡️✅ RECOVERED: {fp.final_filename} was incorrectly marked as duplicate")
 
             # Step 3: Upload to NAS
             if batch_id == 1:  # Only send progress for the first batch to avoid spam
@@ -693,14 +723,26 @@ class ImageUploadWorkflow:
         try:
             # Convert phash to integer for comparison
             phash_int = int(phash, 16)
+            closest_distance = float('inf')
+            closest_hash = None
 
             for existing_phash in phash_set:
                 if existing_phash:
                     existing_int = int(existing_phash, 16)
                     # Calculate Hamming distance
                     hamming_distance = bin(phash_int ^ existing_int).count('1')
+
+                    if hamming_distance < closest_distance:
+                        closest_distance = hamming_distance
+                        closest_hash = existing_phash
+
                     if hamming_distance <= hamming_threshold:
+                        self.logger.debug(f"   🔍 Local duplicate found: Hamming distance {hamming_distance} (≤ {hamming_threshold})")
                         return True
+
+            # Log the closest match even if not a duplicate
+            if closest_hash:
+                self.logger.debug(f"   🔍 Closest local match: Hamming distance {closest_distance} (threshold: {hamming_threshold})")
 
             return False
 
@@ -716,6 +758,7 @@ class ImageUploadWorkflow:
         try:
             # Convert phash to integer for comparison
             phash_int = int(phash, 16)
+            closest_distance = float('inf')
 
             for existing_hash in self._existing_phashes:
                 # Handle combined hashes from database
@@ -724,14 +767,67 @@ class ImageUploadWorkflow:
                     existing_int = int(existing_phash, 16)
                     # Calculate Hamming distance
                     hamming_distance = bin(phash_int ^ existing_int).count('1')
+
+                    if hamming_distance < closest_distance:
+                        closest_distance = hamming_distance
+
                     if hamming_distance <= hamming_threshold:
+                        self.logger.debug(f"   🔍 DB duplicate found: Hamming distance {hamming_distance} (≤ {hamming_threshold})")
                         return True
 
+            # Log the closest match even if not a duplicate
+            self.logger.debug(f"   🔍 Closest DB match: Hamming distance {closest_distance} (threshold: {hamming_threshold})")
             return False
 
         except (ValueError, TypeError) as e:
             self.logger.debug(f"Error comparing with existing phashes: {e}")
             return False
+
+    def _secondary_duplicate_validation(self, duplicate_images: List[ProcessedImage], unique_images: List[ProcessedImage]) -> List[ProcessedImage]:
+        """
+        Secondary validation to catch false positive duplicates
+        Compares duplicate images against unique images using stricter thresholds
+        """
+        false_positives = []
+
+        # Create a set of unique image hashes for comparison
+        unique_hashes = {self._extract_primary_phash(img.phash) for img in unique_images if img.phash}
+
+        for dup_img in duplicate_images:
+            if not dup_img.phash:
+                continue
+
+            dup_phash = self._extract_primary_phash(dup_img.phash)
+            is_truly_duplicate = False
+
+            # Use stricter threshold for secondary check (Hamming distance <= 3)
+            strict_threshold = 3
+
+            try:
+                dup_phash_int = int(dup_phash, 16)
+
+                # Check against unique images with strict threshold
+                for unique_phash in unique_hashes:
+                    if unique_phash:
+                        unique_int = int(unique_phash, 16)
+                        hamming_distance = bin(dup_phash_int ^ unique_int).count('1')
+                        if hamming_distance <= strict_threshold:
+                            is_truly_duplicate = True
+                            self.logger.debug(f"   🔍 CONFIRMED DUPLICATE: {dup_img.final_filename} (Hamming: {hamming_distance})")
+                            break
+
+                # If not a duplicate with strict threshold, it might be a false positive
+                if not is_truly_duplicate:
+                    # Reset duplicate flags
+                    dup_img.is_duplicate_local = False
+                    dup_img.is_duplicate_db = False
+                    false_positives.append(dup_img)
+                    self.logger.info(f"   🔍 FALSE POSITIVE: {dup_img.final_filename} is NOT a duplicate")
+
+            except (ValueError, TypeError) as e:
+                self.logger.debug(f"Error in secondary validation for {dup_img.final_filename}: {e}")
+
+        return false_positives
 
     def _upload_batch_to_nas(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
         """
