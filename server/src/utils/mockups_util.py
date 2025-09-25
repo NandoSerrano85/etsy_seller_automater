@@ -153,10 +153,66 @@ class MockupImageProcessor:
             'bounds': (x_min, y_min, x_max, y_max)
         }
 
+    def _load_design_image(self, design_path):
+        """Load design image with NAS support for production environments"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Check if running in Railway/Docker environment
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production and design_path.startswith('/share/'):
+            # Use QNAP SFTP client for Railway production
+            try:
+                from server.src.utils.nas_storage import nas_storage
+                logger.info(f"Railway production: Loading design image via QNAP SFTP: {design_path}")
+
+                # Extract shop_name and relative_path from full path
+                # Path format: /share/Graphics/ShopName/RelativePath
+                path_parts = design_path.split('/')
+                if len(path_parts) >= 4 and path_parts[2] == 'Graphics':
+                    shop_name = path_parts[3]
+                    relative_path = '/'.join(path_parts[4:])
+
+                    # Download file to memory
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        # Convert bytes to CV2 image
+                        import numpy as np
+                        nparr = np.frombuffer(file_content, np.uint8)
+                        design_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+
+                        if design_image is not None:
+                            logger.info(f"Successfully loaded design image via QNAP SFTP: {design_path} ({len(file_content)} bytes)")
+                            return design_image
+                        else:
+                            logger.error(f"Failed to decode design image data from QNAP SFTP: {design_path}")
+                    else:
+                        logger.error(f"Failed to download design image from QNAP SFTP: {design_path}")
+                else:
+                    logger.error(f"Invalid QNAP design path format: {design_path}")
+            except Exception as e:
+                logger.error(f"Error loading design image from QNAP SFTP {design_path}: {e}")
+        else:
+            # Local file system access (development)
+            try:
+                design_image = cv2.imread(design_path, cv2.IMREAD_UNCHANGED)
+                if design_image is not None:
+                    logger.debug(f"Successfully loaded design image locally: {design_path}")
+                    return design_image
+                else:
+                    logger.error(f"Failed to load design image locally: {design_path}")
+            except Exception as e:
+                logger.error(f"Error loading design image locally {design_path}: {e}")
+
+        # Return None if all loading methods failed
+        logger.error(f"Failed to load design image from any source: {design_path}")
+        return None
+
     def create_mockup(self, mask_points_list, points_list, image_type=None, image=None, index=0, is_cropped_list=None, alignment_list=None):
         """
         Create mockup by replacing masked areas with design image
-        
+
         Args:
             mask_points_list: List of mask point arrays
             points_list: List of point arrays
@@ -166,11 +222,19 @@ class MockupImageProcessor:
             is_cropped: Whether to crop the design image to non-transparent area
             alignment: Alignment of design within mask ('left', 'center', 'right')
         """
+        # Load design image with NAS support
         if image is None:
-            design_img = cv2.imread(self.design_image_path, cv2.IMREAD_UNCHANGED)
+            design_path = self.design_image_path
         else:
-            design_img = cv2.imread(f"{self.design_image_path}{image}", cv2.IMREAD_UNCHANGED)
-        
+            design_path = f"{self.design_image_path}{image}"
+
+        design_img = self._load_design_image(design_path)
+        if design_img is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load design image: {design_path}")
+            raise ValueError(f"Design image could not be loaded. Check file path: {design_path}")
+
         background = self.get_background(index)
         if background is None:
             import logging
