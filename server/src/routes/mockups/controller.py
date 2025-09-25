@@ -311,15 +311,22 @@ async def upload_mockup(
     product_data:str = Form(...),
     db: Session = Depends(get_db)
 ):
-    """Upload mockup files and create Etsy listings"""
-    product_data_dict = json.loads(product_data)
-    product_request_model = model.UploadToEtsyRequest(**product_data_dict)
+    """Upload mockup files and create Etsy listings (threaded for heavy processing)"""
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
-    
-    return await service.upload_mockup_files_to_etsy(
-        db=db,
-        user_id=user_id,
-        product_data=product_request_model
-    )
+
+    @run_in_thread
+    def upload_mockup_threaded():
+        product_data_dict = json.loads(product_data)
+        product_request_model = model.UploadToEtsyRequest(**product_data_dict)
+
+        # Note: We need to use asyncio.run since service function is async
+        import asyncio
+        return asyncio.run(service.upload_mockup_files_to_etsy(
+            db=db,
+            user_id=user_id,
+            product_data=product_request_model
+        ))
+
+    return await upload_mockup_threaded()
