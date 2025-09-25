@@ -140,7 +140,7 @@ class ImageUploadWorkflow:
     Main workflow orchestrator for image upload processing
     """
 
-    def __init__(self, user_id: str, db_session: Session, max_threads: int = 8):
+    def __init__(self, user_id: str, db_session: Session, max_threads: int = 8, progress_callback=None):
         if not DEPENDENCIES_AVAILABLE:
             raise RuntimeError("Required dependencies not available (PIL, imagehash, sqlalchemy)")
 
@@ -148,6 +148,7 @@ class ImageUploadWorkflow:
         self.db_session = db_session
         self.max_threads = max_threads
         self.logger = logging.getLogger(__name__)
+        self.progress_callback = progress_callback
 
         # Thread synchronization
         self.db_lock = threading.Lock()
@@ -163,6 +164,26 @@ class ImageUploadWorkflow:
         self.jpeg_quality = 85
         self.phash_size = 16
 
+        # Progress tracking
+        self._total_files = 0
+        self._processed_files = 0
+        self._current_file = ""
+
+    def _send_progress(self, step: int, message: str, current_file: str = "", file_progress: float = 0):
+        """Send progress update to callback if available"""
+        if self.progress_callback:
+            try:
+                self.progress_callback(step, message, 4, file_progress, current_file)
+                self.logger.debug(f"Progress sent: Step {step}/4 - {message} - {current_file}")
+            except Exception as e:
+                self.logger.error(f"Error sending progress update: {e}")
+
+    def _update_file_progress(self, current_file: str = ""):
+        """Update current file being processed"""
+        if current_file:
+            self._current_file = current_file
+            self._processed_files += 1
+
     def process_images(self, uploaded_images: List[UploadedImage], design_data=None) -> WorkflowResult:
         """
         Main entry point for processing uploaded images
@@ -174,23 +195,38 @@ class ImageUploadWorkflow:
             WorkflowResult with complete processing statistics
         """
         start_time = time.time()
+        self._total_files = len(uploaded_images)
+        self._processed_files = 0
+
         self.logger.info(f"🚀 Starting image upload workflow for {len(uploaded_images)} images")
+        self._send_progress(1, f"Starting workflow for {len(uploaded_images)} images")
 
         try:
             # Pre-load existing phashes from database for duplicate detection
+            self._send_progress(1, "Loading existing image hashes for duplicate detection")
             self._load_existing_phashes()
 
             # Create batches for processing
+            self._send_progress(1, "Organizing images into processing batches")
             batches = self._create_batches(uploaded_images)
             self.logger.info(f"📦 Created {len(batches)} batches for processing")
 
             # Process batches in parallel
+            self._send_progress(2, "Processing and resizing images")
             batch_results = self._process_batches_parallel(batches, design_data)
 
             # Calculate final statistics
             processing_time = time.time() - start_time
             workflow_result = self._compile_workflow_result(
                 uploaded_images, batch_results, processing_time
+            )
+
+            # Send final progress update
+            self._send_progress(
+                4,
+                f"Workflow completed: {workflow_result.processed_images} processed, {workflow_result.skipped_duplicates} duplicates skipped",
+                "",
+                1.0
             )
 
             self.logger.info(f"🎉 Workflow completed in {processing_time:.1f}s")
@@ -357,8 +393,17 @@ class ImageUploadWorkflow:
             processed_images = []
             local_phashes = set()
 
-            for image in images:
+            for i, image in enumerate(images):
                 try:
+                    # Send progress update for current file
+                    if batch_id == 1:  # Only send detailed updates for first batch
+                        self._send_progress(
+                            2,
+                            f"Processing image: {image.original_filename}",
+                            image.original_filename,
+                            i / len(images) if images else 0
+                        )
+
                     processed_image = self._process_single_image(image, design_data)
 
                     # Only check for duplicates if processing was successful
@@ -401,14 +446,20 @@ class ImageUploadWorkflow:
             self.logger.info(f"📦 Batch {batch_id}: {len(unique_images)} unique images to process")
 
             # Step 3: Upload to NAS
+            if batch_id == 1:  # Only send progress for the first batch to avoid spam
+                self._send_progress(2, f"Uploading {len(unique_images)} processed images to storage")
             nas_success = self._upload_batch_to_nas(unique_images, batch_id)
             nas_uploads = len(nas_success)
 
             # Step 4: Update database
+            if batch_id == 1:
+                self._send_progress(3, f"Saving {len(nas_success)} images to database")
             db_success = self._update_database_batch(nas_success, batch_id)
             db_updates = len(db_success)
 
             # Step 5: Generate mockups
+            if batch_id == 1:
+                self._send_progress(3, f"Creating mockups for {len(db_success)} designs")
             mockup_success = self._generate_mockups_batch(db_success, batch_id)
             mockups_created = len(mockup_success)
 
@@ -1018,7 +1069,7 @@ class ImageUploadWorkflow:
         )
 
 
-def create_workflow(user_id: str, db_session=None, max_threads: int = 8) -> ImageUploadWorkflow:
+def create_workflow(user_id: str, db_session=None, max_threads: int = 8, progress_callback=None) -> ImageUploadWorkflow:
     """
     Factory function to create an ImageUploadWorkflow instance
 
@@ -1043,7 +1094,7 @@ def create_workflow(user_id: str, db_session=None, max_threads: int = 8) -> Imag
         except ImportError:
             raise RuntimeError("Database session not provided and get_db not available")
 
-    return ImageUploadWorkflow(user_id=user_id, db_session=db_session, max_threads=max_threads)
+    return ImageUploadWorkflow(user_id=user_id, db_session=db_session, max_threads=max_threads, progress_callback=progress_callback)
 
 
 # Example usage:

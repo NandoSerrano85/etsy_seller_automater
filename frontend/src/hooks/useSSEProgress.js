@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApi } from './useApi';
+import { useAuth } from './useAuth';
 
 export const useSSEProgress = () => {
   const api = useApi();
+  const { userToken } = useAuth();
   const [sessionId, setSessionId] = useState(null);
   const [progress, setProgress] = useState({
     step: 0,
@@ -53,75 +55,77 @@ export const useSSEProgress = () => {
     [api]
   );
 
-  const connectToProgressStream = useCallback(sessionId => {
-    if (!sessionId) return;
+  const connectToProgressStream = useCallback(
+    sessionId => {
+      if (!sessionId) return;
 
-    // Close existing connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    if (!token) {
-      setError('No authentication token found');
-      return;
-    }
-
-    // Create EventSource with auth token in URL params (since EventSource doesn't support custom headers)
-    const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
-    const url = `${baseUrl}/designs/progress/${sessionId}?token=${encodeURIComponent(token)}`;
-
-    console.log('🔗 Connecting to SSE stream:', url);
-
-    const eventSource = new EventSource(url);
-    eventSourceRef.current = eventSource;
-
-    eventSource.onopen = () => {
-      console.log('✅ SSE connection opened');
-      setIsConnected(true);
-      setError(null);
-    };
-
-    eventSource.onmessage = event => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('📡 SSE progress update:', data);
-
-        if (data.type === 'keepalive') {
-          // Ignore keepalive messages
-          return;
-        }
-
-        setProgress({
-          step: data.step || 0,
-          totalSteps: data.total_steps || 4,
-          message: data.message || '',
-          progressPercent: data.progress_percent || 0,
-          elapsedTime: data.elapsed_time || 0,
-          estimatedTotalTime: data.estimated_total_time || 0,
-          remainingTime: data.remaining_time || 0,
-          fileProgress: data.file_progress || 0,
-        });
-
-        // If upload is complete, close the connection after a delay
-        if (data.step === data.total_steps) {
-          setTimeout(() => {
-            eventSource.close();
-            setIsConnected(false);
-          }, 2000);
-        }
-      } catch (err) {
-        console.error('❌ Error parsing SSE data:', err);
+      // Close existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
       }
-    };
 
-    eventSource.onerror = event => {
-      console.error('❌ SSE connection error:', event);
-      setError('Connection to progress stream failed');
-      setIsConnected(false);
-      eventSource.close();
-    };
-  }, []);
+      if (!userToken) {
+        setError('No authentication token found');
+        return;
+      }
+
+      // Create EventSource with auth token in URL params (since EventSource doesn't support custom headers)
+      const baseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
+      const url = `${baseUrl}/designs/progress/${sessionId}?token=${encodeURIComponent(userToken)}`;
+
+      console.log('🔗 Connecting to SSE stream:', url);
+
+      const eventSource = new EventSource(url);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        console.log('✅ SSE connection opened');
+        setIsConnected(true);
+        setError(null);
+      };
+
+      eventSource.onmessage = event => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📡 SSE progress update:', data);
+
+          if (data.type === 'keepalive') {
+            // Ignore keepalive messages
+            return;
+          }
+
+          setProgress({
+            step: data.step || 0,
+            totalSteps: data.total_steps || 4,
+            message: data.message || '',
+            progressPercent: data.progress_percent || 0,
+            elapsedTime: data.elapsed_time || 0,
+            estimatedTotalTime: data.estimated_total_time || 0,
+            remainingTime: data.remaining_time || 0,
+            fileProgress: data.file_progress || 0,
+          });
+
+          // If upload is complete, close the connection after a delay
+          if (data.step === data.total_steps) {
+            setTimeout(() => {
+              eventSource.close();
+              setIsConnected(false);
+            }, 2000);
+          }
+        } catch (err) {
+          console.error('❌ Error parsing SSE data:', err);
+        }
+      };
+
+      eventSource.onerror = event => {
+        console.error('❌ SSE connection error:', event);
+        setError('Connection to progress stream failed');
+        setIsConnected(false);
+        eventSource.close();
+      };
+    },
+    [userToken]
+  );
 
   const disconnectFromProgressStream = useCallback(() => {
     if (eventSourceRef.current) {

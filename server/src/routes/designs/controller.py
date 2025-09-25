@@ -149,8 +149,8 @@ async def create_design(
     # Create progress callback if session_id is provided
     progress_callback = None
     if session_id:
-        def progress_callback(step: int, message: str, total_steps: int = 4, file_progress: float = 0):
-            progress_manager.update_progress(session_id, step + 1, total_steps, message, file_progress)
+        def progress_callback(step: int, message: str, total_steps: int = 4, file_progress: float = 0, current_file: str = ""):
+            progress_manager.update_progress(session_id, step + 1, total_steps, message, file_progress, current_file)
 
     try:
         result = await service.create_design(db, user_id, design_model, files, progress_callback)

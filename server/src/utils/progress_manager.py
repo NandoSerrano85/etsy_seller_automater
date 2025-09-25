@@ -19,6 +19,7 @@ class ProgressUpdate:
     remaining_time: float
     file_progress: float
     timestamp: datetime
+    current_file: str = ""
 
 class ProgressManager:
     """Manages upload progress tracking with SSE support"""
@@ -65,7 +66,7 @@ class ProgressManager:
         logging.info(f"Estimated processing time: {estimated_time}s for {total_size_mb}MB, {file_count} files")
         return estimated_time
 
-    def update_progress(self, session_id: str, step: int, total_steps: int, message: str, file_progress: float = 0):
+    def update_progress(self, session_id: str, step: int, total_steps: int, message: str, file_progress: float = 0, current_file: str = ""):
         """Update progress for a session with enhanced time estimation"""
         if session_id not in self._start_times:
             logging.warning(f"Progress session not found: {session_id}")
@@ -104,7 +105,8 @@ class ProgressManager:
             estimated_total_time=estimated_total_time,
             remaining_time=remaining_time,
             file_progress=file_progress,
-            timestamp=datetime.now()
+            timestamp=datetime.now(),
+            current_file=current_file
         )
 
         self._progress_data[session_id] = update

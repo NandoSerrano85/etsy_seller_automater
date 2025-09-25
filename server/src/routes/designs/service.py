@@ -121,9 +121,9 @@ async def _create_design_with_comprehensive_workflow(db: Session, user_id: UUID,
             )
             uploaded_images.append(uploaded_image)
 
-        # Create workflow with database session
+        # Create workflow with database session and progress callback
         max_threads = int(os.getenv('COMPREHENSIVE_WORKFLOW_MAX_THREADS', '4'))
-        workflow = create_workflow(user_id=str(user_id), db_session=db, max_threads=max_threads)
+        workflow = create_workflow(user_id=str(user_id), db_session=db, max_threads=max_threads, progress_callback=progress_callback)
 
         # Create progress callback wrapper that matches existing interface
         def workflow_progress_callback(step: int, message: str, total_steps: int = 4, file_progress: float = 0):
