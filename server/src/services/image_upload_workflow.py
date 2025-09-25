@@ -766,16 +766,11 @@ class ImageUploadWorkflow:
             multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
             for image in images:
-                # Use individual transactions for each image to prevent cascade failures
-                individual_trans = None
                 try:
                     # Skip if image doesn't have required data
                     if not image.final_filename or not image.phash:
                         self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing filename or phash")
                         continue
-
-                    # Start a new transaction for this individual image
-                    individual_trans = self.db_session.begin()
 
                     template_name = image.upload_info.template_id or "uploads"
                     file_path = f"/share/Graphics/{shop_name}/{template_name}/{image.final_filename}"
@@ -824,10 +819,6 @@ class ImageUploadWorkflow:
                             "updated_at": now
                         })
 
-                    # Commit the individual transaction
-                    individual_trans.commit()
-                    individual_trans = None
-
                     image.db_updated = True
                     successful_updates.append(image)
 
@@ -837,13 +828,6 @@ class ImageUploadWorkflow:
                             self._existing_phashes.add(image.phash)
 
                 except Exception as e:
-                    # Rollback the individual transaction if it exists
-                    if individual_trans:
-                        try:
-                            individual_trans.rollback()
-                        except Exception:
-                            pass  # Already failed, ignore rollback errors
-
                     self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
                     # Continue processing other images - don't let one failure stop all
 
