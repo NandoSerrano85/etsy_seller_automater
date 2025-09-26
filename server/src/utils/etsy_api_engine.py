@@ -14,10 +14,6 @@ class EtsyAPI:
             db (Session): SQLAlchemy DB session
         """
         self.session = requests.Session()
-        # Configure SSL handling for Etsy API
-        self.session.verify = False
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         self.client_id = os.getenv('CLIENT_ID')
         self.client_secret = os.getenv('CLIENT_SECRET')
         self.base_url = "https://openapi.etsy.com/v3"
@@ -274,7 +270,7 @@ class EtsyAPI:
         # Fetch the shop ID that the access token is authorized for
         # instead of using a hardcoded SHOP_ID
         user_url = f"{self.base_url}/application/users/me"
-        user_response = self.session.get(user_url, headers=headers)
+        user_response = requests.get(user_url, headers=headers)
         if not user_response.ok:
             logging.error(f"Failed to fetch user data: {user_response.status_code} {user_response.text}")
             return None
@@ -288,7 +284,7 @@ class EtsyAPI:
         
         # Fetch shops owned by this user
         shops_url = f"{self.base_url}/application/users/{user_id}/shops"
-        shops_response = self.session.get(shops_url, headers=headers)
+        shops_response = requests.get(shops_url, headers=headers)
         if not shops_response.ok:
             logging.error(f"Failed to fetch user shops: {shops_response.status_code} {shops_response.text}")
             return None
@@ -321,12 +317,6 @@ class EtsyAPI:
     def create_draft_listing(self, title: str, description: str, price: float, 
                            quantity: int, tags: List[str], 
                            materials: List[str],
-                           item_weight: float,
-                           item_weight_unit: str,
-                           item_dimensions_unit: str,
-                           item_length: float,
-                           item_width: float,
-                           item_height: float,
                            return_policy_id: Optional[int] = None,
                            is_digital: bool = False,
                            when_made: str = "made_to_order",
@@ -355,12 +345,6 @@ class EtsyAPI:
             "price": price,
             "who_made": "i_did",
             "when_made": when_made,
-            "item_weight": item_weight,
-            "item_weight_unit": item_weight_unit,
-            "item_length": item_length,
-            "item_width": item_width,
-            "item_height": item_height,
-            "item_dimensions_unit": item_dimensions_unit,
             "taxonomy_id": self.taxonomy_id if self.taxonomy_id else 1071,
             "tags": tags[:13],  # Etsy allows max 13 tags
             "materials": materials[:13],  # Etsy allows max 13 materials
@@ -403,7 +387,7 @@ class EtsyAPI:
             files = {
                 'image': (os.path.basename(image_path), image_file, 'image/jpeg')
             }
-            response = self.session.post(endpoint, headers=headers, files=files)
+            response = requests.post(endpoint, headers=headers, files=files)
             response.raise_for_status()
             return response.json()
 
@@ -496,30 +480,6 @@ class EtsyAPI:
             for profile in data.get('results', []):
                 print(f"ID: {profile['shipping_profile_id']}, Name: {profile['title']}")
             return data.get('results', [])[0]['shipping_profile_id'] if data.get('results') else None
-        elif resp.status_code in [401, 403]:
-            print(f"Authentication error: {resp.text}")
-            print("Make sure your OAuth token has the 'shops_r' scope")
-            return None
-        else:
-            print(f"Failed to fetch shipping profiles: {resp.text}")
-            return None
-
-    def fetch_all_shipping_profiles(self):
-        """Fetch all shipping profiles from the Etsy API and return as a sorted list of dicts."""
-        self.ensure_valid_token()
-        url = f'https://openapi.etsy.com/v3/application/shops/{self.shop_id}/shipping-profiles'
-        headers = {
-            'x-api-key': self.client_id,
-            'Authorization': f'Bearer {self.oauth_token}'
-        }
-        resp = self.session.get(url, headers=headers)
-        if resp.status_code == 200:
-            data = resp.json()
-            profile_list = []
-            for profile in data.get('results', []):
-                profile_list.append({"id": profile["shipping_profile_id"], "name": profile["title"]})
-            profile_list.sort(key=lambda x: x["name"].lower())
-            return profile_list
         elif resp.status_code in [401, 403]:
             print(f"Authentication error: {resp.text}")
             print("Make sure your OAuth token has the 'shops_r' scope")
@@ -822,7 +782,7 @@ class EtsyAPI:
                 'file': (file_name, file_obj, 'application/octet-stream'),
                 'name': (None, file_name)
             }
-            response = self.session.post(endpoint, headers=headers, files=files)
+            response = requests.post(endpoint, headers=headers, files=files)
             response.raise_for_status()
             return response.json()
 
@@ -840,7 +800,7 @@ class EtsyAPI:
             'was_shipped': 'false',
             'was_canceled': 'false'
         }
-        response = self.session.get(receipts_url, headers=headers, params=params)
+        response = requests.get(receipts_url, headers=headers, params=params)
         if not response.ok:
             logging.error(f"Failed to fetch orders: {response.status_code} {response.text}")
             return {"success_code": 200, "message": f"Failed to fetch orders: {response.text}"}
@@ -866,255 +826,3 @@ class EtsyAPI:
             )
             orders.append(order)
         return {"orders":  orders, "count": len(orders), "total": receipts_data.get('count', 0), "success_code": 200}
-
-    def get_shop_listings(self, state: str = "active", limit: int = 100, offset: int = 0, include_images: bool = True) -> dict:
-        """
-        Get all shop listings with optional filtering by state
-        
-        Args:
-            state (str): Filter by listing state ('active', 'draft', 'expired', etc.)
-            limit (int): Number of listings to return (max 100)
-            offset (int): Number of listings to skip for pagination
-            include_images (bool): Whether to include listing images
-            
-        Returns:
-            dict: Response containing listings data with images
-        """
-        self.ensure_valid_token()
-        logging.info(f"Using shop_id: {self.shop_id}")
-        logging.info(f"OAuth token exists: {bool(self.oauth_token)}")
-        headers = {
-            'x-api-key': self.client_id,
-            'Authorization': f'Bearer {self.oauth_token}',
-        }
-
-        url = f"{self.base_url}/application/shops/{self.shop_id}/listings"
-        params = {
-            'limit': min(limit, 100),  # Etsy max is 100
-            'offset': offset,
-            'state': state
-        }
-        
-        # Add includes parameter to get images
-        if include_images:
-            params['includes'] = 'Images'
-        
-        try:
-            logging.info(f"Making Etsy API request: {url} with params: {params}")
-            response = self.session.get(url, headers=headers, params=params)
-            logging.info(f"Etsy API response status: {response.status_code}")
-            response.raise_for_status()
-            listings_data = response.json()
-
-            results_count = len(listings_data.get('results', []))
-            total_count = listings_data.get('count', 0)
-            logging.info(f"Etsy API returned {results_count} listings out of {total_count} total")
-
-            if results_count > 0:
-                first_listing = listings_data.get('results', [{}])[0]
-                logging.info(f"First listing keys: {list(first_listing.keys()) if isinstance(first_listing, dict) else 'Not a dict'}")
-                if 'Images' in first_listing:
-                    logging.info(f"First listing has {len(first_listing['Images'])} images")
-                elif 'images' in first_listing:
-                    logging.info(f"First listing has {len(first_listing['images'])} images")
-                else:
-                    logging.info("First listing has no Images or images key")
-
-            # If images are included, they should be in the response
-            # If not included via the includes parameter, we need to fetch them separately
-            if include_images and 'includes' not in params:
-                logging.info("Adding images to listings separately...")
-                self._add_images_to_listings(listings_data.get('results', []), headers)
-
-            return listings_data
-        except Exception as e:
-            logging.error(f"Failed to fetch shop listings: {e}")
-            import traceback
-            logging.error(f"Traceback: {traceback.format_exc()}")
-            raise Exception(f"Failed to fetch shop listings: {e}")
-
-    def get_listing_by_id(self, listing_id: int) -> dict:
-        """
-        Get a specific listing by ID
-        
-        Args:
-            listing_id (int): The listing ID to fetch
-            
-        Returns:
-            dict: Listing data
-        """
-        self.ensure_valid_token()
-        headers = {
-            'x-api-key': self.client_id,
-            'Authorization': f'Bearer {self.oauth_token}',
-        }
-        
-        url = f"{self.base_url}/application/listings/{listing_id}"
-        
-        try:
-            response = self.session.get(url, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logging.error(f"Failed to fetch listing {listing_id}: {e}")
-            raise Exception(f"Failed to fetch listing {listing_id}: {e}")
-
-    def update_listing(self, listing_id: int, update_data: dict) -> dict:
-        """
-        Update a specific listing
-        
-        Args:
-            listing_id (int): The listing ID to update
-            update_data (dict): Fields to update (title, description, price, etc.)
-            
-        Returns:
-            dict: Updated listing data
-        """
-        self.ensure_valid_token()
-        headers = {
-            'x-api-key': self.client_id,
-            'Authorization': f'Bearer {self.oauth_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        url = f"{self.base_url}/application/shops/{self.shop_id}/listings/{listing_id}"
-        
-        try:
-            response = self.session.patch(url, headers=headers, json=update_data)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logging.error(f"Failed to update listing {listing_id}: {e}")
-            raise Exception(f"Failed to update listing {listing_id}: {e}")
-
-    def bulk_update_listings(self, listing_updates: List[dict]) -> dict:
-        """
-        Update multiple listings in bulk
-        
-        Args:
-            listing_updates (List[dict]): List of updates, each containing 'listing_id' and update fields
-            
-        Returns:
-            dict: Results of bulk update operation
-        """
-        results = {
-            'successful': [],
-            'failed': [],
-            'total': len(listing_updates)
-        }
-        
-        for update in listing_updates:
-            listing_id = update.pop('listing_id')  # Remove listing_id from update data
-            try:
-                updated_listing = self.update_listing(listing_id, update)
-                results['successful'].append({
-                    'listing_id': listing_id,
-                    'data': updated_listing
-                })
-            except Exception as e:
-                results['failed'].append({
-                    'listing_id': listing_id,
-                    'error': str(e)
-                })
-        
-        return results
-
-    def _add_images_to_listings(self, listings: list, headers: dict) -> None:
-        """
-        Helper method to add images to listings if not already included
-        """
-        for listing in listings:
-            listing_id = listing.get('listing_id')
-            if listing_id and 'images' not in listing:
-                try:
-                    images_url = f"{self.base_url}/application/listings/{listing_id}/images"
-                    images_response = self.session.get(images_url, headers=headers)
-                    if images_response.status_code == 200:
-                        images_data = images_response.json()
-                        listing['images'] = images_data.get('results', [])
-                    else:
-                        listing['images'] = []
-                except Exception as e:
-                    logging.warning(f"Failed to fetch images for listing {listing_id}: {e}")
-                    listing['images'] = []
-
-    def get_all_shop_listings(self, state: str = "active", include_images: bool = True) -> dict:
-        """
-        Get ALL shop listings by paginating through all pages
-        
-        Args:
-            state (str): Filter by listing state ('active', 'draft', 'expired', etc.)
-            include_images (bool): Whether to include listing images
-            
-        Returns:
-            dict: All listings data with images
-        """
-        all_listings = []
-        offset = 0
-        limit = 100  # Max per request
-        
-        while True:
-            response = self.get_shop_listings(state=state, limit=limit, offset=offset, include_images=include_images)
-            listings = response.get('results', [])
-            all_listings.extend(listings)
-            
-            # Check if we have more pages
-            total_count = response.get('count', 0)
-            if offset + limit >= total_count:
-                break
-                
-            offset += limit
-        
-        return {
-            'results': all_listings,
-            'count': len(all_listings),
-            'total': len(all_listings)
-        }
-
-    def get_all_active_listings_images(self) -> list:
-        """
-        Get all active listings with their images for the design gallery
-
-        Returns:
-            list: List of listings with images formatted for gallery display
-        """
-        try:
-            logging.info("Calling get_all_shop_listings...")
-            response = self.get_all_shop_listings(state="active", include_images=True)
-            logging.info(f"get_all_shop_listings returned: {type(response)} with keys: {response.keys() if isinstance(response, dict) else 'N/A'}")
-
-            results = response.get('results', [])
-            logging.info(f"Found {len(results)} listings in response")
-
-            listings_with_images = []
-
-            for i, listing in enumerate(results):
-                if isinstance(listing, dict):
-                    listing_id = listing.get('listing_id')
-                    listing_title = listing.get('title', 'Untitled')
-
-                    # Check both 'Images' and 'images' keys
-                    images = listing.get('Images', []) or listing.get('images', [])
-
-                    logging.info(f"Listing {i+1}: ID={listing_id}, Title='{listing_title}', Images count={len(images)}")
-                    logging.info(f"Listing keys: {list(listing.keys())}")
-
-                    if images:  # Only include listings that have images
-                        listings_with_images.append({
-                            'listing_id': listing_id,
-                            'title': listing_title,
-                            'images': images
-                        })
-                        logging.info(f"Added listing {listing_id} with {len(images)} images")
-                    else:
-                        logging.info(f"Skipped listing {listing_id} - no images found")
-                else:
-                    logging.warning(f"Listing {i+1} is not a dict: {type(listing)}")
-
-            logging.info(f"Returning {len(listings_with_images)} listings with images")
-            return listings_with_images
-        except Exception as e:
-            logging.error(f"Failed to fetch active listings with images: {e}")
-            import traceback
-            logging.error(f"Traceback: {traceback.format_exc()}")
-            return []

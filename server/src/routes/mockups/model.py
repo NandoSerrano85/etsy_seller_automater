@@ -88,7 +88,6 @@ class MockupFullCreate(BaseModel):
     id: UUID
     product_template_id: UUID
     design_file_path: List[str]
-    watermark_path: Optional[str] = None
     # Optionally, add more fields if needed for full creation
 
 # --- List Response Models ---

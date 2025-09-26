@@ -109,55 +109,15 @@ export const useApi = () => {
       method: 'POST',
       body: JSON.stringify(data),
     });
-  const postFormData = (url, formData, options = {}) => {
-    // Remove timeout for uploads - let them run as long as needed
-    const { timeout, ...restOptions } = options;
-    return authenticatedApiCall(url, {
+  const postFormData = (url, formData) =>
+    authenticatedApiCall(url, {
       method: 'POST',
       body: formData,
-      // No timeout - uploads can take as long as needed
-      ...restOptions,
     });
-  };
-
-  // Enhanced form data post with retry logic for connection reset errors
-  const postFormDataWithRetry = async (url, formData, maxRetries = 2) => {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`🔄 Upload attempt ${attempt}/${maxRetries} for ${url}`);
-        const result = await postFormData(url, formData);
-        console.log(`✅ Upload successful on attempt ${attempt}`);
-        return result;
-      } catch (error) {
-        console.log(`❌ Upload attempt ${attempt} failed:`, error.message);
-
-        // Check if it's a retryable error (network issues, not timeouts since we removed them)
-        const isRetryableError =
-          error.message.includes('ERR_CONNECTION_RESET') ||
-          error.message.includes('Failed to fetch') ||
-          error.name === 'TypeError';
-
-        // If it's the last attempt or not a retryable error, throw
-        if (attempt === maxRetries || !isRetryableError) {
-          throw error;
-        }
-
-        // Wait before retrying (exponential backoff)
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`⏳ Retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  };
   const put = (url, data) =>
     authenticatedApiCall(url, {
       method: 'PUT',
       body: JSON.stringify(data),
-    });
-  const putFormData = (url, formData) =>
-    authenticatedApiCall(url, {
-      method: 'PUT',
-      body: formData,
     });
   const del = url => authenticatedApiCall(url, { method: 'DELETE' });
 
@@ -167,7 +127,6 @@ export const useApi = () => {
     postFormData,
     postFormDataWithRetry,
     put,
-    putFormData,
     delete: del,
   };
 };

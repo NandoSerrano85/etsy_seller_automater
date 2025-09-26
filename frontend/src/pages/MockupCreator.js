@@ -398,25 +398,12 @@ const MockupCreator = () => {
       const uploadedImages = uploadResponse.uploaded_images || uploadResponse;
 
       // Create mask data for each image
-      // Ensure we have the same number of uploaded images as selected images
-      if (uploadedImages.length !== selectedImages.length) {
-        console.error('Mismatch between uploaded images and selected images count');
-        setMessage('Error: Uploaded images count does not match selected images');
-        return;
-      }
-
       for (let imageIndex = 0; imageIndex < selectedImages.length; imageIndex++) {
         const imageMasks = allMasks[imageIndex] || {};
-        const uploadedImage = uploadedImages[imageIndex];
-
-        if (!uploadedImage) {
-          console.error(`No uploaded image found for image index ${imageIndex}`);
-          continue;
-        }
 
         // Get all masks for this image
         const maskKeys = Object.keys(imageMasks);
-        if (maskKeys.length > 0) {
+        if (maskKeys.length > 0 && uploadedImages[imageIndex]) {
           // Prepare all masks for this image
           const allMasksForImage = [];
           const allPointsForImage = [];
@@ -434,7 +421,7 @@ const MockupCreator = () => {
           // Use the first mask's properties for the entire image (or you might want to handle this differently)
           const firstMask = imageMasks[Object.keys(imageMasks)[0]];
 
-          console.log('Sending mask data for image', imageIndex, 'with image ID', uploadedImage.id, ':', {
+          console.log('Sending mask data for image', imageIndex, ':', {
             masks: allMasksForImage,
             points: allPointsForImage,
             is_cropped: firstMask?.isCropped || false,
@@ -442,15 +429,13 @@ const MockupCreator = () => {
           });
 
           // Create mask data using the actual image ID
-          await api.post(`/mockups/images/${uploadedImage.id}/mask-data`, {
-            mockup_image_id: uploadedImage.id,
+          await api.post(`/mockups/images/${uploadedImages[imageIndex].id}/mask-data`, {
+            mockup_image_id: uploadedImages[imageIndex].id,
             masks: allMasksForImage,
             points: allPointsForImage,
             is_cropped: firstMask?.isCropped || false,
             alignment: firstMask?.alignment || 'center',
           });
-        } else {
-          console.warn(`No mask data found for image index ${imageIndex}`);
         }
       }
 

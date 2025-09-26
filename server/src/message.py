@@ -18,11 +18,11 @@ class AuthError(HTTPException):
 
 class AuthVerifyTokenError(AuthError):
     def __init__(self, token: str):
-        super().__init__(status_code=401, detail=f"Could not properly decode token: {token}.")
+        super().__init__(status_code=500, detail=f"Could not properly decode token: {token}.")
 
 class AuthUserNotFound(AuthError):
     def __init__(self):
-        super().__init__(status_code=401, detail=f"Was not able to fetch auth from user.")
+        super().__init__(status_code=500, detail=f"Was not able to fetch auth from user.")
 
 class UserError(HTTPException):
     """Base exception for user-related errors"""
@@ -256,34 +256,6 @@ class MockupMaskDataDeleteError(MockupMaskDataError):
     def __init__(self, mask_data_id=None):
         super().__init__(status_code=500, detail=f"Could not delete mockup mask data with ID: {mask_data_id}.")
 
-class ThirdPartyListingError(HTTPException):
-    """Base exception for third party listing-related errors"""
-    pass
-
-class ThirdPartyListingNotFoundError(ThirdPartyListingError):
-    def __init__(self, listing_id: int):
-        super().__init__(status_code=404, detail=f"Third party listing with ID: {listing_id} could not be found.")
-
-class ThirdPartyListingUpdateError(ThirdPartyListingError):
-    def __init__(self, listing_id: int, error_message: str = ""):
-        super().__init__(status_code=500, detail=f"Could not update third party listing {listing_id}: {error_message}")
-
-class ThirdPartyListingCreateError(ThirdPartyListingError):
-    def __init__(self, error_message: str = ""):
-        super().__init__(status_code=500, detail=f"Could not create third party listing: {error_message}")
-
-class ThirdPartyListingGetAllError(ThirdPartyListingError):
-    def __init__(self):
-        super().__init__(status_code=500, detail="Could not retrieve third party listings.")
-
-class ThirdPartyListingGetByIdError(ThirdPartyListingError):
-    def __init__(self, listing_id: int):
-        super().__init__(status_code=500, detail=f"Could not retrieve third party listing with ID: {listing_id}.")
-
-class ThirdPartyListingDeleteError(ThirdPartyListingError):
-    def __init__(self, listing_id: int):
-        super().__init__(status_code=500, detail=f"Could not delete third party listing with ID: {listing_id}.")
-
 # Error Messages
 ERROR_MESSAGES = {
     'oauth_failed': 'OAuth authentication failed',
@@ -301,27 +273,12 @@ SUCCESS_MESSAGES = {
 }
 
 def log_and_return_422(request: Request, exc: RequestValidationError):
-    logging.error(f"422 Validation Error: {exc.errors()}")
-    
-    # Handle body serialization safely
-    body_info = "Unable to serialize body"
-    try:
-        if exc.body:
-            # Try to decode as string first
-            if isinstance(exc.body, bytes):
-                body_info = exc.body.decode('utf-8', errors='ignore')[:500]  # Limit size
-            else:
-                body_info = str(exc.body)[:500]  # Limit size
-    except Exception:
-        body_info = f"Body type: {type(exc.body).__name__}"
-    
-    logging.error(f"Request body info: {body_info}")
-    
+    logging.error(f"422 Validation Error: {exc.errors()} | Body: {exc.body}")
     return JSONResponse(
         status_code=422,
         content={
             "detail": exc.errors(),
-            "body_info": body_info,
+            "body": exc.body,
         },
     )
 

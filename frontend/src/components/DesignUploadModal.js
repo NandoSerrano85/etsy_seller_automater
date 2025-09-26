@@ -373,16 +373,10 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         mockupFormData.append('product_data', JSON.stringify(productData));
 
-        addLog('info', 'Creating product mockups...', {
-          templateId: selectedTemplate.id,
-          mockupId: selectedMockup.id,
-        });
-        updateDetailedProgress({ currentOperation: 'Creating product mockups...' });
-
-        const result = await api.postFormDataWithRetry('/mockups/upload-mockup', mockupFormData);
-
-        addLog('success', 'Mockup generation completed', {
-          result: result.result?.message || 'Mockups created successfully',
+        const result = await api.postFormData('/mockups/upload-mockup', mockupFormData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
         });
 
         let successMessage = 'Design saved and files uploaded successfully!';

@@ -11,14 +11,13 @@ import AnalyticsTab from './HomeTabs/AnalyticsTab';
 import DesignsTab from './HomeTabs/DesignsTab';
 import ToolsTab from './HomeTabs/ToolsTab';
 import OrdersTab from './HomeTabs/OrdersTab';
-import ListingsTab from './HomeTabs/ListingsTab';
 
-// const LoadingIndicator = () => (
-//   <div className="flex items-center justify-center p-4">
-//     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
-//     <span className="ml-2 text-sage-600">Loading...</span>
-//   </div>
-// );
+const LoadingIndicator = () => (
+  <div className="flex items-center justify-center p-4">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
+    <span className="ml-2 text-sage-600">Loading...</span>
+  </div>
+);
 
 // const TabErrorBoundary = ({ error, onRetry, children }) => {
 //   if (error) {
@@ -239,13 +238,10 @@ const Home = () => {
 
       case 'listings':
         return (
-          <ListingsTab
-            isConnected={isEtsyConnected}
-            authUrl="/connect-etsy"
-            loading={isLoading}
-            error={error}
-            onRefresh={() => handleFetchData(true)}
-          />
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Listings Management</h2>
+            <p className="text-gray-600">Listing management features coming soon...</p>
+          </div>
         );
 
       default:
