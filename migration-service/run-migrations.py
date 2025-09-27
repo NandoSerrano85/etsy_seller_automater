@@ -4,13 +4,20 @@ Standalone migration runner for Railway deployment
 
 This service runs independently from the main API and handles:
 - Database schema migrations
+- Local design imports from LOCAL_ROOT_PATH with phash generation
 - NAS design imports with phash generation
 - Data transformations and cleanup
 
 Environment Variables Required:
 - DATABASE_URL: PostgreSQL connection string
+
+Optional:
+- LOCAL_ROOT_PATH: Local design directory path for local-only migration
+- LOCAL_MIGRATION_DRY_RUN: Set to 'true' for dry run mode
+- LOCAL_MIGRATION_SHOP: Migrate only specific shop
+- LOCAL_MIGRATION_TEMPLATE: Migrate only specific template
 - QNAP_HOST, QNAP_USERNAME, QNAP_PASSWORD: NAS access
-- MIGRATION_MODE: 'all', 'startup', 'nas-only' (default: 'all')
+- MIGRATION_MODE: 'all', 'startup', 'local-only', 'nas-only' (default: 'all')
 """
 
 import os
@@ -182,6 +189,72 @@ def run_startup_migrations(engine):
         logger.warning(f"⚠️  Some migrations may have failed or were skipped")
     return success_count
 
+def run_local_design_migration(engine):
+    """Run local design import migration"""
+    logger.info("🔄 Running local design import migration...")
+
+    try:
+        # Check LOCAL_ROOT_PATH configuration
+        local_root_path = os.getenv('LOCAL_ROOT_PATH')
+        if not local_root_path:
+            logger.info("ℹ️  LOCAL_ROOT_PATH not configured, skipping local design migration")
+            return True  # Return True since this is optional
+
+        if not os.path.exists(local_root_path):
+            logger.warning(f"⚠️  LOCAL_ROOT_PATH does not exist: {local_root_path}, skipping local design migration")
+            return True  # Return True since this is optional
+
+        # Use the same directory discovery logic as discover_migrations()
+        current_dir = os.path.dirname(__file__)
+        possible_migrations_dirs = [
+            os.path.join(current_dir, 'migrations'),
+            '/app/migrations',
+            '/app/migration-service/migrations'
+        ]
+
+        migration_dir = None
+        for dir_path in possible_migrations_dirs:
+            if os.path.exists(dir_path):
+                migration_dir = dir_path
+                break
+
+        if migration_dir is None:
+            logger.error("❌ Could not find migrations directory for local design migration")
+            return False
+
+        import importlib.util
+        migration_file = os.path.join(migration_dir, 'import_local_designs.py')
+
+        if not os.path.exists(migration_file):
+            logger.warning("⚠️  Local design migration file not found, skipping")
+            return True  # Return True since this is optional
+
+        spec = importlib.util.spec_from_file_location('import_local_designs', migration_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Local design migration handles its own transactions
+        try:
+            with engine.connect() as conn:
+                trans = conn.begin()
+                try:
+                    module.upgrade(conn)
+                    trans.commit()
+                    logger.info("✅ Local design migration completed successfully")
+                    return True
+                except Exception as e:
+                    trans.rollback()
+                    logger.error(f"❌ Local design migration failed: {e}")
+                    return False
+        except Exception as e:
+            logger.error(f"❌ Local design migration failed: {e}")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Could not run local design migration: {e}")
+        return False
+
+
 def run_nas_migration(engine):
     """Run NAS design import migration"""
     logger.info("🔄 Running optimized NAS design import migration...")
@@ -189,8 +262,8 @@ def run_nas_migration(engine):
     try:
         # Check NAS configuration
         if not all([os.getenv('QNAP_HOST'), os.getenv('QNAP_USERNAME'), os.getenv('QNAP_PASSWORD')]):
-            logger.warning("⚠️  NAS credentials not configured, skipping NAS migration")
-            return False
+            logger.info("ℹ️  NAS credentials not configured, skipping NAS migration")
+            return True  # Return True since this is optional
 
         # Check if we should use batched processing
         use_batched = os.getenv('NAS_USE_BATCHED', 'true').lower() == 'true'
@@ -318,6 +391,11 @@ def main():
             if migration_mode == 'startup':
                 success = startup_success > 0
 
+        if migration_mode in ['all', 'local-only']:
+            local_success = run_local_design_migration(engine)
+            if migration_mode == 'local-only':
+                success = local_success
+
         if migration_mode in ['all', 'nas-only']:
             nas_success = run_nas_migration(engine)
             if migration_mode == 'nas-only':
@@ -326,7 +404,7 @@ def main():
         if migration_mode == 'all':
             complex_success = run_complex_migrations(engine)
             # For 'all' mode, we want both startup and complex to succeed
-            # NAS is optional (depends on configuration)
+            # Local and NAS are optional (depends on configuration)
 
         if success:
             logger.info("🎉 Migration service completed successfully!")
