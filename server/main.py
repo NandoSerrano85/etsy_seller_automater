@@ -230,9 +230,17 @@ if os.path.exists(frontend_public_dir):
 async def catch_webpack_files(filename: str):
     from fastapi.responses import JSONResponse
     from fastapi import status
-    
+
+    # Exclude API routes from catch-all
+    api_prefixes = ['auth', 'dashboard', 'designs', 'mockups', 'orders', 'users', 'templates', 'canvas-sizes', 'size-config', 'third-party', 'health']
+    if any(filename.startswith(prefix + '/') or filename == prefix for prefix in api_prefixes):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "Not Found"}
+        )
+
     # If this is a webpack hot-reload file, return empty response to avoid console errors
-    if (filename.endswith('.hot-update.json') or 
+    if (filename.endswith('.hot-update.json') or
         filename.endswith('.hot-update.js') or
         filename.startswith('__webpack_hmr') or
         filename.endswith('.map')):
@@ -240,7 +248,7 @@ async def catch_webpack_files(filename: str):
             status_code=status.HTTP_404_NOT_FOUND,
             content={"detail": "Webpack development file not found"}
         )
-    
+
     # For other files, return standard 404
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,

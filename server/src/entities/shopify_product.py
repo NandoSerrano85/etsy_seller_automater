@@ -38,10 +38,10 @@ class ShopifyProduct(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships
-    user = relationship('User', back_populates='shopify_products')
-    store = relationship('ShopifyStore', back_populates='products')
-    template = relationship('EtsyProductTemplate', back_populates='shopify_products')
+    # Relationships - TODO: Fix after implementing proper User relationships
+    # user = relationship('User', back_populates='shopify_products')
+    # store = relationship('ShopifyStore', back_populates='products')
+    # template = relationship('EtsyProductTemplate', back_populates='shopify_products')
 
 # Add the relationship to ShopifyStore
 from server.src.entities.shopify_store import ShopifyStore

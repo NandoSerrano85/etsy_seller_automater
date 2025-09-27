@@ -30,10 +30,42 @@ from fastapi import UploadFile
 from PIL import Image
 import imagehash
 import os
+import cv2
+from server.src.utils.cropping import crop_transparent
+from server.src.utils.resizing import resize_image_by_inches
+from server.src.utils.util import find_png_files
+
+def calculate_multiple_hashes(image_path: str = None, image=None, hash_size: int = 16) -> dict:
+    """
+    Calculate multiple perceptual hashes for better duplicate detection.
+
+    Args:
+        image_path: Path to the image file (optional if image provided)
+        image: PIL Image object (optional if image_path provided)
+        hash_size: Hash size for the perceptual hashes
+
+    Returns:
+        Dict containing phash, ahash, dhash, whash as strings
+    """
+    try:
+        if image is None:
+            if image_path is None:
+                raise ValueError("Either image_path or image must be provided")
+            image = Image.open(image_path)
+
+        return {
+            'phash': str(imagehash.phash(image, hash_size=hash_size)),
+            'ahash': str(imagehash.average_hash(image, hash_size=hash_size)),
+            'dhash': str(imagehash.dhash(image, hash_size=hash_size)),
+            'whash': str(imagehash.whash(image, hash_size=hash_size))
+        }
+    except Exception as e:
+        logging.error(f"Error calculating hashes for {image_path}: {e}")
+        raise
 
 def calculate_phash(image_path: str, hash_size: int = 16) -> str:
     """
-    Calculate perceptual hash for an image file.
+    Calculate perceptual hash for an image file (legacy function for backward compatibility).
 
     Args:
         image_path: Path to the image file
@@ -43,12 +75,248 @@ def calculate_phash(image_path: str, hash_size: int = 16) -> str:
         String representation of the hash
     """
     try:
-        with Image.open(image_path) as img:
-            phash = imagehash.phash(img, hash_size=hash_size)
-            return str(phash)
+        hashes = calculate_multiple_hashes(image_path=image_path, hash_size=hash_size)
+        return hashes['phash']
     except Exception as e:
         logging.error(f"Error calculating phash for {image_path}: {e}")
         return None
+
+
+def process_images_for_comparison(image_paths, db=None, canvas_id=None, product_template_id=None, target_dpi=400):
+    """
+    Process images by cropping transparency and resizing before comparison.
+
+    Parameters:
+        image_paths: List of image file paths
+        db: Database session for resizing configuration
+        canvas_id: Canvas ID for resizing configuration
+        product_template_id: Product template ID for resizing configuration
+        target_dpi: Target DPI for resizing
+
+    Returns:
+        list: List of processed image arrays
+    """
+    processed_images = []
+
+    for image_path in image_paths:
+        try:
+            # Step 1: Crop transparent areas
+            cropped_image = crop_transparent(image_path)
+
+            if cropped_image is not None:
+                # Step 2: Resize the cropped image
+                resized_image = resize_image_by_inches(
+                    image_path=image_path,
+                    image_type="UVDTF 16oz",  # Default type
+                    db=db,
+                    canvas_id=canvas_id,
+                    product_template_id=product_template_id,
+                    image_size="",
+                    image=cropped_image,
+                    target_dpi=target_dpi
+                )
+                processed_images.append(resized_image)
+            else:
+                logging.warning(f"Failed to crop image: {image_path}")
+                processed_images.append(None)
+
+        except Exception as e:
+            logging.error(f"Error processing {image_path}: {e}")
+            processed_images.append(None)
+
+    return processed_images
+
+
+def build_hash_db_from_processed(image_paths, processed_images, hash_size=16):
+    """
+    Build hash database from processed images.
+    """
+    hash_db = {}
+    for i, path in enumerate(image_paths):
+        if i < len(processed_images) and processed_images[i] is not None:
+            try:
+                # Convert OpenCV image (BGR/BGRA) to RGB for PIL
+                img_array = processed_images[i]
+                if len(img_array.shape) == 3:
+                    if img_array.shape[2] == 4:  # BGRA
+                        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGRA2RGBA)
+                    else:  # BGR
+                        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+                else:  # Grayscale
+                    img_rgb = img_array
+
+                # Convert to PIL Image
+                pil_img = Image.fromarray(img_rgb)
+
+                hash_db[path] = {
+                    'phash': imagehash.phash(pil_img, hash_size=hash_size),
+                    'ahash': imagehash.average_hash(pil_img, hash_size=hash_size),
+                    'dhash': imagehash.dhash(pil_img, hash_size=hash_size),
+                    'whash': imagehash.whash(pil_img, hash_size=hash_size)
+                }
+            except Exception as e:
+                logging.error(f"Skipping hash generation for {path}: {e}")
+    return hash_db
+
+
+def check_duplicates_processed(new_image_paths, processed_new_images, hash_db, threshold=5, hash_size=16, min_matches=2):
+    """
+    Check duplicates using processed images.
+    """
+    results = {}
+
+    for i, new_path in enumerate(new_image_paths):
+        best_match = None
+        best_score = 0
+
+        if i < len(processed_new_images) and processed_new_images[i] is not None:
+            try:
+                # Convert OpenCV image to PIL format
+                img_array = processed_new_images[i]
+                if len(img_array.shape) == 3:
+                    if img_array.shape[2] == 4:  # BGRA
+                        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGRA2RGBA)
+                    else:  # BGR
+                        img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+                else:  # Grayscale
+                    img_rgb = img_array
+
+                pil_img = Image.fromarray(img_rgb)
+
+                new_hashes = {
+                    'phash': imagehash.phash(pil_img, hash_size=hash_size),
+                    'ahash': imagehash.average_hash(pil_img, hash_size=hash_size),
+                    'dhash': imagehash.dhash(pil_img, hash_size=hash_size),
+                    'whash': imagehash.whash(pil_img, hash_size=hash_size)
+                }
+
+                for existing_path, existing_hashes in hash_db.items():
+                    matches = 0
+                    total_distance = 0
+
+                    for hash_type in new_hashes:
+                        distance = abs(new_hashes[hash_type] - existing_hashes[hash_type])
+                        if distance <= threshold:
+                            matches += 1
+                        total_distance += distance
+
+                    if matches >= min_matches:
+                        confidence = matches + (1.0 / (1.0 + total_distance / len(new_hashes)))
+                        if confidence > best_score:
+                            best_score = confidence
+                            best_match = (existing_path, confidence)
+
+            except Exception as e:
+                logging.error(f"Error processing {new_path}: {e}")
+
+        results[new_path] = best_match
+    return results
+
+
+def enhanced_duplicate_detection(db: Session, new_image_paths: List[str], user_id: UUID,
+                                 canvas_id: UUID = None, product_template_id: UUID = None,
+                                 threshold: int = 5, min_matches: int = 2) -> dict:
+    """
+    Enhanced duplicate detection using multiple hash algorithms and image preprocessing.
+
+    Args:
+        db: Database session
+        new_image_paths: List of paths to new images to check
+        user_id: User ID to scope the search
+        canvas_id: Canvas ID for resizing configuration
+        product_template_id: Product template ID for resizing configuration
+        threshold: Hamming distance threshold for considering images duplicates
+        min_matches: Minimum number of hash algorithms that must match
+
+    Returns:
+        dict: {new_image_path: {'duplicate': bool, 'existing_design': DesignImages or None, 'confidence': float}}
+    """
+    results = {}
+
+    try:
+        # Get all existing designs with multiple hashes for this user
+        existing_designs = db.query(DesignImages).filter(
+            DesignImages.user_id == user_id,
+            DesignImages.is_active == True,
+            DesignImages.phash.isnot(None)
+        ).all()
+
+        # Build existing images database with their file paths for processing
+        existing_paths = []
+        existing_designs_map = {}
+
+        for design in existing_designs:
+            if design.file_path and os.path.exists(design.file_path):
+                existing_paths.append(design.file_path)
+                existing_designs_map[design.file_path] = design
+            else:
+                logging.warning(f"Design file not found: {design.file_path}")
+
+        if not existing_paths:
+            # No existing images to compare against
+            for image_path in new_image_paths:
+                results[image_path] = {
+                    'duplicate': False,
+                    'existing_design': None,
+                    'confidence': 0.0
+                }
+            return results
+
+        # Step 1: Process existing images (crop and resize)
+        logging.info(f"Processing {len(existing_paths)} existing images for comparison...")
+        processed_existing = process_images_for_comparison(
+            existing_paths, db=db, canvas_id=canvas_id,
+            product_template_id=product_template_id
+        )
+
+        # Step 2: Process new images (crop and resize)
+        logging.info(f"Processing {len(new_image_paths)} new images for comparison...")
+        processed_new = process_images_for_comparison(
+            new_image_paths, db=db, canvas_id=canvas_id,
+            product_template_id=product_template_id
+        )
+
+        # Step 3: Build hash database from processed existing images
+        logging.info("Building hash database from processed images...")
+        hash_db = build_hash_db_from_processed(existing_paths, processed_existing)
+
+        # Step 4: Check duplicates using processed new images
+        logging.info("Checking for duplicates using enhanced detection...")
+        duplicate_results = check_duplicates_processed(
+            new_image_paths, processed_new, hash_db,
+            threshold=threshold, min_matches=min_matches
+        )
+
+        # Step 5: Map results back to design objects
+        for image_path, match_result in duplicate_results.items():
+            if match_result:
+                existing_path, confidence = match_result
+                existing_design = existing_designs_map.get(existing_path)
+                results[image_path] = {
+                    'duplicate': True,
+                    'existing_design': existing_design,
+                    'confidence': confidence
+                }
+            else:
+                results[image_path] = {
+                    'duplicate': False,
+                    'existing_design': None,
+                    'confidence': 0.0
+                }
+
+    except Exception as e:
+        logging.error(f"Enhanced duplicate detection failed: {e}")
+        # Fallback to basic duplicate detection for all images
+        for image_path in new_image_paths:
+            results[image_path] = {
+                'duplicate': False,
+                'existing_design': None,
+                'confidence': 0.0,
+                'error': str(e)
+            }
+
+    return results
+
 
 def _validate_canvas_config(db: Session, product_template_id: UUID, canvas_config_id: UUID) -> bool:
     """Validate that canvas config exists and belongs to the user"""
@@ -619,8 +887,12 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             design_data.file_path = file_path
             design_data.filename = filename
 
-            # Calculate perceptual hash for duplicate detection
-            phash = calculate_phash(file_path)
+            # Calculate multiple perceptual hashes for better duplicate detection
+            hashes = calculate_multiple_hashes(image_path=file_path)
+            phash = hashes['phash']
+            ahash = hashes['ahash']
+            dhash = hashes['dhash']
+            whash = hashes['whash']
 
             design = DesignImages(
                 user_id=user_id,
@@ -628,6 +900,9 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 file_path=file_path,
                 description=design_data.description,
                 phash=phash,
+                ahash=ahash,
+                dhash=dhash,
+                whash=whash,
                 canvas_config_id=design_data.canvas_config_id,
                 is_active=design_data.is_active
             )
@@ -786,9 +1061,10 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
                 # Check if we have valid tokens
                 if hasattr(etsy_api, 'oauth_token') and etsy_api.oauth_token:
                     logging.info("Etsy OAuth token found")
-                    # Get active listings with images
-                    etsy_listings = etsy_api.get_all_active_listings_images()
-                    logging.info(f"Etsy API returned: {type(etsy_listings)} with {len(etsy_listings) if etsy_listings else 0} listings")
+                    # TODO: Implement get_all_active_listings_images method in EtsyAPI
+                    # For now, skip Etsy listings integration
+                    logging.info("Etsy listings integration temporarily disabled - method not implemented")
+                    etsy_listings = []
 
                     if etsy_listings and isinstance(etsy_listings, list):
                         logging.info("Processing Etsy listings...")

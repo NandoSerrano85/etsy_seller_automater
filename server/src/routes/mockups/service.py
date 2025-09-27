@@ -58,40 +58,75 @@ def list_images_in_dir(directory, extensions={".jpg", ".jpeg", ".png", ".bmp", "
 
 def build_hash_db(image_paths, hash_size=16):
     """
-    Precompute perceptual hashes for a list of images.
+    Precompute multiple perceptual hashes for a list of images.
+    Uses phash, ahash, dhash, and whash for better duplicate detection.
     """
     hash_db = {}
     for path in image_paths:
         try:
             with Image.open(path) as img:
-                hash_db[path] = imagehash.phash(img, hash_size=hash_size)
+                hash_db[path] = {
+                    'phash': imagehash.phash(img, hash_size=hash_size),
+                    'ahash': imagehash.average_hash(img, hash_size=hash_size),
+                    'dhash': imagehash.dhash(img, hash_size=hash_size),
+                    'whash': imagehash.whash(img, hash_size=hash_size)
+                }
         except Exception as e:
             logging.warning(f"Skipping {path}: {e}")
     return hash_db
 
 
-def check_duplicates(new_images, hash_db, threshold=5, hash_size=16):
+def check_duplicates(new_images, hash_db, threshold=5, hash_size=16, min_matches=2):
     """
-    Check if new images already exist in hash_db.
+    Check if new images already exist in hash_db using multiple hash algorithms.
+
+    Parameters:
+        new_images: List of new image paths to check
+        hash_db: Database of existing image hashes
+        threshold: Maximum hash distance for considering a match
+        hash_size: Size of the hash
+        min_matches: Minimum number of hash algorithms that must match
 
     Returns:
-        dict: {new_image_path: matching_existing_path or None}
+        dict: {new_image_path: (matching_existing_path, confidence_score) or None}
     """
     results = {}
     for new_path in new_images:
-        match = None
+        best_match = None
+        best_score = 0
+
         try:
             with Image.open(new_path) as img:
-                new_hash = imagehash.phash(img, hash_size=hash_size)
+                new_hashes = {
+                    'phash': imagehash.phash(img, hash_size=hash_size),
+                    'ahash': imagehash.average_hash(img, hash_size=hash_size),
+                    'dhash': imagehash.dhash(img, hash_size=hash_size),
+                    'whash': imagehash.whash(img, hash_size=hash_size)
+                }
 
-            for existing_path, existing_hash in hash_db.items():
-                if abs(new_hash - existing_hash) <= threshold:
-                    match = existing_path
-                    break
+            for existing_path, existing_hashes in hash_db.items():
+                matches = 0
+                total_distance = 0
+
+                for hash_type in new_hashes:
+                    distance = abs(new_hashes[hash_type] - existing_hashes[hash_type])
+                    if distance <= threshold:
+                        matches += 1
+                    total_distance += distance
+
+                if matches >= min_matches:
+                    # Calculate confidence score (higher is better)
+                    confidence = matches + (1.0 / (1.0 + total_distance / len(new_hashes)))
+                    if confidence > best_score:
+                        best_score = confidence
+                        best_match = (existing_path, confidence)
+
         except Exception as e:
             logging.warning(f"Skipping {new_path}: {e}")
-        results[new_path] = match
+
+        results[new_path] = best_match
     return results
+
 
 def calculate_phash(image_path: str, hash_size: int = 16) -> str:
     """
@@ -1160,12 +1195,12 @@ async def upload_mockup_files(db: Session, user_id: UUID, files: List[UploadFile
 
 
 async def upload_mockup_files_to_etsy(
-        db: Session, 
-        user_id: UUID, 
+        db: Session,
+        user_id: UUID,
         product_data: model.UploadToEtsyRequest):
     """
     Upload mockup files, process them, and create Etsy listings.
-    This function replicates the functionality of the original upload_mockup endpoint.
+    This function now uses existing processed images from the database.
     """
     try:
         mockup_with_images = (
@@ -1205,6 +1240,7 @@ async def upload_mockup_files_to_etsy(
             logging.error("upload_mockup_files_to_etsy: No design IDs provided in request")
             raise HTTPException(status_code=400, detail="No design IDs provided")
 
+        # Get the designs from the database - these are already cropped, resized, and processed
         designs = (
             db.query(DesignImages)
             .filter(
@@ -1217,9 +1253,10 @@ async def upload_mockup_files_to_etsy(
 
         shop_name = user.shop_name
 
-        # Duplicate detection is now handled at the design side, so we use all designs
-        logging.info(f"Processing {len(designs)} design(s) - duplicate detection handled at design level")
-        
+        # Since designs are already processed and duplicate detection was handled at upload,
+        # we can proceed directly with mockup generation
+        logging.info(f"Using {len(designs)} pre-processed design(s) for mockup generation")
+
         # Check if we have any designs
         if not designs:
             logging.warning("No designs available for processing")
@@ -1286,51 +1323,95 @@ async def upload_mockup_files_to_etsy(
         tags = template.tags.split(',') if template.tags else []
         
         logging.info(f"DEBUG API: Creating Etsy listings for {len(mockup_data)} designs")
-        for i,(design, mockups) in enumerate(mockup_data.items()):
-            logging.info(f"DEBUG API: Creating listing {i+1}/{len(mockup_data)} for design: {design}")
-            title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
-            listing_response = etsy_api.create_draft_listing(
-                title=' '.join(title + [template.title]) if template.title else ' '.join(title),
-                description=template.description,
-                price=template.price,
-                quantity=template.quantity,
-                tags=tags,
-                materials=materials,
-                is_digital=is_digital,
-                when_made=template.when_made,
-            )
-            listing_id = listing_response["listing_id"]
-            logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
-            
-            # Upload images to the listing
-            for j, mockup_image in enumerate(random.sample(mockups, len(mockups))):
-                logging.info(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
-                etsy_api.upload_listing_image(listing_id, mockup_image)
-            logging.info(f"DEBUG API: Completed listing {i+1}")
+        successful_listings = 0
+        failed_listings = 0
 
-            # Upload digital file(s) if digital template
-            if is_digital:
-                # The digital file path and name are the key (design) in mockup_data.items()
-                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/Digital/{template.name}/", design)
-                digital_file_name = design
-                logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
-                try:
-                    etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
-                    logging.info(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
-                except Exception as e:
-                    logging.error(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
+        for i,(design, mockups) in enumerate(mockup_data.items()):
+            try:
+                logging.info(f"DEBUG API: Creating listing {i+1}/{len(mockup_data)} for design: {design}")
+                title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
+
+                # Attempt to create Etsy listing with retry logic built into EtsyAPI
+                listing_response = etsy_api.create_draft_listing(
+                    title=' '.join(title + [template.title]) if template.title else ' '.join(title),
+                    description=template.description,
+                    price=template.price,
+                    quantity=template.quantity,
+                    tags=tags,
+                    materials=materials,
+                    is_digital=is_digital,
+                    when_made=template.when_made,
+                )
+                listing_id = listing_response["listing_id"]
+                logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
+
+                # Upload images to the listing
+                images_uploaded = 0
+                for j, mockup_image in enumerate(random.sample(mockups, len(mockups))):
+                    try:
+                        logging.info(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
+                        etsy_api.upload_listing_image(listing_id, mockup_image)
+                        images_uploaded += 1
+                    except Exception as e:
+                        logging.error(f"DEBUG API: Failed to upload image {j+1} to listing {listing_id}: {e}")
+                        # Continue with other images even if one fails
+                        continue
+
+                logging.info(f"DEBUG API: Completed listing {i+1} - {images_uploaded}/{len(mockups)} images uploaded")
+
+                # Upload digital file(s) if digital template
+                if is_digital:
+                    # The digital file path and name are the key (design) in mockup_data.items()
+                    digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/Digital/{template.name}/", design)
+                    digital_file_name = design
+                    logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
+                    try:
+                        etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
+                        logging.info(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
+                    except Exception as e:
+                        logging.error(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
+
+                successful_listings += 1
+
+            except Exception as e:
+                failed_listings += 1
+                error_msg = str(e)
+
+                if "server error" in error_msg.lower() or "502" in error_msg:
+                    logging.error(f"DEBUG API: Etsy server error for design {design} (listing {i+1}): {e}")
+                elif "rate limit" in error_msg.lower() or "429" in error_msg:
+                    logging.error(f"DEBUG API: Rate limited for design {design} (listing {i+1}): {e}")
+                else:
+                    logging.error(f"DEBUG API: Failed to create listing for design {design} (listing {i+1}): {e}")
+
+                # Continue with next design instead of failing entire batch
+                continue
+
+        logging.info(f"DEBUG API: Etsy upload summary - {successful_listings} successful, {failed_listings} failed")
 
         setattr(mockup, "starting_name", current_id_number)
         
         db.commit()
         db.refresh(mockup)
 
-        logging.info(f"DEBUG API: Returning success response")
-        return model.UploadToEtsyResponse(
-            success=True,
-            success_code=200,
-            message="Successfully processed mockup files and created Etsy listings.",
-        )
+        logging.info(f"DEBUG API: Returning response - {successful_listings} successful, {failed_listings} failed")
+
+        if successful_listings > 0:
+            message = f"Successfully created {successful_listings} Etsy listing(s)."
+            if failed_listings > 0:
+                message += f" {failed_listings} listing(s) failed due to Etsy API issues."
+
+            return model.UploadToEtsyResponse(
+                success=True,
+                success_code=200,
+                message=message,
+            )
+        else:
+            return model.UploadToEtsyResponse(
+                success=False,
+                success_code=500,
+                message=f"Failed to create any Etsy listings. {failed_listings} listing(s) failed due to Etsy API issues. Please try again later.",
+            )
         
     except Exception as e:
         logging.error(f"DEBUG API: Error in upload-mockup: {str(e)}")

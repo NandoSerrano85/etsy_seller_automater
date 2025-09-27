@@ -363,10 +363,49 @@ class EtsyAPI:
             'Authorization': f'Bearer {self.oauth_token}',
             'Content-Type': 'application/json'
         }
-        response = self.session.post(endpoint, headers=headers, json=payload)
-        if response.status_code != 201:
-            raise Exception(f"Failed to create listing: {response.text}")
-        return response.json()
+        # Add retry logic for temporary server errors
+        import time
+        max_retries = 3
+        retry_delay = 5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                response = self.session.post(endpoint, headers=headers, json=payload)
+
+                # Handle different error types
+                if response.status_code == 201:
+                    return response.json()
+                elif response.status_code in [502, 503, 504]:  # Server errors
+                    if attempt < max_retries - 1:
+                        print(f"Etsy API server error (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        raise Exception(f"Etsy API server error after {max_retries} attempts: {response.text}")
+                elif response.status_code == 429:  # Rate limit
+                    if attempt < max_retries - 1:
+                        retry_after = int(response.headers.get('Retry-After', retry_delay))
+                        print(f"Rate limited, waiting {retry_after} seconds before retry...")
+                        time.sleep(retry_after)
+                        continue
+                    else:
+                        raise Exception(f"Rate limited after {max_retries} attempts: {response.text}")
+                else:
+                    # Other client errors (400, 401, 403, etc.)
+                    raise Exception(f"Failed to create listing (HTTP {response.status_code}): {response.text}")
+
+            except Exception as e:
+                if "server error" in str(e).lower() and attempt < max_retries - 1:
+                    print(f"Connection error (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                else:
+                    raise e
+
+        # This should never be reached, but just in case
+        raise Exception("Failed to create listing after all retry attempts")
 
     def upload_listing_image(self, listing_id: int, image_path: str) -> Dict:
         """

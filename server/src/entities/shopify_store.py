@@ -42,10 +42,10 @@ class ShopifyStore(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships
-    user = relationship('User', back_populates='shopify_stores')
-    connection = relationship('PlatformConnection', back_populates='shopify_stores')
-    products = relationship('ShopifyProduct', back_populates='store')
+    # Relationships - TODO: Fix after implementing proper User relationships
+    # user = relationship('User', back_populates='shopify_stores')
+    # connection = relationship('PlatformConnection', back_populates='shopify_stores')
+    # products = relationship('ShopifyProduct', back_populates='store')
 
     def __repr__(self):
         return f"<ShopifyStore(id={self.id}, shop_name={self.shop_name}, shop_domain={self.shop_domain})>"

@@ -39,9 +39,9 @@ class EtsyStore(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships
-    user = relationship('User', back_populates='etsy_stores')
-    connection = relationship('PlatformConnection', back_populates='etsy_stores')
+    # Relationships - TODO: Fix after implementing proper User relationships
+    # user = relationship('User', back_populates='etsy_stores')
+    # connection = relationship('PlatformConnection', back_populates='etsy_stores')
 
     def __repr__(self):
         return f"<EtsyStore(id={self.id}, shop_name={self.shop_name}, etsy_shop_id={self.etsy_shop_id})>"

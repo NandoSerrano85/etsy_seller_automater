@@ -50,10 +50,10 @@ class PlatformConnection(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relationships
-    user = relationship('User', back_populates='platform_connections')
-    etsy_stores = relationship('EtsyStore', back_populates='connection')
-    shopify_stores = relationship('ShopifyStore', back_populates='connection')
+    # Relationships - TODO: Fix after implementing proper User relationships
+    # user = relationship('User', back_populates='platform_connections')
+    # etsy_stores = relationship('EtsyStore', back_populates='connection')
+    # shopify_stores = relationship('ShopifyStore', back_populates='connection')
 
     def is_token_expired(self) -> bool:
         """Check if the access token is expired"""

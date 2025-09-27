@@ -114,6 +114,24 @@ export const useApi = () => {
       method: 'POST',
       body: formData,
     });
+  const postFormDataWithRetry = async (url, formData, maxRetries = 3) => {
+    let lastError;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await authenticatedApiCall(url, {
+          method: 'POST',
+          body: formData,
+        });
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          console.warn(`Attempt ${attempt} failed, retrying...`, error.message);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    }
+    throw lastError;
+  };
   const put = (url, data) =>
     authenticatedApiCall(url, {
       method: 'PUT',

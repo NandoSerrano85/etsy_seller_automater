@@ -51,4 +51,4 @@ class EtsyProductTemplate(Base):
     canvas_configs = relationship('CanvasConfig', back_populates='product_template')
     size_configs = relationship('SizeConfig', back_populates='product_template')
     design_images = relationship('DesignImages', secondary='design_template_association', back_populates='product_templates')
-    shopify_products = relationship('ShopifyProduct', back_populates='template')
+    # shopify_products = relationship('ShopifyProduct', back_populates='template')  # TODO: Fix after implementing proper relationships
