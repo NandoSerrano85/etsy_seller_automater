@@ -38,7 +38,13 @@ SERVER_CONFIG = {
     'default_debug': False,
 }
 
-config_logging(LogLevels.info)
+# Enable debug logging via environment variable for detailed debugging
+debug_mode = os.getenv('DEBUG_LOGGING', 'false').lower() == 'true'
+if debug_mode:
+    config_logging(LogLevels.debug)
+    print("🔍 Debug logging enabled via DEBUG_LOGGING environment variable")
+else:
+    config_logging(LogLevels.info)
 
 print("🔄 Starting CraftFlow application...")
 print(f"🌍 Environment: {os.getenv('DOCKER_ENV', 'development')}")
