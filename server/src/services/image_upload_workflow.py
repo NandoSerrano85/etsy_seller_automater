@@ -264,6 +264,7 @@ class ImageUploadWorkflow:
         """Load all existing phashes from database for duplicate detection"""
         try:
             self.logger.info("📊 Loading existing phashes from database...")
+            self.logger.debug(f"🔍 DEBUG: Querying database for user_id: {self.user_id}")
 
             # Load all hashes for this user from design_images table (multiple hash types)
             result = self.db_session.execute(text("""
@@ -278,20 +279,29 @@ class ImageUploadWorkflow:
             # Store all hashes - these will be used for enhanced duplicate detection
             self._existing_phashes = set()
             hash_records = result.fetchall()
+            self.logger.debug(f"🔍 DEBUG: Found {len(hash_records)} database records for user {self.user_id}")
 
-            for row in hash_records:
+            for i, row in enumerate(hash_records):
                 phash, ahash, dhash, whash = row
+                self.logger.debug(f"🔍 DEBUG: Record {i+1}: phash={phash[:12] if phash else None}..., ahash={ahash[:12] if ahash else None}..., dhash={dhash[:12] if dhash else None}..., whash={whash[:12] if whash else None}...")
+
                 if phash:
                     self._existing_phashes.add(phash)
+                    self.logger.debug(f"🔍 DEBUG: Added phash: {phash[:12]}...")
                 # Also include other hash types for comprehensive checking
                 if ahash:
                     self._existing_phashes.add(ahash)
+                    self.logger.debug(f"🔍 DEBUG: Added ahash: {ahash[:12]}...")
                 if dhash:
                     self._existing_phashes.add(dhash)
+                    self.logger.debug(f"🔍 DEBUG: Added dhash: {dhash[:12]}...")
                 if whash:
                     self._existing_phashes.add(whash)
+                    self.logger.debug(f"🔍 DEBUG: Added whash: {whash[:12]}...")
 
             self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing hashes from {len(hash_records)} database records (multiple hash types)")
+            self.logger.debug(f"🔍 DEBUG: First 5 existing hashes: {list(list(self._existing_phashes)[:5])}")
+            self.logger.debug(f"🔍 DEBUG: Existing hash set size: {len(self._existing_phashes)}")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to load existing phashes: {e}")
@@ -431,9 +441,13 @@ class ImageUploadWorkflow:
                     if processed_image.phash and not processed_image.error:
                         # Use enhanced multi-hash duplicate detection
                         self.logger.info(f"   🔍 Checking duplicates for {processed_image.final_filename}, phash: {processed_image.phash[:12]}...")
+                        self.logger.debug(f"🔍 DEBUG: Full hashes for {processed_image.final_filename}: phash={processed_image.phash}, ahash={processed_image.ahash}, dhash={processed_image.dhash}, whash={processed_image.whash}")
+                        self.logger.debug(f"🔍 DEBUG: Local phashes set size: {len(local_phashes)}, existing phashes set size: {len(self._existing_phashes) if self._existing_phashes else 0}")
 
                         # Check for local duplicates within this batch using multiple hashes
+                        self.logger.debug(f"🔍 DEBUG: Checking local duplicates for {processed_image.final_filename} against {len(local_phashes)} local hashes")
                         is_local_duplicate = self._is_enhanced_duplicate_in_set(processed_image, local_phashes)
+                        self.logger.debug(f"🔍 DEBUG: Local duplicate check result: {is_local_duplicate}")
                         if is_local_duplicate:
                             processed_image.is_duplicate_local = True
                             skipped_local += 1
@@ -450,8 +464,11 @@ class ImageUploadWorkflow:
                             self.logger.debug(f"   ✅ Not a local duplicate: {processed_image.final_filename}")
 
                             # Check for database duplicates using multiple hashes
+                            self.logger.debug(f"🔍 DEBUG: Checking database duplicates for {processed_image.final_filename} against existing hashes")
                             with self._existing_phashes_lock:
-                                if self._is_enhanced_duplicate_in_existing(processed_image):
+                                is_db_duplicate = self._is_enhanced_duplicate_in_existing(processed_image)
+                                self.logger.debug(f"🔍 DEBUG: Database duplicate check result: {is_db_duplicate}")
+                                if is_db_duplicate:
                                     processed_image.is_duplicate_db = True
                                     skipped_db += 1
                                     self.logger.info(f"   🔄 DATABASE DUPLICATE FOUND: {processed_image.final_filename} matches existing in DB")
@@ -477,7 +494,9 @@ class ImageUploadWorkflow:
             duplicate_images = []
             error_images = []
 
+            self.logger.debug(f"🔍 DEBUG: Processing {len(processed_images)} processed images for batch {batch_id}")
             for img in processed_images:
+                self.logger.debug(f"🔍 DEBUG: Image {img.final_filename}: error={img.error}, local_dup={img.is_duplicate_local}, db_dup={img.is_duplicate_db}")
                 if img.error:
                     error_images.append(img)
                     self.logger.info(f"   ❌ ERROR: {img.final_filename} - {img.error}")
@@ -492,6 +511,9 @@ class ImageUploadWorkflow:
                     self.logger.info(f"   ✅ UNIQUE: {img.final_filename}")
 
             self.logger.info(f"📦 Batch {batch_id} SUMMARY: {len(unique_images)} unique, {len(duplicate_images)} duplicates, {len(error_images)} errors")
+            self.logger.debug(f"🔍 DEBUG: About to process only unique images: {[img.final_filename for img in unique_images]}")
+            self.logger.debug(f"🔍 DEBUG: Skipping duplicate images: {[img.final_filename for img in duplicate_images]}")
+            self.logger.debug(f"🔍 DEBUG: Skipping error images: {[img.final_filename for img in error_images]}")
 
             # Duplicate detection is now properly tuned with Hamming threshold of 2
             # No secondary validation needed
@@ -521,7 +543,7 @@ class ImageUploadWorkflow:
 
         processing_time = time.time() - start_time
 
-        return BatchResult(
+        result = BatchResult(
             batch_id=batch_id,
             processed=processed,
             skipped_local_duplicates=skipped_local,
@@ -533,6 +555,9 @@ class ImageUploadWorkflow:
             mockups_created=mockups_created,
             error_details=error_details
         )
+
+        self.logger.debug(f"🔍 DEBUG: Batch {batch_id} FINAL RESULT: processed={processed}, local_dups={skipped_local}, db_dups={skipped_db}, errors={errors}, nas_uploads={nas_uploads}, db_updates={db_updates}")
+        return result
 
     def _process_single_image(self, image: UploadedImage, design_data=None, file_index: int = 0) -> ProcessedImage:
         """
@@ -600,12 +625,14 @@ class ImageUploadWorkflow:
             resized_content = buffer.getvalue()
 
             # Generate multiple hashes for enhanced duplicate detection
+            self.logger.debug(f"🔍 DEBUG: Generating hashes for {image.original_filename}")
             hashes = {
                 'phash': str(imagehash.phash(pil_image, hash_size=self.phash_size)),
                 'ahash': str(imagehash.average_hash(pil_image, hash_size=self.phash_size)),
                 'dhash': str(imagehash.dhash(pil_image, hash_size=self.phash_size)),
                 'whash': str(imagehash.whash(pil_image, hash_size=self.phash_size))
             }
+            self.logger.debug(f"🔍 DEBUG: Generated hashes for {image.original_filename}: phash={hashes['phash']}, ahash={hashes['ahash']}, dhash={hashes['dhash']}, whash={hashes['whash']}")
 
             # Store all hashes for enhanced duplicate detection
             processed.phash = hashes['phash']
@@ -722,6 +749,7 @@ class ImageUploadWorkflow:
     def _is_duplicate_in_set(self, phash: str, phash_set: Set[str], hamming_threshold: int = 2) -> bool:
         """Check if phash is duplicate within a set using Hamming distance"""
         if not phash:
+            self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_set: Empty phash")
             return False
 
         try:
@@ -729,6 +757,7 @@ class ImageUploadWorkflow:
             phash_int = int(phash, 16)
             closest_distance = float('inf')
             closest_hash = None
+            self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_set: Checking phash {phash[:12]}... against {len(phash_set)} hashes")
 
             for existing_phash in phash_set:
                 if existing_phash:
@@ -741,28 +770,33 @@ class ImageUploadWorkflow:
                         closest_hash = existing_phash
 
                     if hamming_distance <= hamming_threshold:
-                        self.logger.debug(f"   🔍 Local duplicate found: Hamming distance {hamming_distance} (≤ {hamming_threshold})")
+                        self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_set: MATCH FOUND! {phash[:12]}... vs {existing_phash[:12]}... = Hamming distance {hamming_distance} (≤ {hamming_threshold})")
                         return True
 
             # Log the closest match even if not a duplicate
             if closest_hash:
-                self.logger.debug(f"   🔍 Closest local match: Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+                self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_set: Closest match: {phash[:12]}... vs {closest_hash[:12]}... = Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+            else:
+                self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_set: No valid hashes to compare against")
 
             return False
 
         except (ValueError, TypeError) as e:
-            self.logger.debug(f"Error comparing phashes: {e}")
+            self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_set: Error comparing phashes: {e}")
             return False
 
     def _is_duplicate_in_existing(self, phash: str, hamming_threshold: int = 2) -> bool:
         """Check if phash is duplicate within existing database hashes"""
         if not phash or not self._existing_phashes:
+            self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_existing: Missing phash ({phash is not None}) or existing_phashes ({self._existing_phashes is not None})")
             return False
 
         try:
             # Convert phash to integer for comparison
             phash_int = int(phash, 16)
             closest_distance = float('inf')
+            closest_hash = None
+            self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_existing: Checking phash {phash[:12]}... against {len(self._existing_phashes)} existing hashes")
 
             for existing_hash in self._existing_phashes:
                 # Handle combined hashes from database
@@ -774,46 +808,70 @@ class ImageUploadWorkflow:
 
                     if hamming_distance < closest_distance:
                         closest_distance = hamming_distance
+                        closest_hash = existing_phash
 
                     if hamming_distance <= hamming_threshold:
-                        self.logger.debug(f"   🔍 DB duplicate found: Hamming distance {hamming_distance} (≤ {hamming_threshold})")
+                        self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_existing: MATCH FOUND! {phash[:12]}... vs {existing_phash[:12]}... = Hamming distance {hamming_distance} (≤ {hamming_threshold})")
                         return True
 
             # Log the closest match even if not a duplicate
-            self.logger.debug(f"   🔍 Closest DB match: Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+            if closest_hash:
+                self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_existing: Closest match: {phash[:12]}... vs {closest_hash[:12]}... = Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+            else:
+                self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_existing: No valid existing hashes to compare")
             return False
 
         except (ValueError, TypeError) as e:
-            self.logger.debug(f"Error comparing with existing phashes: {e}")
+            self.logger.debug(f"🔍 DEBUG: _is_duplicate_in_existing: Error comparing with existing phashes: {e}")
             return False
 
     def _is_enhanced_duplicate_in_set(self, processed_image: ProcessedImage, hash_set: Set[str], threshold: int = 5, min_matches: int = 2) -> bool:
         """Check if processed image is duplicate using multiple hash algorithms"""
         if not processed_image.phash:
+            self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: No phash for {processed_image.final_filename}")
             return False
 
         matches = 0
         image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+        self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: Checking {len(image_hashes)} hashes against {len(hash_set)} in set for {processed_image.final_filename}")
 
-        for image_hash in image_hashes:
-            if image_hash and self._is_duplicate_in_set(image_hash, hash_set, threshold):
-                matches += 1
+        for i, image_hash in enumerate(image_hashes):
+            hash_names = ['phash', 'ahash', 'dhash', 'whash']
+            if image_hash:
+                is_match = self._is_duplicate_in_set(image_hash, hash_set, threshold)
+                self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: {hash_names[i]} {image_hash[:12]}... match: {is_match}")
+                if is_match:
+                    matches += 1
+            else:
+                self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: {hash_names[i]} is None")
 
-        return matches >= min_matches
+        result = matches >= min_matches
+        self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: Total matches: {matches}/{len(image_hashes)}, min_matches: {min_matches}, result: {result}")
+        return result
 
     def _is_enhanced_duplicate_in_existing(self, processed_image: ProcessedImage, threshold: int = 5, min_matches: int = 2) -> bool:
         """Check if processed image is duplicate in existing database using multiple hash algorithms"""
         if not processed_image.phash or not self._existing_phashes:
+            self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Missing phash ({processed_image.phash is not None}) or existing_phashes ({self._existing_phashes is not None}) for {processed_image.final_filename}")
             return False
 
         matches = 0
         image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+        self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Checking {len(image_hashes)} hashes against {len(self._existing_phashes)} existing hashes for {processed_image.final_filename}")
 
-        for image_hash in image_hashes:
-            if image_hash and self._is_duplicate_in_existing(image_hash, threshold):
-                matches += 1
+        for i, image_hash in enumerate(image_hashes):
+            hash_names = ['phash', 'ahash', 'dhash', 'whash']
+            if image_hash:
+                is_match = self._is_duplicate_in_existing(image_hash, threshold)
+                self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: {hash_names[i]} {image_hash[:12]}... match: {is_match}")
+                if is_match:
+                    matches += 1
+            else:
+                self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: {hash_names[i]} is None")
 
-        return matches >= min_matches
+        result = matches >= min_matches
+        self.logger.debug(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Total matches: {matches}/{len(image_hashes)}, min_matches: {min_matches}, result: {result}")
+        return result
 
 
     def _upload_batch_to_nas(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
