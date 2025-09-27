@@ -26,6 +26,7 @@ import uuid
 import logging
 import threading
 import tempfile
+import cv2
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,7 @@ from dataclasses import dataclass, field
 
 try:
     import imagehash
+    import numpy as np
     from PIL import Image
     from sqlalchemy import text
     from sqlalchemy.orm import Session
@@ -50,6 +52,8 @@ except ImportError as e:
         class Image:
             pass
 
+    import numpy as np
+
 # Import existing services
 current_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.dirname(current_dir)
@@ -57,14 +61,17 @@ sys.path.insert(0, server_dir)
 
 try:
     from utils.nas_storage import nas_storage
-    from utils.resizing import get_resizing_configs_from_db
+    from utils.resizing import get_resizing_configs_from_db, resize_image_by_inches
     from database.core import get_db
     NAS_AVAILABLE = True
+    RESIZING_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"NAS storage not available: {e}")
     nas_storage = None
     get_resizing_configs_from_db = None
+    resize_image_by_inches = None
     NAS_AVAILABLE = False
+    RESIZING_AVAILABLE = False
 
 try:
     from routes.mockups import service as mockup_service
@@ -93,6 +100,9 @@ class ProcessedImage:
     resized_content: Optional[bytes] = None
     resized_size: Optional[int] = None
     phash: Optional[str] = None
+    ahash: Optional[str] = None
+    dhash: Optional[str] = None
+    whash: Optional[str] = None
     final_filename: Optional[str] = None
     canvas_config: Optional[Dict[str, Any]] = None
     processing_time: float = 0.0
@@ -255,9 +265,9 @@ class ImageUploadWorkflow:
         try:
             self.logger.info("📊 Loading existing phashes from database...")
 
-            # Load all phashes for this user from design_images table
+            # Load all hashes for this user from design_images table (multiple hash types)
             result = self.db_session.execute(text("""
-                SELECT DISTINCT phash
+                SELECT DISTINCT phash, ahash, dhash, whash
                 FROM design_images
                 WHERE user_id = :user_id
                 AND phash IS NOT NULL
@@ -265,21 +275,23 @@ class ImageUploadWorkflow:
                 AND is_active = true
             """), {"user_id": self.user_id})
 
-            # Store all phashes - these will be used for duplicate detection
-            raw_phashes = {row[0] for row in result.fetchall() if row[0]}
-
-            # Process phashes to handle both single and combined formats
+            # Store all hashes - these will be used for enhanced duplicate detection
             self._existing_phashes = set()
-            for phash in raw_phashes:
-                if '|' in phash:
-                    # Split combined phash and add primary hash
-                    primary_phash = phash.split('|')[0]
-                    self._existing_phashes.add(primary_phash)
-                else:
-                    # Add single phash as-is
-                    self._existing_phashes.add(phash)
+            hash_records = result.fetchall()
 
-            self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing phashes from {len(raw_phashes)} database records")
+            for row in hash_records:
+                phash, ahash, dhash, whash = row
+                if phash:
+                    self._existing_phashes.add(phash)
+                # Also include other hash types for comprehensive checking
+                if ahash:
+                    self._existing_phashes.add(ahash)
+                if dhash:
+                    self._existing_phashes.add(dhash)
+                if whash:
+                    self._existing_phashes.add(whash)
+
+            self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing hashes from {len(hash_records)} database records (multiple hash types)")
 
         except Exception as e:
             self.logger.error(f"❌ Failed to load existing phashes: {e}")
@@ -417,22 +429,29 @@ class ImageUploadWorkflow:
 
                     # Only check for duplicates if processing was successful
                     if processed_image.phash and not processed_image.error:
-                        # Extract primary phash for comparison
-                        primary_phash = self._extract_primary_phash(processed_image.phash)
-                        self.logger.info(f"   🔍 Checking duplicates for {processed_image.final_filename}, phash: {primary_phash[:12]}...")
+                        # Use enhanced multi-hash duplicate detection
+                        self.logger.info(f"   🔍 Checking duplicates for {processed_image.final_filename}, phash: {processed_image.phash[:12]}...")
 
-                        # Check for local duplicates within this batch
-                        if self._is_duplicate_in_set(primary_phash, local_phashes):
+                        # Check for local duplicates within this batch using multiple hashes
+                        is_local_duplicate = self._is_enhanced_duplicate_in_set(processed_image, local_phashes)
+                        if is_local_duplicate:
                             processed_image.is_duplicate_local = True
                             skipped_local += 1
                             self.logger.info(f"   🔄 LOCAL DUPLICATE FOUND: {processed_image.final_filename} matches existing in batch")
                         else:
-                            local_phashes.add(primary_phash)
+                            # Add all hashes to local set
+                            local_phashes.add(processed_image.phash)
+                            if processed_image.ahash:
+                                local_phashes.add(processed_image.ahash)
+                            if processed_image.dhash:
+                                local_phashes.add(processed_image.dhash)
+                            if processed_image.whash:
+                                local_phashes.add(processed_image.whash)
                             self.logger.debug(f"   ✅ Not a local duplicate: {processed_image.final_filename}")
 
-                            # Check for database duplicates
+                            # Check for database duplicates using multiple hashes
                             with self._existing_phashes_lock:
-                                if self._is_duplicate_in_existing(primary_phash):
+                                if self._is_enhanced_duplicate_in_existing(processed_image):
                                     processed_image.is_duplicate_db = True
                                     skipped_db += 1
                                     self.logger.info(f"   🔄 DATABASE DUPLICATE FOUND: {processed_image.final_filename} matches existing in DB")
@@ -535,72 +554,64 @@ class ImageUploadWorkflow:
                 raise ValueError("Empty image content")
 
             # Load and validate image
-            pil_image = Image.open(BytesIO(image.content))
+            nparr = np.frombuffer(image.content, np.uint8)
+            raw_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 
-            # Validate image properties
-            if pil_image.size[0] < 10 or pil_image.size[1] < 10:
-                raise ValueError(f"Image too small: {pil_image.size}")
+            if raw_image is None:
+                raise ValueError("Could not decode image from content")
 
-            if pil_image.size[0] > 10000 or pil_image.size[1] > 10000:
-                raise ValueError(f"Image too large: {pil_image.size}")
+            # Step 1: Crop transparent areas
+            from server.src.utils.cropping import crop_transparent
+            cropped_image = crop_transparent(image=raw_image)
 
-            # Get resizing configuration (use existing utils if available)
-            try:
-                if hasattr(self, 'db_session') and image.template_id and get_resizing_configs_from_db:
-                    # Use existing resizing configuration system
-                    canvas_config, _ = get_resizing_configs_from_db(
-                        self.db_session,
-                        canvas_id=getattr(design_data, 'canvas_config_id', None) if design_data else None,
-                        product_template_id=image.template_id
-                    )
-                else:
-                    canvas_config = self._get_canvas_config(image.template_id)
-            except:
-                # Fallback to default config
-                canvas_config = self._get_canvas_config(image.template_id)
-            processed.canvas_config = canvas_config
+            if cropped_image is None:
+                # If cropping fails, use original image
+                cropped_image = raw_image
+                self.logger.warning(f"Failed to crop transparent areas for {image.original_filename}, using original image")
 
-            # Resize image with enhanced processing
-            resized_image = self._resize_and_optimize_image(pil_image, canvas_config)
-
-            # Convert to bytes with optimized settings
-            buffer = BytesIO()
-
-            # Save as PNG for lossless quality, JPEG for smaller size
-            if canvas_config.get('format', 'png').lower() == 'jpeg':
-                if resized_image.mode in ('RGBA', 'LA'):
-                    # Convert transparent images to white background for JPEG
-                    background = Image.new('RGB', resized_image.size, (255, 255, 255))
-                    if resized_image.mode == 'RGBA':
-                        background.paste(resized_image, mask=resized_image.split()[-1])
-                    else:
-                        background.paste(resized_image)
-                    resized_image = background
-
-                resized_image.save(
-                    buffer,
-                    format='JPEG',
-                    quality=self.jpeg_quality,
-                    optimize=True,
-                    progressive=True
+            # Step 2: Resize the cropped image
+            if RESIZING_AVAILABLE and resize_image_by_inches:
+                resized_image = resize_image_by_inches(
+                    image=cropped_image,
+                    image_type="UVDTF 16oz",  # Default type, should be determined from template
+                    db=self.db_session,
+                    canvas_id=getattr(design_data, 'canvas_config_id', None),
+                    product_template_id=image.template_id,
+                    target_dpi=400
                 )
-                file_ext = 'jpg'
             else:
-                resized_image.save(
-                    buffer,
-                    format='PNG',
-                    optimize=True,
-                    compress_level=6
-                )
-                file_ext = 'png'
+                # Fallback: use the cropped image without further resizing
+                resized_image = cropped_image
 
+            # Convert to PIL Image for hash calculation
+            if len(resized_image.shape) == 3 and resized_image.shape[2] == 4:
+                # BGRA to RGBA
+                pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGRA2RGBA))
+            elif len(resized_image.shape) == 3 and resized_image.shape[2] == 3:
+                # BGR to RGB
+                pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB))
+            else:
+                # Grayscale
+                pil_image = Image.fromarray(resized_image)
+
+            # Convert processed image to bytes for storage
+            buffer = BytesIO()
+            pil_image.save(buffer, format='PNG', optimize=True, compress_level=6)
             resized_content = buffer.getvalue()
 
-            # Generate phash for duplicate detection (limited to 64 chars for DB)
-            phash = str(imagehash.phash(resized_image, hash_size=self.phash_size))
+            # Generate multiple hashes for enhanced duplicate detection
+            hashes = {
+                'phash': str(imagehash.phash(pil_image, hash_size=self.phash_size)),
+                'ahash': str(imagehash.average_hash(pil_image, hash_size=self.phash_size)),
+                'dhash': str(imagehash.dhash(pil_image, hash_size=self.phash_size)),
+                'whash': str(imagehash.whash(pil_image, hash_size=self.phash_size))
+            }
 
-            # Store only phash to fit database column constraint (64 chars max)
-            processed.phash = phash
+            # Store all hashes for enhanced duplicate detection
+            processed.phash = hashes['phash']
+            processed.ahash = hashes['ahash']
+            processed.dhash = hashes['dhash']
+            processed.whash = hashes['whash']
 
             # Generate filename using template name and file index
             final_filename = self._generate_filename(image.original_filename, image.template_id, file_index)
@@ -611,7 +622,7 @@ class ImageUploadWorkflow:
             processed.final_filename = final_filename
             processed.processing_time = time.time() - start_time
 
-            self.logger.debug(f"Processed {image.original_filename}: {pil_image.size} → {resized_image.size}, phash: {phash[:12]}...")
+            self.logger.debug(f"Processed {image.original_filename}: {raw_image.shape} → {resized_image.shape}, phash: {processed.phash[:12]}...")
 
             return processed
 
@@ -776,6 +787,34 @@ class ImageUploadWorkflow:
             self.logger.debug(f"Error comparing with existing phashes: {e}")
             return False
 
+    def _is_enhanced_duplicate_in_set(self, processed_image: ProcessedImage, hash_set: Set[str], threshold: int = 5, min_matches: int = 2) -> bool:
+        """Check if processed image is duplicate using multiple hash algorithms"""
+        if not processed_image.phash:
+            return False
+
+        matches = 0
+        image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+
+        for image_hash in image_hashes:
+            if image_hash and self._is_duplicate_in_set(image_hash, hash_set, threshold):
+                matches += 1
+
+        return matches >= min_matches
+
+    def _is_enhanced_duplicate_in_existing(self, processed_image: ProcessedImage, threshold: int = 5, min_matches: int = 2) -> bool:
+        """Check if processed image is duplicate in existing database using multiple hash algorithms"""
+        if not processed_image.phash or not self._existing_phashes:
+            return False
+
+        matches = 0
+        image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+
+        for image_hash in image_hashes:
+            if image_hash and self._is_duplicate_in_existing(image_hash, threshold):
+                matches += 1
+
+        return matches >= min_matches
+
 
     def _upload_batch_to_nas(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
         """
@@ -891,8 +930,8 @@ class ImageUploadWorkflow:
 
                         self.db_session.execute(text("""
                             INSERT INTO design_images
-                            (id, user_id, org_id, filename, file_path, phash, is_active, is_digital, created_at, updated_at)
-                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :is_digital, :created_at, :updated_at)
+                            (id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at)
+                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at)
                         """), {
                             "id": design_id,
                             "user_id": self.user_id,
@@ -900,6 +939,9 @@ class ImageUploadWorkflow:
                             "filename": image.final_filename,
                             "file_path": file_path,
                             "phash": image.phash,
+                            "ahash": image.ahash,
+                            "dhash": image.dhash,
+                            "whash": image.whash,
                             "is_active": True,
                             "is_digital": False,
                             "created_at": now,
@@ -908,14 +950,17 @@ class ImageUploadWorkflow:
                     else:
                         self.db_session.execute(text("""
                             INSERT INTO design_images
-                            (id, user_id, filename, file_path, phash, is_active, is_digital, created_at, updated_at)
-                            VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :is_digital, :created_at, :updated_at)
+                            (id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at)
+                            VALUES (:id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at)
                         """), {
                             "id": design_id,
                             "user_id": self.user_id,
                             "filename": image.final_filename,
                             "file_path": file_path,
                             "phash": image.phash,
+                            "ahash": image.ahash,
+                            "dhash": image.dhash,
+                            "whash": image.whash,
                             "is_active": True,
                             "is_digital": False,
                             "created_at": now,
