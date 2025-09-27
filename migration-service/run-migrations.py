@@ -106,7 +106,8 @@ def discover_migrations():
 
         # Design-related migrations
         "add_phash_to_designs",           # Adds phash column to designs
-        "update_phash_hash_size",         # Updates phash column size
+        "add_additional_hash_columns",    # Adds ahash, dhash, whash columns
+        "update_phash_hash_size",         # Updates phash column size and generates all hashes
         "run_canvas_size_migration",      # Canvas size updates
         "migration_add_printers_and_canvas_updates", # Printer and canvas updates
     ]
