@@ -417,9 +417,11 @@ const MockupCreator = () => {
         // Get all masks for this image
         const maskKeys = Object.keys(imageMasks);
         if (maskKeys.length > 0) {
-          // Prepare all masks for this image
+          // Prepare all masks for this image with individual properties
           const allMasksForImage = [];
           const allPointsForImage = [];
+          const allIsCroppedForImage = [];
+          const allAlignmentsForImage = [];
 
           maskKeys.forEach(maskIndex => {
             const maskData = imageMasks[maskIndex];
@@ -428,10 +430,12 @@ const MockupCreator = () => {
               const convertedPoints = maskData.points.map(point => [point.x, point.y]);
               allMasksForImage.push(convertedPoints);
               allPointsForImage.push(convertedPoints);
+              allIsCroppedForImage.push(maskData.isCropped || false);
+              allAlignmentsForImage.push(maskData.alignment || 'center');
             }
           });
 
-          // Use the first mask's properties for the entire image (or you might want to handle this differently)
+          // Use the first mask's properties for backward compatibility
           const firstMask = imageMasks[Object.keys(imageMasks)[0]];
 
           console.log('Sending mask data for image', imageIndex, 'with image ID', uploadedImage.id, ':', {
@@ -439,15 +443,19 @@ const MockupCreator = () => {
             points: allPointsForImage,
             is_cropped: firstMask?.isCropped || false,
             alignment: firstMask?.alignment || 'center',
+            is_cropped_list: allIsCroppedForImage,
+            alignment_list: allAlignmentsForImage,
           });
 
-          // Create mask data using the actual image ID
+          // Create mask data using the actual image ID with individual mask properties
           await api.post(`/mockups/images/${uploadedImage.id}/mask-data`, {
             mockup_image_id: uploadedImage.id,
             masks: allMasksForImage,
             points: allPointsForImage,
-            is_cropped: firstMask?.isCropped || false,
-            alignment: firstMask?.alignment || 'center',
+            is_cropped: firstMask?.isCropped || false, // Keep for backward compatibility
+            alignment: firstMask?.alignment || 'center', // Keep for backward compatibility
+            is_cropped_list: allIsCroppedForImage, // Individual mask properties
+            alignment_list: allAlignmentsForImage, // Individual mask properties
           });
         } else {
           console.warn(`No mask data found for image index ${imageIndex}`);

@@ -9,8 +9,11 @@ from uuid import UUID
 class MockupMaskDataBase(BaseModel):
     masks: List[List[List[float]]]  # List of masks, each mask is a list of [x, y] points
     points: List[List[List[float]]]  # List of points, each is a list of [x, y] points
-    is_cropped: bool = False
-    alignment: str
+    is_cropped: bool = False  # Deprecated: Use is_cropped_list for individual mask properties
+    alignment: str  # Deprecated: Use alignment_list for individual mask properties
+    # New fields for individual mask properties
+    is_cropped_list: Optional[List[bool]] = None  # Per-mask cropping settings
+    alignment_list: Optional[List[str]] = None  # Per-mask alignment settings
 
 class MockupMaskDataCreate(MockupMaskDataBase):
     mockup_image_id: UUID
@@ -18,14 +21,20 @@ class MockupMaskDataCreate(MockupMaskDataBase):
 class MockupMaskDataUpdate(BaseModel):
     masks: Optional[List[List[List[float]]]] = None
     points: Optional[List[List[List[float]]]] = None
-    is_cropped: Optional[bool] = None
-    alignment: Optional[str] = None
+    is_cropped: Optional[bool] = None  # Deprecated: Use is_cropped_list for individual mask properties
+    alignment: Optional[str] = None  # Deprecated: Use alignment_list for individual mask properties
+    # New fields for individual mask properties
+    is_cropped_list: Optional[List[bool]] = None  # Per-mask cropping settings
+    alignment_list: Optional[List[str]] = None  # Per-mask alignment settings
 
 class MockupMaskDataResponse(MockupMaskDataBase):
     id: UUID
     mockup_image_id: UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
+    # Include the new individual mask properties
+    is_cropped_list: Optional[List[bool]] = None
+    alignment_list: Optional[List[str]] = None
     model_config = ConfigDict(from_attributes=True)
 
 # --- MockupImage Models ---

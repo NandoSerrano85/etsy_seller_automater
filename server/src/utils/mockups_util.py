@@ -581,17 +581,60 @@ def create_mockup_images(
         
         # Generate mockup filename and path
         mockup_filename = f"UV {cup_wrap_id_number} Cup_Wrap{cup_wrap_id_number}{color}.jpg"
-        generated_mockup_path = f'{root_path}Mockups/Cup Wraps/{mockup_filename}'
-        
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(generated_mockup_path), exist_ok=True)
-        
-        # Save the mockup image
-        cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-        
+
+        # Extract shop name from root_path for NAS structure
+        shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+        shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+
+        # Use NAS structure: /share/Graphics/<shop_name>/Mockups/<template_name>/
+        nas_mockup_path = f"/share/Graphics/{shop_name}/Mockups/{template_name}/{mockup_filename}"
+
+        # Check if running in production (Railway/Docker)
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production:
+            # Use NAS storage service for production
+            try:
+                logger = logging.getLogger(__name__)
+                from server.src.utils.nas_storage import nas_storage
+
+                # Convert OpenCV image to bytes for upload
+                success, buffer = cv2.imencode('.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                if not success:
+                    raise ValueError(f"Failed to encode mockup image: {mockup_filename}")
+
+                image_bytes = buffer.tobytes()
+
+                # Upload to NAS using the correct path structure
+                nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
+                success = nas_storage.upload_file(shop_name, nas_relative_path, image_bytes)
+
+                if success:
+                    logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
+                else:
+                    logger.error(f"❌ Failed to save mockup to NAS: {nas_mockup_path}")
+                    raise ValueError(f"Failed to upload mockup to NAS: {mockup_filename}")
+
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ Error saving mockup to NAS {nas_mockup_path}: {e}")
+                raise
+        else:
+            # Local development - save to local filesystem
+            local_mockup_path = f'{root_path}Mockups/Cup Wraps/{mockup_filename}'
+
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(local_mockup_path), exist_ok=True)
+
+            # Save the mockup image locally
+            cv2.imwrite(local_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+            logger = logging.getLogger(__name__)
+            logger.info(f"📁 Mockup saved locally: {local_mockup_path}")
+
         generated_mockups.append({
             'filename': mockup_filename,
-            'file_path': generated_mockup_path,
+            'file_path': nas_mockup_path,  # Always return NAS path for consistency
             'watermark_path': watermark_path,
             'image_type': template_name,
             'color': color
@@ -682,12 +725,25 @@ def create_mockups_for_etsy(
                     else:
                         points = mask.points
 
+                    # Use individual mask properties if available, otherwise fall back to single values
+                    is_cropped_list = mask.is_cropped_list if hasattr(mask, 'is_cropped_list') and mask.is_cropped_list else None
+                    alignment_list = mask.alignment_list if hasattr(mask, 'alignment_list') and mask.alignment_list else None
+
                     # Add each mask with its properties
-                    for m, p in zip(masks, points):
+                    for idx, (m, p) in enumerate(zip(masks, points)):
                         current_masks.append(m)
                         current_points.append(p)
-                        current_is_cropped.append(mask.is_cropped)
-                        current_alignments.append(mask.alignment)
+
+                        # Use individual properties if available, otherwise use the single value
+                        if is_cropped_list and idx < len(is_cropped_list):
+                            current_is_cropped.append(is_cropped_list[idx])
+                        else:
+                            current_is_cropped.append(mask.is_cropped)
+
+                        if alignment_list and idx < len(alignment_list):
+                            current_alignments.append(alignment_list[idx])
+                        else:
+                            current_alignments.append(mask.alignment)
             else:
                 # Fallback to empty defaults if no mask data
                 current_masks = []
@@ -696,10 +752,11 @@ def create_mockups_for_etsy(
                 current_alignments = ['center']
 
             # Create mockup with all masks
-            logging.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
-            logging.info(f"Using {len(current_masks)} masks with properties:")
+            logger = logging.getLogger(__name__)
+            logger.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
+            logger.info(f"Using {len(current_masks)} masks with properties:")
             for idx, (is_crop, align) in enumerate(zip(current_is_cropped, current_alignments)):
-                logging.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
+                logger.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
 
             assembled_mockup = mockup_processor.create_mockup(
                 current_masks,
@@ -733,15 +790,58 @@ def create_mockups_for_etsy(
             
             # Generate mockup filename and path
             mockup_filename = f"{prefix} {current_id_number} {postfix}.jpg"
-            generated_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
-            
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(generated_mockup_path), exist_ok=True)
-            
-            generated_mockup_path_list.append(generated_mockup_path)
 
-            # Save the mockup image
-            cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+            # Extract shop name from root_path for NAS structure
+            # root_path format: /share/Graphics/<shop_name>/ or LOCAL_ROOT_PATH/<shop_name>/
+            shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+            shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+
+            # Use NAS structure: /share/Graphics/<shop_name>/Mockups/<template_name>/
+            nas_mockup_path = f"/share/Graphics/{shop_name}/Mockups/{template_name}/{mockup_filename}"
+            generated_mockup_path_list.append(nas_mockup_path)
+
+            # Check if running in production (Railway/Docker)
+            is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+            if is_production:
+                # Use NAS storage service for production
+                try:
+                    logger = logging.getLogger(__name__)
+                    from server.src.utils.nas_storage import nas_storage
+
+                    # Convert OpenCV image to bytes for upload
+                    success, buffer = cv2.imencode('.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                    if not success:
+                        raise ValueError(f"Failed to encode mockup image: {mockup_filename}")
+
+                    image_bytes = buffer.tobytes()
+
+                    # Upload to NAS using the correct path structure
+                    nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
+                    success = nas_storage.upload_file(shop_name, nas_relative_path, image_bytes)
+
+                    if success:
+                        logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
+                    else:
+                        logger.error(f"❌ Failed to save mockup to NAS: {nas_mockup_path}")
+                        raise ValueError(f"Failed to upload mockup to NAS: {mockup_filename}")
+
+                except Exception as e:
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"❌ Error saving mockup to NAS {nas_mockup_path}: {e}")
+                    raise
+            else:
+                # Local development - save to local filesystem
+                local_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
+
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(local_mockup_path), exist_ok=True)
+
+                # Save the mockup image locally
+                cv2.imwrite(local_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+                logger = logging.getLogger(__name__)
+                logger.info(f"📁 Mockup saved locally: {local_mockup_path}")
         mockup_return[filename] = generated_mockup_path_list
 
     return current_id_number, mockup_return, design_image_path_list

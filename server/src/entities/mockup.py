@@ -17,8 +17,11 @@ class MockupMaskData(Base):
     mockup_image_id = Column(UUID(as_uuid=True), ForeignKey('mockup_images.id'), nullable=False)
     masks = Column(JSON, nullable=False)  # Store masks as JSON array
     points = Column(JSON, nullable=False)  # Store points as JSON array
-    is_cropped = Column(Boolean, default=False)
-    alignment = Column(String, nullable=False)
+    is_cropped = Column(Boolean, default=False)  # Deprecated: Use is_cropped_list for individual mask properties
+    alignment = Column(String, nullable=False)  # Deprecated: Use alignment_list for individual mask properties
+    # New fields for individual mask properties
+    is_cropped_list = Column(JSON, nullable=True)  # List of boolean values for each mask
+    alignment_list = Column(JSON, nullable=True)  # List of alignment strings for each mask
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     mockup_image = relationship('MockupImage', back_populates='mask_data')

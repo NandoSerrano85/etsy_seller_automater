@@ -858,12 +858,32 @@ def create_mockup_mask_data(db: Session, image_id: UUID, user_id: UUID, mask_dat
         masks = ensure_float_coords(mask_data.masks)
         points = ensure_float_coords(mask_data.points)
         
+        # Handle individual mask properties
+        is_cropped_list = mask_data.is_cropped_list
+        alignment_list = mask_data.alignment_list
+
+        # If individual properties are not provided, fall back to single values for all masks
+        if is_cropped_list is None and len(masks) > 0:
+            is_cropped_list = [mask_data.is_cropped] * len(masks)
+        if alignment_list is None and len(masks) > 0:
+            alignment_list = [mask_data.alignment] * len(masks)
+
+        # Validate that list lengths match mask count
+        if is_cropped_list and len(is_cropped_list) != len(masks):
+            logging.warning(f"is_cropped_list length ({len(is_cropped_list)}) doesn't match masks count ({len(masks)})")
+            is_cropped_list = [mask_data.is_cropped] * len(masks)
+        if alignment_list and len(alignment_list) != len(masks):
+            logging.warning(f"alignment_list length ({len(alignment_list)}) doesn't match masks count ({len(masks)})")
+            alignment_list = [mask_data.alignment] * len(masks)
+
         mockup_mask_data = MockupMaskData(
             mockup_image_id=image_id,
             masks=masks,  # List[List[List[float]]]
             points=points,  # List[List[List[float]]]
-            is_cropped=mask_data.is_cropped,
-            alignment=mask_data.alignment
+            is_cropped=mask_data.is_cropped,  # Keep for backward compatibility
+            alignment=mask_data.alignment,  # Keep for backward compatibility
+            is_cropped_list=is_cropped_list,  # New individual mask properties
+            alignment_list=alignment_list  # New individual mask properties
         )
         
         db.add(mockup_mask_data)
