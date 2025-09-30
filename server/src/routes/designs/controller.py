@@ -139,7 +139,7 @@ async def create_design(
     session_id: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Create a new design for the current user with optional progress tracking"""
+    """Create a new design for the current user with optional progress tracking (threaded for heavy processing)"""
     user_id = current_user.get_uuid()
     design_data_dict = json.loads(design_data)
     design_model = model.DesignImageCreate(**design_data_dict)
@@ -152,19 +152,26 @@ async def create_design(
         def progress_callback(step: int, message: str, total_steps: int = 4, file_progress: float = 0, current_file: str = ""):
             progress_manager.update_progress(session_id, step + 1, total_steps, message, file_progress, current_file)
 
-    try:
-        result = await service.create_design(db, user_id, design_model, files, progress_callback)
+    @run_in_thread
+    def create_design_threaded():
+        """Run design creation in a separate thread to prevent blocking the event loop"""
+        try:
+            # Note: service.create_design is async, so we need to run it in asyncio
+            import asyncio
+            result = asyncio.run(service.create_design(db, user_id, design_model, files, progress_callback))
 
-        # Mark session as completed if using progress tracking
-        if session_id:
-            progress_manager.complete_session(session_id, success=True, final_message="Upload completed successfully")
+            # Mark session as completed if using progress tracking
+            if session_id:
+                progress_manager.complete_session(session_id, success=True, final_message="Upload completed successfully")
 
-        return result
-    except Exception as e:
-        # Mark session as failed if using progress tracking
-        if session_id:
-            progress_manager.complete_session(session_id, success=False, final_message=f"Upload failed: {str(e)}")
-        raise
+            return result
+        except Exception as e:
+            # Mark session as failed if using progress tracking
+            if session_id:
+                progress_manager.complete_session(session_id, success=False, final_message=f"Upload failed: {str(e)}")
+            raise
+
+    return await create_design_threaded()
 
 @router.get('/list', response_model=model.DesignImageListResponse)
 async def get_designs(
