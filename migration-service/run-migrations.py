@@ -108,6 +108,7 @@ def discover_migrations():
         "add_phash_to_designs",           # Adds phash column to designs
         "add_additional_hash_columns",    # Adds ahash, dhash, whash columns
         "update_phash_hash_size",         # Updates phash column size and generates all hashes
+        "import_local_designs",           # Import local designs with all hash calculations
         "run_canvas_size_migration",      # Canvas size updates
         "migration_add_printers_and_canvas_updates", # Printer and canvas updates
     ]
