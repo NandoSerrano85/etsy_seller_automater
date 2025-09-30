@@ -607,7 +607,7 @@ def create_mockup_images(
 
                 # Upload to NAS using the correct path structure
                 nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
-                success = nas_storage.upload_file(shop_name, nas_relative_path, image_bytes)
+                success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
 
                 if success:
                     logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
@@ -818,7 +818,7 @@ def create_mockups_for_etsy(
 
                     # Upload to NAS using the correct path structure
                     nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
-                    success = nas_storage.upload_file(shop_name, nas_relative_path, image_bytes)
+                    success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
 
                     if success:
                         logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
