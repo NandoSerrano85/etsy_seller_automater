@@ -1346,10 +1346,15 @@ async def upload_mockup_files_to_etsy(
         
         # Create appropriate directories based on template type
         local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
-        if not local_root_path:
-            pass
-            # raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
-        
+
+        # Determine root_path based on environment
+        if local_root_path:
+            # Development/local mode: use local storage path
+            root_path = f"{local_root_path}{shop_name}/"
+        else:
+            # Production mode: pass shop name directly for NAS-only storage
+            root_path = f"/share/Graphics/{shop_name}/"
+
         mask_points_list, points_list, _, is_cropped, alignment = _get_mask_data_for_user_and_template(db, int(user_id), str(template.name))
         mask_data = {
             'masks': mask_points_list,
@@ -1357,11 +1362,11 @@ async def upload_mockup_files_to_etsy(
             'is_cropped': is_cropped,
             'alignment': alignment
         }
-        
+
         current_id_number, mockup_data, digital_image_paths = (create_mockups_for_etsy(
             designs=designs,
             mockup=mockup,
-            root_path=f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/",
+            root_path=root_path,
             template_name=template.name,
             mask_data=mockup_mask_data
         ))
@@ -1409,7 +1414,12 @@ async def upload_mockup_files_to_etsy(
             # Upload digital file(s) if digital template
             if is_digital:
                 # The digital file path and name are the key (design) in mockup_data.items()
-                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/Digital/{template.name}/", design)
+                if local_root_path:
+                    # Development/local mode: use local storage path
+                    digital_file_path = os.path.join(f"{local_root_path}{shop_name}/Digital/{template.name}/", design)
+                else:
+                    # Production mode: use NAS path structure
+                    digital_file_path = f"/share/Graphics/{shop_name}/Digital/{template.name}/{design}"
                 digital_file_name = design
                 logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
                 try:
