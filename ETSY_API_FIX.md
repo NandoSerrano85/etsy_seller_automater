@@ -15,10 +15,11 @@ Etsy API now requires `production_partner_ids` parameter for physical listings. 
 Run this migration to add the new column:
 
 ```bash
-psql -U your_user -d your_database -f server/migrations/add_production_partner_ids.sql
+cd migration-service
+python run_migrations.py add_production_partner_ids
 ```
 
-Or manually:
+Or manually via SQL:
 
 ```sql
 ALTER TABLE etsy_product_templates

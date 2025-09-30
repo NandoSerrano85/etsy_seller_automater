@@ -52,7 +52,7 @@ with ThreadPoolExecutor(max_workers=4) as executor:
 
 #### 1. Database Migration
 
-**File**: `server/migrations/add_phash_indexes.sql`
+**File**: `migration-service/migrations/add_phash_indexes.py`
 
 ```sql
 -- Add indexes for fast hash lookups
@@ -172,10 +172,21 @@ async def get_mockup_job_status(job_id: str):
 
 ## Migration Guide
 
-### 1. Run Database Migration
+### 1. Run Database Migrations
+
+Use the migration service to apply database changes:
 
 ```bash
-psql -U your_user -d your_database -f server/migrations/add_phash_indexes.sql
+cd migration-service
+python run_migrations.py add_phash_indexes
+python run_migrations.py add_production_partner_ids
+```
+
+Or run all pending migrations:
+
+```bash
+cd migration-service
+python run_migrations.py
 ```
 
 ### 2. Optional: Setup Redis for Job Queue
