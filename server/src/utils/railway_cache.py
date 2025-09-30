@@ -110,8 +110,16 @@ class RailwayCacheManager:
         return f"craftflow:v1:{key}"
 
     def _serialize_value(self, value: Any) -> str:
-        """Serialize value to JSON with custom datetime handling"""
+        """Serialize value to JSON with custom datetime handling and Pydantic support"""
         try:
+            # Handle Pydantic models by converting to dict first
+            if hasattr(value, 'model_dump'):
+                # Pydantic v2 model
+                value = value.model_dump()
+            elif hasattr(value, 'dict'):
+                # Pydantic v1 model (fallback)
+                value = value.dict()
+
             return json.dumps(value, cls=DateTimeJSONEncoder, default=str)
         except Exception as e:
             logger.error(f"❌ Serialization error: {e}")
