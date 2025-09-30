@@ -158,13 +158,24 @@ async def create_design(
         try:
             # Note: service.create_design is async, so we need to run it in asyncio
             import asyncio
-            result = asyncio.run(service.create_design(db, user_id, design_model, files, progress_callback))
 
-            # Mark session as completed if using progress tracking
-            if session_id:
-                progress_manager.complete_session(session_id, success=True, final_message="Upload completed successfully")
+            # Create new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-            return result
+            try:
+                result = loop.run_until_complete(
+                    service.create_design(db, user_id, design_model, files, progress_callback)
+                )
+
+                # Mark session as completed if using progress tracking
+                if session_id:
+                    progress_manager.complete_session(session_id, success=True, final_message="Upload completed successfully")
+
+                return result
+            finally:
+                loop.close()
+
         except Exception as e:
             # Mark session as failed if using progress tracking
             if session_id:
