@@ -29,6 +29,7 @@ from server.src.message import (
 )
 from . import model
 import logging, os, random, json
+from server.src.utils.railway_cache import railway_cached, invalidate_user_cache
 from server.src.utils.mockups_util import create_mockup_images, create_mockups_for_etsy
 from server.src.utils.etsy_api_engine import EtsyAPI
 from server.src.utils.nas_storage import nas_storage
@@ -467,12 +468,13 @@ def create_mockup(db: Session, user_id: UUID, mockup_data: model.MockupFullCreat
         raise MockupCreateError()
 
 
+@railway_cached(expire_seconds=300, key_prefix="mockups")
 def get_mockups_by_user_id(db: Session, user_id: UUID, skip: int = 0, limit: int = 100) -> model.MockupsListResponse:
     try:
         mockups = db.query(Mockups).filter(
             Mockups.user_id == user_id
         ).offset(skip).limit(limit).all()
-        
+
         total = db.query(Mockups).filter(
             Mockups.user_id == user_id
         ).count()
@@ -511,6 +513,7 @@ def get_mockups_by_user_id(db: Session, user_id: UUID, skip: int = 0, limit: int
         raise MockupGetAllError()
 
 
+@railway_cached(expire_seconds=600, key_prefix="mockup")
 def get_mockup_by_id(db: Session, mockup_id: UUID, user_id: UUID) -> model.MockupsResponse:
     try:
         # Get mockup with related data (images and mask data)
@@ -518,7 +521,7 @@ def get_mockup_by_id(db: Session, mockup_id: UUID, user_id: UUID) -> model.Mocku
             Mockups.id == mockup_id,
             Mockups.user_id == user_id
         ).first()
-        
+
         if not mockup:
             logging.warning(f"Mockup not found with ID: {mockup_id} for user: {user_id}")
             raise MockupNotFoundError(mockup_id)

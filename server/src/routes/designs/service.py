@@ -34,6 +34,7 @@ import cv2
 from server.src.utils.cropping import crop_transparent
 from server.src.utils.resizing import resize_image_by_inches
 from server.src.utils.util import find_png_files
+from server.src.utils.railway_cache import railway_cached, cache_design_list, get_cached_design_list, invalidate_user_cache
 
 def calculate_multiple_hashes(image_path: str = None, image=None, hash_size: int = 16) -> dict:
     """
@@ -920,6 +921,14 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
         )
         
         logging.info(f"Successfully created {len(design_results)} designs for user: {user_id}")
+
+        # Invalidate user cache after creating designs
+        try:
+            import asyncio
+            asyncio.create_task(invalidate_user_cache(str(user_id)))
+        except Exception as cache_error:
+            logging.warning(f"Failed to invalidate cache for user {user_id}: {cache_error}")
+
         return response
     except Exception as e:
         logging.error(f"Error creating design for user ID: {user_id}. Error: {e}")
@@ -927,19 +936,20 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
         raise DesignCreateError()
 
 
+@railway_cached(expire_seconds=300, key_prefix="designs")
 def get_designs_by_user_id(db: Session, user_id: UUID, skip: int = 0, limit: int = 100) -> model.DesignImageListResponse:
     try:
         designs = db.query(DesignImages).filter(
             DesignImages.user_id == user_id,
             DesignImages.is_active == True
         ).offset(skip).limit(limit).all()
-        
+
         total = db.query(DesignImages).filter(
             DesignImages.user_id == user_id,
             DesignImages.is_active == True
         ).count()
-        
-        logging.info(f"Successfully retrieved {len(designs)} designs for user: {user_id}")
+
+        logging.info(f"Successfully retrieved {len(designs)} designs for user: {user_id} (cached)")
         # Convert SQLAlchemy objects to Pydantic models
         design_responses = [model.DesignImageResponse.model_validate(design) for design in designs]
         return model.DesignImageListResponse(designs=design_responses, total=total)
@@ -948,13 +958,14 @@ def get_designs_by_user_id(db: Session, user_id: UUID, skip: int = 0, limit: int
         raise DesignGetAllError()
 
 
+@railway_cached(expire_seconds=600, key_prefix="design")
 def get_design_by_id(db: Session, design_id: UUID, user_id: UUID) -> model.DesignImageResponse:
     try:
         design = db.query(DesignImages).filter(
             DesignImages.id == design_id,
             DesignImages.user_id == user_id
         ).first()
-        
+
         if not design:
             logging.warning(f"Design not found with ID: {design_id} for user: {user_id}")
             raise DesignNotFoundError(design_id)

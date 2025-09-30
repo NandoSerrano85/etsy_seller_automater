@@ -1,0 +1,10 @@
+# Ignore unnecessary files for Redis container
+*.md
+*.txt
+.git
+.gitignore
+.env*
+node_modules
+__pycache__
+*.pyc
+*.log

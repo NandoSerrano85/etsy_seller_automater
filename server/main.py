@@ -71,10 +71,11 @@ async def lifespan(app: FastAPI):
     # Initialize cache service
     try:
         from server.src.services.cache_service import cache_service
-        # Cache service initializes automatically
-        print("🚀 Cache service initialized")
+        await cache_service.initialize()
+        print("🚀 Cache service initialized successfully")
     except Exception as e:
         print(f"⚠️  Warning: Failed to initialize cache service: {e}")
+        # Continue without caching rather than failing startup
 
     # Only start token refresh service in production after API is fully ready
     if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
@@ -106,6 +107,14 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("🛑 Shutting down application services...")
+
+    # Shutdown cache service
+    try:
+        from server.src.services.cache_service import cache_service
+        await cache_service.shutdown()
+        print("✅ Cache service stopped")
+    except Exception as e:
+        print(f"⚠️  Warning: Error stopping cache service: {e}")
 
     if token_refresh_task:
         try:

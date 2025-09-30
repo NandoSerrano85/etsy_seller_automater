@@ -15,6 +15,7 @@ from server.src.routes.shopify.shopify_oauth import router as shopify_router
 from server.src.routes.template_editor.controller import router as template_editor_router
 from server.src.routes.platform_connections.controller import router as platform_connections_router
 from server.src.routes.admin.nas_migration import router as admin_router
+from server.src.routes.cache.controller import router as cache_router
 
 # Multi-tenant routes - conditionally imported if multi-tenant is enabled
 def get_multi_tenant_routers():
@@ -149,6 +150,7 @@ def register_routes(app: FastAPI):
     app.include_router(template_editor_router, prefix="/api")
     app.include_router(platform_connections_router)
     app.include_router(admin_router)
+    app.include_router(cache_router, prefix="/api")
 
     # Multi-tenant routes - only enabled if multi-tenant is enabled
     multi_tenant_routers = get_multi_tenant_routers()

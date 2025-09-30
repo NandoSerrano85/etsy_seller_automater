@@ -21,6 +21,7 @@ from .model import (
     TemplatePreviewResponse,
     DesignArea
 )
+from server.src.utils.railway_cache import railway_cached, cache_template_data, get_cached_template_data, invalidate_template_cache
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +80,9 @@ class TemplateEditorService:
                 detail=f"Failed to create template: {str(e)}"
             )
 
+    @railway_cached(expire_seconds=600, key_prefix="templates")
     def get_templates(self, user_id: UUID, page: int = 1, per_page: int = 20) -> List[TemplateEditorResponse]:
-        """Get user's templates"""
+        """Get user's templates (cached)"""
 
         offset = (page - 1) * per_page
 
@@ -89,10 +91,12 @@ class TemplateEditorService:
             EtsyProductTemplate.type == "custom_template"
         ).offset(offset).limit(per_page).all()
 
+        logger.info(f"Retrieved {len(templates)} templates for user {user_id} (cached)")
         return [self._convert_to_response(template) for template in templates]
 
+    @railway_cached(expire_seconds=1800, key_prefix="template")
     def get_template_by_id(self, template_id: UUID, user_id: UUID) -> TemplateEditorResponse:
-        """Get specific template by ID"""
+        """Get specific template by ID (cached)"""
 
         template = self.db.query(EtsyProductTemplate).filter(
             EtsyProductTemplate.id == template_id,
