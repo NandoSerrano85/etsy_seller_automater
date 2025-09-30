@@ -261,50 +261,30 @@ class ImageUploadWorkflow:
             raise
 
     def _load_existing_phashes(self):
-        """Load all existing phashes from database for duplicate detection"""
+        """
+        Initialize duplicate detection system
+        Note: Now uses database queries instead of loading all hashes into memory
+        """
         try:
-            self.logger.info("📊 Loading existing phashes from database...")
-            self.logger.info(f"🔍 DEBUG: Querying database for user_id: {self.user_id}")
+            self.logger.info("📊 Initializing database-backed duplicate detection...")
 
-            # Load all hashes for this user from design_images table (multiple hash types)
+            # Count existing images for logging
             result = self.db_session.execute(text("""
-                SELECT DISTINCT phash, ahash, dhash, whash
+                SELECT COUNT(*)
                 FROM design_images
                 WHERE user_id = :user_id
                 AND phash IS NOT NULL
-                AND phash != ''
                 AND is_active = true
             """), {"user_id": self.user_id})
 
-            # Store all hashes - these will be used for enhanced duplicate detection
+            count = result.scalar()
+            self.logger.info(f"📊 User has {count} existing images in database for duplicate checking")
+
+            # Keep empty set for batch-level duplicate tracking
             self._existing_phashes = set()
-            hash_records = result.fetchall()
-            self.logger.info(f"🔍 DEBUG: Found {len(hash_records)} database records for user {self.user_id}")
-
-            for i, row in enumerate(hash_records):
-                phash, ahash, dhash, whash = row
-                self.logger.info(f"🔍 DEBUG: Record {i+1}: phash={phash[:12] if phash else None}..., ahash={ahash[:12] if ahash else None}..., dhash={dhash[:12] if dhash else None}..., whash={whash[:12] if whash else None}...")
-
-                if phash:
-                    self._existing_phashes.add(phash)
-                    self.logger.info(f"🔍 DEBUG: Added phash: {phash[:12]}...")
-                # Also include other hash types for comprehensive checking
-                if ahash:
-                    self._existing_phashes.add(ahash)
-                    self.logger.info(f"🔍 DEBUG: Added ahash: {ahash[:12]}...")
-                if dhash:
-                    self._existing_phashes.add(dhash)
-                    self.logger.info(f"🔍 DEBUG: Added dhash: {dhash[:12]}...")
-                if whash:
-                    self._existing_phashes.add(whash)
-                    self.logger.info(f"🔍 DEBUG: Added whash: {whash[:12]}...")
-
-            self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing hashes from {len(hash_records)} database records (multiple hash types)")
-            self.logger.info(f"🔍 DEBUG: First 5 existing hashes: {list(list(self._existing_phashes)[:5])}")
-            self.logger.info(f"🔍 DEBUG: Existing hash set size: {len(self._existing_phashes)}")
 
         except Exception as e:
-            self.logger.error(f"❌ Failed to load existing phashes: {e}")
+            self.logger.error(f"❌ Failed to initialize duplicate detection: {e}")
             import traceback
             self.logger.error(f"❌ Traceback: {traceback.format_exc()}")
             self._existing_phashes = set()
@@ -786,43 +766,56 @@ class ImageUploadWorkflow:
             return False
 
     def _is_duplicate_in_existing(self, phash: str, hamming_threshold: int = 2) -> bool:
-        """Check if phash is duplicate within existing database hashes"""
-        if not phash or not self._existing_phashes:
-            self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: Missing phash ({phash is not None}) or existing_phashes ({self._existing_phashes is not None})")
+        """Check if phash is duplicate within existing database hashes using SQL query"""
+        if not phash:
+            self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: Missing phash")
             return False
 
         try:
-            # Convert phash to integer for comparison
-            phash_int = int(phash, 16)
-            closest_distance = float('inf')
-            closest_hash = None
-            self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: Checking phash {phash[:12]}... against {len(self._existing_phashes)} existing hashes")
+            # Use database query to check for exact match first (fastest)
+            result = self.db_session.execute(text("""
+                SELECT 1
+                FROM design_images
+                WHERE user_id = :user_id
+                AND is_active = true
+                AND (phash = :hash OR ahash = :hash OR dhash = :hash OR whash = :hash)
+                LIMIT 1
+            """), {"user_id": self.user_id, "hash": phash})
 
-            for existing_hash in self._existing_phashes:
-                # Handle combined hashes from database
-                existing_phash = self._extract_primary_phash(existing_hash)
-                if existing_phash:
-                    existing_int = int(existing_phash, 16)
-                    # Calculate Hamming distance
-                    hamming_distance = bin(phash_int ^ existing_int).count('1')
+            if result.fetchone():
+                self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: EXACT MATCH FOUND for {phash[:12]}...")
+                return True
 
-                    if hamming_distance < closest_distance:
-                        closest_distance = hamming_distance
-                        closest_hash = existing_phash
+            # For Hamming distance checking, we need to fetch and compare
+            # Only fetch a reasonable sample (e.g., last 1000 images) for performance
+            if hamming_threshold > 0:
+                result = self.db_session.execute(text("""
+                    SELECT phash, ahash, dhash, whash
+                    FROM design_images
+                    WHERE user_id = :user_id
+                    AND is_active = true
+                    AND (phash IS NOT NULL OR ahash IS NOT NULL OR dhash IS NOT NULL OR whash IS NOT NULL)
+                    ORDER BY created_at DESC
+                    LIMIT 1000
+                """), {"user_id": self.user_id})
 
-                    if hamming_distance <= hamming_threshold:
-                        self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: MATCH FOUND! {phash[:12]}... vs {existing_phash[:12]}... = Hamming distance {hamming_distance} (≤ {hamming_threshold})")
-                        return True
+                phash_int = int(phash, 16)
+                for row in result:
+                    for existing_hash in row:
+                        if existing_hash:
+                            try:
+                                existing_int = int(existing_hash, 16)
+                                hamming_distance = bin(phash_int ^ existing_int).count('1')
+                                if hamming_distance <= hamming_threshold:
+                                    self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: HAMMING MATCH FOUND! {phash[:12]}... vs {existing_hash[:12]}... = distance {hamming_distance}")
+                                    return True
+                            except (ValueError, TypeError):
+                                continue
 
-            # Log the closest match even if not a duplicate
-            if closest_hash:
-                self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: Closest match: {phash[:12]}... vs {closest_hash[:12]}... = Hamming distance {closest_distance} (threshold: {hamming_threshold})")
-            else:
-                self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: No valid existing hashes to compare")
             return False
 
-        except (ValueError, TypeError) as e:
-            self.logger.info(f"🔍 DEBUG: _is_duplicate_in_existing: Error comparing with existing phashes: {e}")
+        except Exception as e:
+            self.logger.error(f"🔍 DEBUG: _is_duplicate_in_existing: Database query error: {e}")
             return False
 
     def _is_enhanced_duplicate_in_set(self, processed_image: ProcessedImage, hash_set: Set[str], threshold: int = 5, min_matches: int = 2) -> bool:
@@ -851,32 +844,74 @@ class ImageUploadWorkflow:
 
     def _is_enhanced_duplicate_in_existing(self, processed_image: ProcessedImage, threshold: int = 5, min_matches: int = 2) -> bool:
         """Check if processed image is duplicate in existing database using multiple hash algorithms"""
-        if not processed_image.phash or not self._existing_phashes:
-            self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Missing phash ({processed_image.phash is not None}) or existing_phashes ({self._existing_phashes is not None}) for {processed_image.final_filename}")
+        if not processed_image.phash:
+            self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Missing phash for {processed_image.final_filename}")
             return False
 
-        matches = 0
-        image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
-        self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Checking {len(image_hashes)} hashes against {len(self._existing_phashes)} existing hashes for {processed_image.final_filename}")
+        try:
+            # Use database query to check all hashes at once (most efficient)
+            image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+            valid_hashes = [h for h in image_hashes if h]
 
-        for i, image_hash in enumerate(image_hashes):
-            hash_names = ['phash', 'ahash', 'dhash', 'whash']
-            if image_hash:
-                is_match = self._is_duplicate_in_existing(image_hash, threshold)
-                self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: {hash_names[i]} {image_hash[:12]}... match: {is_match}")
-                if is_match:
-                    matches += 1
-            else:
-                self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: {hash_names[i]} is None")
+            if not valid_hashes:
+                return False
 
-        result = matches >= min_matches
-        self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Total matches: {matches}/{len(image_hashes)}, min_matches: {min_matches}, result: {result}")
-        return result
+            # Check for exact matches first (fastest path using indexes)
+            placeholders = ', '.join([f':hash{i}' for i in range(len(valid_hashes))])
+            query = f"""
+                SELECT phash, ahash, dhash, whash
+                FROM design_images
+                WHERE user_id = :user_id
+                AND is_active = true
+                AND (phash IN ({placeholders})
+                     OR ahash IN ({placeholders})
+                     OR dhash IN ({placeholders})
+                     OR whash IN ({placeholders}))
+                LIMIT 10
+            """
+
+            params = {"user_id": self.user_id}
+            for i, hash_val in enumerate(valid_hashes):
+                params[f'hash{i}'] = hash_val
+
+            result = self.db_session.execute(text(query), params)
+            rows = result.fetchall()
+
+            if rows:
+                # Count exact matches
+                matches = 0
+                for row in rows:
+                    for db_hash in row:
+                        if db_hash in valid_hashes:
+                            matches += 1
+                            if matches >= min_matches:
+                                self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: EXACT MATCHES FOUND ({matches}) for {processed_image.final_filename}")
+                                return True
+
+            # If no exact matches and threshold allows, check Hamming distance
+            if threshold > 0:
+                matches = 0
+                hash_names = ['phash', 'ahash', 'dhash', 'whash']
+
+                for i, image_hash in enumerate(image_hashes):
+                    if image_hash:
+                        is_match = self._is_duplicate_in_existing(image_hash, threshold)
+                        if is_match:
+                            matches += 1
+                            self.logger.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: {hash_names[i]} hamming match")
+                            if matches >= min_matches:
+                                return True
+
+            return False
+
+        except Exception as e:
+            self.logger.error(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Error: {e}")
+            return False
 
 
     def _upload_batch_to_nas(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
         """
-        Upload batch of images to NAS storage
+        Upload batch of images to NAS storage in parallel
 
         Args:
             images: List of processed images to upload
@@ -888,7 +923,7 @@ class ImageUploadWorkflow:
         if not images:
             return []
 
-        self.logger.info(f"📤 Batch {batch_id}: Uploading {len(images)} images to NAS")
+        self.logger.info(f"📤 Batch {batch_id}: Uploading {len(images)} images to NAS in parallel")
         successful_uploads = []
 
         # Check if NAS storage is available
@@ -896,38 +931,58 @@ class ImageUploadWorkflow:
             self.logger.warning(f"📤 Batch {batch_id}: NAS storage not available, skipping upload")
             return []
 
-        with self.nas_lock:  # Serialize NAS operations to prevent conflicts
+        # Get shop and template info once (shared across uploads)
+        shop_name = self._get_user_shop_name()
+
+        def upload_single_image(image: ProcessedImage) -> tuple[ProcessedImage, bool]:
+            """Upload a single image to NAS"""
             try:
-                for image in images:
-                    try:
-                        # Skip if image doesn't have content or filename
-                        if not image.resized_content or not image.final_filename:
-                            self.logger.info(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing content or filename")
-                            continue
+                # Skip if image doesn't have content or filename
+                if not image.resized_content or not image.final_filename:
+                    self.logger.info(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing content or filename")
+                    return (image, False)
 
-                        # Get user shop name and template name for NAS path
-                        shop_name = self._get_user_shop_name()
-                        template_name = self._get_template_name(image.upload_info.template_id)
+                # Get template name for this specific image
+                template_name = self._get_template_name(image.upload_info.template_id)
 
-                        # Upload to NAS using the correct method
-                        success = nas_storage.upload_file_content(
-                            image.resized_content,
-                            shop_name,
-                            f"{template_name}/{image.final_filename}"
-                        )
+                # Upload to NAS using the correct method
+                success = nas_storage.upload_file_content(
+                    image.resized_content,
+                    shop_name,
+                    f"{template_name}/{image.final_filename}"
+                )
 
-                        if success:
-                            image.nas_uploaded = True
-                            successful_uploads.append(image)
-                            self.logger.info(f"   ✅ Uploaded: {image.final_filename}")
-                        else:
-                            self.logger.error(f"   ❌ Failed to upload: {image.final_filename}")
-
-                    except Exception as e:
-                        self.logger.error(f"   ❌ Upload error for {image.final_filename or 'unknown'}: {e}")
+                if success:
+                    image.nas_uploaded = True
+                    self.logger.info(f"   ✅ Uploaded: {image.final_filename}")
+                    return (image, True)
+                else:
+                    self.logger.error(f"   ❌ Failed to upload: {image.final_filename}")
+                    return (image, False)
 
             except Exception as e:
-                self.logger.error(f"❌ Batch {batch_id} NAS upload failed: {e}")
+                self.logger.error(f"   ❌ Upload error for {image.final_filename or 'unknown'}: {e}")
+                return (image, False)
+
+        # Use thread pool to upload images in parallel (up to 4 concurrent NAS uploads)
+        max_nas_workers = min(4, len(images))
+        try:
+            with ThreadPoolExecutor(max_workers=max_nas_workers) as executor:
+                # Submit all uploads
+                future_to_image = {executor.submit(upload_single_image, img): img for img in images}
+
+                # Collect results as they complete
+                for future in as_completed(future_to_image):
+                    try:
+                        image, success = future.result()
+                        if success:
+                            successful_uploads.append(image)
+                    except Exception as e:
+                        original_image = future_to_image[future]
+                        self.logger.error(f"   ❌ Upload thread error for {original_image.final_filename or 'unknown'}: {e}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Batch {batch_id} NAS parallel upload failed: {e}")
 
         self.logger.info(f"📤 Batch {batch_id}: Successfully uploaded {len(successful_uploads)}/{len(images)} to NAS")
         return successful_uploads
@@ -1028,10 +1083,7 @@ class ImageUploadWorkflow:
                     image.db_updated = True
                     successful_updates.append(image)
 
-                    # Add to existing phashes to prevent duplicates in subsequent batches
-                    with self._existing_phashes_lock:
-                        if self._existing_phashes is not None and image.phash:
-                            self._existing_phashes.add(image.phash)
+                    # Note: Duplicate detection now uses database queries, so no need to maintain in-memory set
 
                 except Exception as e:
                     # Rollback transaction on error to prevent failed transaction state

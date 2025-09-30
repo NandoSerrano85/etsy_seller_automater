@@ -318,8 +318,8 @@ class EtsyAPI:
             
         return shop_id
 
-    def create_draft_listing(self, title: str, description: str, price: float, 
-                           quantity: int, tags: List[str], 
+    def create_draft_listing(self, title: str, description: str, price: float,
+                           quantity: int, tags: List[str],
                            materials: List[str],
                            item_weight: float,
                            item_weight_unit: str,
@@ -330,10 +330,11 @@ class EtsyAPI:
                            return_policy_id: Optional[int] = None,
                            is_digital: bool = False,
                            when_made: str = "made_to_order",
+                           production_partner_ids: Optional[List[int]] = None,
                            ) -> Dict:
         """
         Create a draft listing on Etsy
-        
+
         Args:
             title (str): Product title
             description (str): Product description
@@ -344,6 +345,8 @@ class EtsyAPI:
             taxonomy_id (int): Etsy taxonomy ID for the product
             shipping_profile_id (int): Shipping profile ID
             return_policy_id (int): Return policy ID
+            is_digital (bool): Whether this is a digital product
+            production_partner_ids (List[int]): Production partner IDs (required for physical listings)
         Returns:
             Dict: Response from Etsy API containing listing ID
         """
@@ -370,7 +373,16 @@ class EtsyAPI:
             "return_policy_id": return_policy_id if return_policy_id else 1,
             "type": "physical" if not is_digital else "download",
         }
-        
+
+        # For physical listings, production_partner_ids is required
+        # This indicates "ready to ship" status
+        if not is_digital:
+            if production_partner_ids:
+                payload["production_partner_ids"] = production_partner_ids
+            else:
+                # Default to empty array which means "ready to ship" (made by seller)
+                payload["production_partner_ids"] = []
+
         # Only include return_policy_id if it's valid (>= 1)
         if return_policy_id and return_policy_id >= 1:
             payload["return_policy_id"] = return_policy_id

@@ -309,18 +309,47 @@ async def delete_mockup_mask_data(
 async def upload_mockup(
     current_user: CurrentUser,
     product_data:str = Form(...),
+    async_mode: bool = Form(False),
     db: Session = Depends(get_db)
 ):
-    """Upload mockup files and create Etsy listings (threaded for heavy processing)"""
+    """
+    Upload mockup files and create Etsy listings
+
+    Args:
+        async_mode: If True, enqueue job and return immediately. If False, process synchronously (legacy behavior)
+    """
     user_id = current_user.get_uuid()
     if not user_id:
         raise InvalidUserToken()
 
+    product_data_dict = json.loads(product_data)
+    product_request_model = model.UploadToEtsyRequest(**product_data_dict)
+
+    # Async mode: Enqueue job and return immediately
+    if async_mode:
+        from server.src.services.mockup_queue import enqueue_mockup_generation
+
+        job_id = await enqueue_mockup_generation(
+            user_id=str(user_id),
+            design_ids=[str(d) for d in product_request_model.design_ids],
+            product_template_id=str(product_request_model.product_template_id),
+            mockup_id=str(product_request_model.mockup_id),
+            priority="normal"
+        )
+
+        return model.UploadToEtsyResponse(
+            result={
+                "message": f"Mockup generation job enqueued successfully",
+                "job_id": job_id,
+                "status": "pending",
+                "design_count": len(product_request_model.design_ids),
+                "async_mode": True
+            }
+        )
+
+    # Synchronous mode (legacy): Process immediately
     @run_in_thread
     def upload_mockup_threaded():
-        product_data_dict = json.loads(product_data)
-        product_request_model = model.UploadToEtsyRequest(**product_data_dict)
-
         # Note: We need to use asyncio.run since service function is async
         import asyncio
         return asyncio.run(service.upload_mockup_files_to_etsy(
@@ -330,3 +359,28 @@ async def upload_mockup(
         ))
 
     return await upload_mockup_threaded()
+
+
+@router.get('/job-status/{job_id}')
+async def get_mockup_job_status(
+    job_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get status of an async mockup generation job"""
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+
+    from server.src.services.mockup_queue import get_mockup_job_status
+
+    status = await get_mockup_job_status(job_id)
+
+    if not status:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Verify user owns this job
+    if status.get("user_id") and status["user_id"] != str(user_id):
+        raise InvalidUserToken()
+
+    return status
