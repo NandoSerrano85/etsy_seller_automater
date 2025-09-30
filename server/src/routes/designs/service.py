@@ -501,23 +501,31 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
         os.makedirs(designs_path, exist_ok=True)
         
         async def process_image_physical(n, file, id_number):
+            """Process physical images - optimized for speed with in-memory processing and direct NAS upload"""
+            import time
+            start_time = time.time()
+
             try:
                 # Read the image file content
+                logging.info(f"📥 Processing physical image: {file.filename}")
                 contents = await file.read()
                 nparr = np.frombuffer(contents, np.uint8)
                 image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-                
+
                 if image is None:
-                    logging.error("Failed to decode image")
-                    return None, None
-                    
+                    logging.error("❌ Failed to decode image")
+                    return None, None, None
+
                 # Crop transparent areas
+                crop_start = time.time()
                 cropped_image = crop_transparent(image=image)
                 if cropped_image is None:
-                    logging.error("Failed to crop image")
-                    return None, None
-                    
+                    logging.error("❌ Failed to crop image")
+                    return None, None, None
+                logging.info(f"✂️ Cropped image in {time.time() - crop_start:.2f}s")
+
                 # Resize image
+                resize_start = time.time()
                 resized_image = resize_image_by_inches(
                     image=cropped_image,
                     image_type=template.name,
@@ -525,264 +533,236 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                     canvas_id=design_data.canvas_config_id,
                     product_template_id=design_data.product_template_id
                 )
-                
+                logging.info(f"📐 Resized image in {time.time() - resize_start:.2f}s")
+
                 # Generate filename
                 current_id_number = str(n + id_number).zfill(3)
                 prefix = "UV" if re.search(type_pattern, template.name) else "DTF"
                 postfix = "_".join(str(template.name).split() + [current_id_number])
                 filename = f"{prefix} {current_id_number} {postfix}.png"
-                image_path = os.path.join(designs_path, filename)
-                
-                # Save the processed image
-                save_single_image(resized_image, designs_path, filename, target_dpi=(400, 400))
-                
-                # Upload design to NAS
+
+                # Convert image to bytes in memory (no local save for ≤2 images)
+                encode_start = time.time()
+                success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+                if not success:
+                    logging.error("❌ Failed to encode image")
+                    return None, None, None
+                image_bytes = encoded_image.tobytes()
+                logging.info(f"💾 Encoded image to bytes in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
+
+                # Upload directly to NAS from memory
+                nas_start = time.time()
                 try:
-                    relative_path = f"{template.name}/{filename}" if not design_data.is_digital else f"Digital/{template.name}/{filename}"
-                    success = nas_storage.upload_file(
-                        local_file_path=image_path,
+                    relative_path = f"{template.name}/{filename}"
+                    success = nas_storage.upload_file_content(
+                        file_content=image_bytes,
                         shop_name=user.shop_name,
                         relative_path=relative_path
                     )
                     if success:
-                        logging.info(f"Successfully uploaded design to NAS: {relative_path}")
+                        logging.info(f"✅ Uploaded design to NAS in {time.time() - nas_start:.2f}s: {relative_path}")
                     else:
-                        logging.warning(f"Failed to upload design to NAS: {relative_path}")
+                        logging.warning(f"⚠️ Failed to upload design to NAS: {relative_path}")
+                        return None, None, None
                 except Exception as e:
-                    logging.error(f"Error uploading design to NAS: {e}")
-                    # Don't fail the entire process if NAS upload fails
-                
-                # Reset file pointer
+                    logging.error(f"❌ Error uploading design to NAS: {e}")
+                    return None, None, None
+
+                # Reset file pointer for potential reuse
                 await file.seek(0)
-                
-                return image_path, filename
-                
+
+                # Return image bytes for hash calculation (no local file path)
+                total_time = time.time() - start_time
+                logging.info(f"✅ Total processing time for {filename}: {total_time:.2f}s")
+
+                return image_bytes, filename, relative_path
+
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                logging.error(f"Error processing physical image: {str(e)}")
-                return None, None
+                logging.error(f"❌ Error processing physical image: {str(e)}")
+                return None, None, None
 
-        def list_images_in_dir(directory_path):
-            """List all image files in a directory"""
+        def check_duplicate_in_database(phash_hex: str) -> bool:
+            """Check if image already exists in database using indexed queries (optimized for ≤2 images)"""
+            from sqlalchemy import text
+            import time
+
+            check_start = time.time()
             try:
-                if not os.path.exists(directory_path):
-                    return []
-                image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff']
-                return [f for f in os.listdir(directory_path) 
-                       if any(f.lower().endswith(ext) for ext in image_extensions)]
+                # Use indexed query for exact match - O(log n) instead of O(n)
+                result = db.execute(text("""
+                    SELECT 1 FROM design_images
+                    WHERE user_id = :user_id
+                    AND is_active = true
+                    AND phash = :phash
+                    LIMIT 1
+                """), {"user_id": str(user_id), "phash": phash_hex})
+
+                is_duplicate = result.fetchone() is not None
+                logging.info(f"🔍 Database duplicate check completed in {time.time() - check_start:.3f}s: {'DUPLICATE' if is_duplicate else 'UNIQUE'}")
+                return is_duplicate
+
             except Exception as e:
-                logging.error(f"Error listing images in directory {directory_path}: {str(e)}")
-                return []
-        
-        def build_hash_db(directory_path):
-            """Build a database of image hashes from a directory with size/DPI normalization"""
-            hash_db = {}
+                logging.error(f"❌ Error checking database duplicates: {e}")
+                return False
+
+        def check_hamming_distance_in_database(phash_hex: str, threshold: int = 5) -> tuple[bool, Optional[str]]:
+            """Check Hamming distance against recent database entries (last 1000 images only)"""
+            from sqlalchemy import text
+            import time
+
+            check_start = time.time()
             try:
-                image_files = list_images_in_dir(directory_path)
-                for image_file in image_files:
-                    image_path = os.path.join(directory_path, image_file)
+                # Query only last 1000 images for Hamming distance check
+                result = db.execute(text("""
+                    SELECT phash, filename FROM design_images
+                    WHERE user_id = :user_id
+                    AND is_active = true
+                    AND phash IS NOT NULL
+                    ORDER BY created_at DESC
+                    LIMIT 1000
+                """), {"user_id": str(user_id)})
+
+                rows = result.fetchall()
+                logging.info(f"🔍 Checking Hamming distance against {len(rows)} recent images")
+
+                # Convert uploaded hash to ImageHash object
+                try:
+                    new_hash = imagehash.hex_to_hash(phash_hex)
+                except Exception as e:
+                    logging.warning(f"⚠️ Failed to convert phash to ImageHash: {e}")
+                    return False, None
+
+                # Check each existing hash
+                for row in rows:
                     try:
-                        with Image.open(image_path) as img:
-                            # Resize to standard size for consistent comparison regardless of original size/DPI
-                            img_normalized = img.resize((256, 256), Image.Resampling.LANCZOS)
-                            img_hash = imagehash.phash(img_normalized, hash_size=16)  # Use consistent hash size
-                            hash_db[image_path] = img_hash
-                    except Exception as e:
-                        logging.error(f"Error processing image {image_path}: {str(e)}")
-                        continue
-            except Exception as e:
-                logging.error(f"Error building hash database for {directory_path}: {str(e)}")
-            return hash_db
-        
-        def check_for_duplicate(new_image_path, existing_hash_db, threshold=5):
-            """Check if a new image is a duplicate of any existing images with size/DPI normalization"""
-            try:
-                with Image.open(new_image_path) as new_img:
-                    # Resize to standard size for consistent comparison regardless of original size/DPI
-                    new_img_normalized = new_img.resize((256, 256), Image.Resampling.LANCZOS)
-                    new_hash = imagehash.phash(new_img_normalized)
+                        existing_phash = row[0]
+                        existing_filename = row[1]
 
-                    for existing_path, existing_hash in existing_hash_db.items():
-                        hash_diff = new_hash - existing_hash
-                        if hash_diff <= threshold:
-                            return existing_path
-                    return None
+                        # Skip if hash format doesn't match (16x16 = 64 hex chars)
+                        if len(existing_phash) != 64:
+                            continue
+
+                        existing_hash = imagehash.hex_to_hash(existing_phash)
+                        distance = new_hash - existing_hash
+
+                        if distance <= threshold:
+                            logging.info(f"🔍 Hamming check completed in {time.time() - check_start:.3f}s: DUPLICATE (distance={distance}, match={existing_filename})")
+                            return True, existing_filename
+
+                    except Exception as e:
+                        logging.debug(f"Error comparing hash: {e}")
+                        continue
+
+                logging.info(f"🔍 Hamming check completed in {time.time() - check_start:.3f}s: UNIQUE")
+                return False, None
+
             except Exception as e:
-                logging.error(f"Error checking duplicate for {new_image_path}: {str(e)}")
-                return None
+                logging.error(f"❌ Error checking Hamming distance: {e}")
+                return False, None
 
         async def process_image_digital(n, file, id_number):
-            """Process digital product images"""
+            """Process digital product images - optimized for speed with in-memory processing and direct NAS upload"""
+            import time
+            start_time = time.time()
+
             try:
                 # Read the image file content
+                logging.info(f"📥 Processing digital image: {file.filename}")
                 contents = await file.read()
                 nparr = np.frombuffer(contents, np.uint8)
                 image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-                
+
                 if image is None:
-                    logging.error("Failed to decode image")
-                    return None, None
-                    
+                    logging.error("❌ Failed to decode image")
+                    return None, None, None
+
                 # Crop transparent areas
+                crop_start = time.time()
                 cropped_image = crop_transparent(image=image)
                 if cropped_image is None:
-                    logging.error("Failed to crop image")
-                    return None, None
-                    
+                    logging.error("❌ Failed to crop image")
+                    return None, None, None
+                logging.info(f"✂️ Cropped image in {time.time() - crop_start:.2f}s")
+
                 # Get DPI and handle 16-bit images
                 target_dpi = get_dpi_from_image(image)
                 if cropped_image.dtype == np.uint16:
                     cropped_image = (cropped_image / 256).astype(np.uint8)
 
                 # Calculate dimensions and resize
+                resize_start = time.time()
                 current_width_inches, current_height_inches = get_width_and_height(cropped_image, target_dpi[0])
                 resized_image = cv2.resize(
-                    cropped_image, 
+                    cropped_image,
                     (
                         inches_to_pixels(current_width_inches, target_dpi[0]),
                         inches_to_pixels(current_height_inches, target_dpi[1])
                     ),
                     interpolation=cv2.INTER_CUBIC
                 )
-                
+                logging.info(f"📐 Resized image in {time.time() - resize_start:.2f}s")
+
                 # Generate filename
                 digital_id_number = str(n + id_number).zfill(3)
                 filename = f"Digital {digital_id_number}.png"
-                image_path = os.path.join(designs_path, filename)
-                
-                # Save the processed image
-                save_single_image(resized_image, designs_path, filename, target_dpi=target_dpi)
-                
-                # Upload design to NAS
+
+                # Convert image to bytes in memory (no local save for ≤2 images)
+                encode_start = time.time()
+                success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+                if not success:
+                    logging.error("❌ Failed to encode image")
+                    return None, None, None
+                image_bytes = encoded_image.tobytes()
+                logging.info(f"💾 Encoded image to bytes in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
+
+                # Upload directly to NAS from memory
+                nas_start = time.time()
                 try:
                     relative_path = f"Digital/{template.name}/{filename}"
-                    success = nas_storage.upload_file(
-                        local_file_path=image_path,
+                    success = nas_storage.upload_file_content(
+                        file_content=image_bytes,
                         shop_name=user.shop_name,
                         relative_path=relative_path
                     )
                     if success:
-                        logging.info(f"Successfully uploaded digital design to NAS: {relative_path}")
+                        logging.info(f"✅ Uploaded digital design to NAS in {time.time() - nas_start:.2f}s: {relative_path}")
                     else:
-                        logging.warning(f"Failed to upload digital design to NAS: {relative_path}")
+                        logging.warning(f"⚠️ Failed to upload digital design to NAS: {relative_path}")
+                        return None, None, None
                 except Exception as e:
-                    logging.error(f"Error uploading digital design to NAS: {e}")
-                    # Don't fail the entire process if NAS upload fails
-                
-                # Reset file pointer
+                    logging.error(f"❌ Error uploading digital design to NAS: {e}")
+                    return None, None, None
+
+                # Reset file pointer for potential reuse
                 await file.seek(0)
-                
-                return image_path, filename
-        
+
+                # Return image bytes for hash calculation (no local file path)
+                total_time = time.time() - start_time
+                logging.info(f"✅ Total processing time for {filename}: {total_time:.2f}s")
+
+                return image_bytes, filename, relative_path
+
             except Exception as e:
-                logging.error(f"Error processing digital image: {str(e)}")
-                return None, None
+                logging.error(f"❌ Error processing digital image: {str(e)}")
+                return None, None, None
         
-        # Step 1: Check for duplicates before any processing
+        # Step 1: Check for duplicates using optimized database-backed approach
         if progress_callback:
-            progress_callback(0, "Checking for duplicates")
+            progress_callback(0, "Checking for duplicates using database indexes")
 
-        # Build comprehensive hash database from multiple sources
-        existing_hash_db = {}
-
-        # 1. Build hash from local directory files (if exists)
-        if os.path.exists(designs_path):
-            local_hash_db = build_hash_db(designs_path)
-            existing_hash_db.update(local_hash_db)
-            logging.info(f"Found {len(local_hash_db)} existing local files")
-
-        # 2. Build hash from NAS files for this template
-        nas_hash_db = {}
-        try:
-            if nas_storage.enabled:
-                # Get files from NAS for this specific template path
-                template_relative_path = f"Digital/{template.name}" if design_data.is_digital else template.name
-                nas_files = nas_storage.list_files(user.shop_name, template_relative_path)
-
-                if nas_files:
-                    logging.info(f"Found {len(nas_files)} files in NAS for template {template.name}")
-                    for file_info in nas_files:
-                        if isinstance(file_info, dict):
-                            filename = file_info.get('filename', '')
-                            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
-                                # Download file content from NAS for hashing
-                                try:
-                                    file_content = nas_storage.download_file_to_memory(user.shop_name, f"{template_relative_path}/{filename}")
-                                    if file_content:
-                                        # Create hash from NAS file content without DPI/size dependency
-                                        nparr = np.frombuffer(file_content, np.uint8)
-                                        nas_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-                                        if nas_image is not None:
-                                            # Normalize image for consistent hashing regardless of size/DPI
-                                            if len(nas_image.shape) == 3 and nas_image.shape[2] == 4:
-                                                # Convert BGRA to RGB for PIL
-                                                nas_image_rgb = cv2.cvtColor(nas_image, cv2.COLOR_BGRA2RGB)
-                                            elif len(nas_image.shape) == 3:
-                                                # Convert BGR to RGB for PIL
-                                                nas_image_rgb = cv2.cvtColor(nas_image, cv2.COLOR_BGR2RGB)
-                                            else:
-                                                nas_image_rgb = nas_image
-
-                                            pil_image = Image.fromarray(nas_image_rgb)
-                                            # Resize to standard size for consistent comparison regardless of original size/DPI
-                                            pil_image = pil_image.resize((256, 256), Image.Resampling.LANCZOS)
-                                            nas_hash = imagehash.phash(pil_image, hash_size=16)
-                                            nas_path = f"NAS:{user.shop_name}/{template_relative_path}/{filename}"
-                                            nas_hash_db[nas_path] = nas_hash
-                                            logging.info(f"Added NAS file to hash db: {filename}")
-                                except Exception as e:
-                                    logging.warning(f"Failed to hash NAS file {filename}: {e}")
-                                    continue
-
-                existing_hash_db.update(nas_hash_db)
-                logging.info(f"Added {len(nas_hash_db)} NAS files to hash database")
-        except Exception as e:
-            logging.warning(f"Failed to check NAS files for duplicates: {e}")
-
-        logging.info(f"Total files in hash database: {len(existing_hash_db)}")
-
-        # Get existing phashes from database for this user
-        from server.src.entities.designs import DesignImages
-        from sqlalchemy import and_
-
-        existing_designs = db.query(DesignImages).filter(
-            and_(
-                DesignImages.user_id == user_id,
-                DesignImages.is_active == True,
-                DesignImages.phash.isnot(None)
-            )
-        ).all()
-
-        # Create database phash lookup
-        db_phashes = {}
-        for design in existing_designs:
-            try:
-                # Convert string phash back to ImageHash object for comparison
-                phash_obj = imagehash.hex_to_hash(design.phash)
-
-                # Check if this is an 8x8 hash (64 characters) vs 16x16 hash (256 characters)
-                if len(design.phash) == 16:  # 8x8 hash (64 bits = 16 hex chars)
-                    logging.info(f"Skipping 8x8 phash for design {design.filename} - will be recalculated with 16x16")
-                    continue
-                elif len(design.phash) == 64:  # 16x16 hash (256 bits = 64 hex chars)
-                    db_phashes[phash_obj] = design
-                else:
-                    logging.warning(f"Unexpected phash length {len(design.phash)} for design {design.id}")
-                    continue
-
-            except Exception as e:
-                logging.warning(f"Invalid phash in database for design {design.id}: {e}")
-                continue
-
-        logging.info(f"Found {len(existing_hash_db)} existing files in directory and {len(db_phashes)} designs with phashes in database")
+        logging.info(f"🔍 Starting optimized duplicate check for {len(files)} files (≤2 images workflow)")
 
         # Check for duplicates in uploaded files before processing
         non_duplicate_files = []
         duplicate_count = 0
+        checked_hashes = {}  # Track hashes of files in this batch
 
         for i, file in enumerate(files):
-            logging.info(f"Checking file for duplicates: {file.filename}")
+            import time
+            check_start = time.time()
+            logging.info(f"🔍 [{i+1}/{len(files)}] Checking file for duplicates: {file.filename}")
 
             # Read file content to create hash
             contents = await file.read()
@@ -810,95 +790,123 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
                     # Calculate hash
                     file_hash = imagehash.phash(pil_image, hash_size=16)
+                    file_hash_hex = str(file_hash)
 
-                    # Check against existing hashes (local files)
                     is_duplicate = False
                     duplicate_source = None
 
-                    for existing_path, existing_hash in existing_hash_db.items():
-                        hash_diff = file_hash - existing_hash
-                        if hash_diff <= 5:  # threshold
-                            if existing_path.startswith("NAS:"):
-                                logging.warning(f"Skipping duplicate file: {file.filename} (matches NAS file {existing_path.split('/')[-1]}, hash distance: {hash_diff})")
-                                duplicate_source = f"NAS file {existing_path.split('/')[-1]}"
-                            else:
-                                logging.warning(f"Skipping duplicate file: {file.filename} (matches local file {os.path.basename(existing_path)}, hash distance: {hash_diff})")
-                                duplicate_source = f"local file {os.path.basename(existing_path)}"
-                            duplicate_count += 1
-                            is_duplicate = True
-                            break
-
-                    # Check against database phashes
-                    if not is_duplicate:
-                        for existing_phash, existing_design in db_phashes.items():
-                            hash_diff = abs(file_hash - existing_phash)
-                            if hash_diff <= 5:  # threshold
-                                logging.warning(f"Skipping duplicate file: {file.filename} (matches database design {existing_design.filename}, distance: {hash_diff})")
+                    # 1. Check against other files in this batch first (fastest)
+                    for other_filename, other_hash_hex in checked_hashes.items():
+                        try:
+                            other_hash = imagehash.hex_to_hash(other_hash_hex)
+                            distance = file_hash - other_hash
+                            if distance <= 5:
+                                logging.warning(f"⚠️ Skipping duplicate file within batch: {file.filename} (matches {other_filename}, distance: {distance})")
                                 duplicate_count += 1
                                 is_duplicate = True
-                                duplicate_source = f"database design {existing_design.filename}"
+                                duplicate_source = f"batch file {other_filename}"
                                 break
+                        except Exception as e:
+                            logging.debug(f"Error comparing batch hash: {e}")
+
+                    # 2. Check exact match in database (O(log n) with index)
+                    if not is_duplicate:
+                        if check_duplicate_in_database(file_hash_hex):
+                            logging.warning(f"⚠️ Skipping duplicate file: {file.filename} (exact match in database)")
+                            duplicate_count += 1
+                            is_duplicate = True
+                            duplicate_source = "database (exact match)"
+
+                    # 3. Check Hamming distance against recent 1000 images
+                    if not is_duplicate:
+                        is_similar, similar_filename = check_hamming_distance_in_database(file_hash_hex, threshold=5)
+                        if is_similar:
+                            logging.warning(f"⚠️ Skipping duplicate file: {file.filename} (similar to {similar_filename})")
+                            duplicate_count += 1
+                            is_duplicate = True
+                            duplicate_source = f"database similar to {similar_filename}"
 
                     if not is_duplicate:
-                        # Check against other uploaded files to avoid processing duplicates within the same upload
-                        for j, (other_file, other_hash) in enumerate(non_duplicate_files):
-                            if other_hash is not None:
-                                hash_diff = file_hash - other_hash
-                                if hash_diff <= 5:  # threshold
-                                    logging.warning(f"Skipping duplicate file within upload: {file.filename} (matches {other_file.filename})")
-                                    duplicate_count += 1
-                                    is_duplicate = True
-                                    duplicate_source = f"uploaded file {other_file.filename}"
-                                    break
-
-                        if not is_duplicate:
-                            non_duplicate_files.append((file, file_hash))
-                            existing_hash_db[f"temp_{i}"] = file_hash  # Add to prevent future duplicates in this batch
-                            logging.info(f"File {file.filename} is unique, will be processed")
+                        non_duplicate_files.append((file, file_hash_hex))
+                        checked_hashes[file.filename] = file_hash_hex
+                        check_time = time.time() - check_start
+                        logging.info(f"✅ File {file.filename} is unique (checked in {check_time:.2f}s)")
                     else:
-                        logging.info(f"File {file.filename} is duplicate of {duplicate_source}")
+                        check_time = time.time() - check_start
+                        logging.info(f"⚠️ File {file.filename} is duplicate of {duplicate_source} (checked in {check_time:.2f}s)")
+
                 else:
-                    logging.error(f"Failed to decode image for duplicate check: {file.filename}")
+                    logging.error(f"❌ Failed to decode image for duplicate check: {file.filename}")
                     # Still process files that can't be decoded for duplicate checking
                     non_duplicate_files.append((file, None))
 
             except Exception as e:
-                logging.error(f"Error checking duplicates for {file.filename}: {str(e)}")
+                logging.error(f"❌ Error checking duplicates for {file.filename}: {str(e)}")
                 # Still process files that fail duplicate checking
                 non_duplicate_files.append((file, None))
 
         design_results = []
 
         # Step 2: Process only non-duplicate files
-        for i, (file, file_hash) in enumerate(non_duplicate_files):
+        logging.info(f"📦 Processing {len(non_duplicate_files)} unique files")
+        for i, (file, file_hash_hex) in enumerate(non_duplicate_files):
             if progress_callback:
                 progress_callback(1, f"Processing and formatting images ({i+1}/{len(non_duplicate_files)})")
 
-            logging.info(f"Processing non-duplicate file: {file.filename}")
-            if design_data.is_digital:
-                file_path, filename = await process_image_digital(i, file, design_data.starting_name)
-            else:
-                file_path, filename = await process_image_physical(i, file, design_data.starting_name)
+            logging.info(f"📦 [{i+1}/{len(non_duplicate_files)}] Processing non-duplicate file: {file.filename}")
 
-            logging.info(f"filename: {filename}, file_path: {file_path}, is_digital: {design_data.is_digital}")
-            if not file_path or not filename:
-                logging.error(f"Failed to process image for user ID: {user_id}")
+            # Process image (returns image_bytes, filename, nas_relative_path)
+            if design_data.is_digital:
+                image_bytes, filename, nas_relative_path = await process_image_digital(i, file, design_data.starting_name)
+            else:
+                image_bytes, filename, nas_relative_path = await process_image_physical(i, file, design_data.starting_name)
+
+            if not image_bytes or not filename or not nas_relative_path:
+                logging.error(f"❌ Failed to process image for user ID: {user_id}")
                 raise DesignCreateError()
 
-            design_data.file_path = file_path
-            design_data.filename = filename
+            logging.info(f"✅ Processed: {filename}, NAS path: {nas_relative_path}")
 
-            # Calculate multiple perceptual hashes for better duplicate detection
-            hashes = calculate_multiple_hashes(image_path=file_path)
-            phash = hashes['phash']
-            ahash = hashes['ahash']
-            dhash = hashes['dhash']
-            whash = hashes['whash']
+            # Calculate multiple perceptual hashes from image bytes for database storage
+            try:
+                import io
+                nparr = np.frombuffer(image_bytes, np.uint8)
+                img_array = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+
+                # Convert to PIL for hashing
+                if len(img_array.shape) == 3 and img_array.shape[2] == 4:
+                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGRA2RGB)
+                elif len(img_array.shape) == 3:
+                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+                else:
+                    img_rgb = img_array
+
+                pil_img = Image.fromarray(img_rgb)
+                pil_img_normalized = pil_img.resize((256, 256), Image.Resampling.LANCZOS)
+
+                # Calculate all 4 hash types
+                phash = str(imagehash.phash(pil_img_normalized, hash_size=16))
+                ahash = str(imagehash.average_hash(pil_img_normalized, hash_size=16))
+                dhash = str(imagehash.dhash(pil_img_normalized, hash_size=16))
+                whash = str(imagehash.whash(pil_img_normalized, hash_size=16))
+
+                logging.info(f"🔐 Generated hashes for {filename}: phash={phash[:8]}..., ahash={ahash[:8]}..., dhash={dhash[:8]}..., whash={whash[:8]}...")
+
+            except Exception as e:
+                logging.error(f"❌ Error calculating hashes from bytes: {e}")
+                # Use the hash we already calculated during duplicate check
+                phash = file_hash_hex if file_hash_hex else None
+                ahash = None
+                dhash = None
+                whash = None
+
+            # Build NAS file path for storage
+            nas_file_path = f"/share/Graphics/NookTransfers/{user.shop_name}/{nas_relative_path}"
 
             design = DesignImages(
                 user_id=user_id,
                 filename=filename,
-                file_path=file_path,
+                file_path=nas_file_path,  # Store NAS path, not local path
                 description=design_data.description,
                 phash=phash,
                 ahash=ahash,
@@ -909,18 +917,20 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             )
             design_results.append(design)
             db.add(design)
+            logging.info(f"✅ Added design to database: {filename}")
         
         db.commit()
-        
+
         if duplicate_count > 0:
-            logging.info(f"Skipped {duplicate_count} duplicate designs out of {len(files)} total files")
-        
+            logging.info(f"⚠️ Skipped {duplicate_count} duplicate designs out of {len(files)} total files")
+
         response = model.DesignImageListResponse(
             designs=[model.DesignImageResponse.model_validate(design) for design in design_results],
             total=len(design_results)
         )
-        
-        logging.info(f"Successfully created {len(design_results)} designs for user: {user_id}")
+
+        logging.info(f"✅ Successfully created {len(design_results)} designs for user: {user_id}")
+        logging.info(f"📊 Summary: {len(files)} uploaded, {duplicate_count} duplicates skipped, {len(design_results)} created")
 
         # Invalidate user cache after creating designs
         try:
