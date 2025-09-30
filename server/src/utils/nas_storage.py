@@ -158,6 +158,7 @@ class NASStorage:
         else:
             self.enabled = True
             # Initialize connection pool for better concurrent access
+            # Increased default from 5 to 10 for better parallel upload performance
             max_connections = int(os.getenv('NAS_MAX_CONNECTIONS', '10'))
             self.connection_pool = SFTPConnectionPool(
                 host=self.host,
@@ -166,7 +167,7 @@ class NASStorage:
                 password=self.password,
                 max_connections=max_connections
             )
-            logging.info(f"NAS storage configured for host: {self.host} with {max_connections} max connections")
+            logging.info(f"✅ NAS storage configured: {self.host}:{self.port} with connection pool (max={max_connections})")
     
     @contextmanager
     def get_sftp_connection(self):

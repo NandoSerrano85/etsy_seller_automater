@@ -167,6 +167,11 @@ class ImageUploadWorkflow:
         self._existing_phashes: Optional[Set[str]] = None
         self._existing_phashes_lock = threading.Lock()
 
+        # Cache for frequently accessed data (reduces DB queries)
+        self._shop_name_cache: Optional[str] = None
+        self._template_name_cache: Dict[str, str] = {}
+        self._cache_lock = threading.Lock()
+
         # Configuration
         self.target_width = 3000
         self.target_height = 3000
@@ -289,13 +294,19 @@ class ImageUploadWorkflow:
             self.logger.error(f"❌ Traceback: {traceback.format_exc()}")
             self._existing_phashes = set()
 
-    def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 100) -> List[List[UploadedImage]]:
+    def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 50, max_images_per_batch: int = 20) -> List[List[UploadedImage]]:
         """
-        Create batches of images for processing (aim for ~100MB per batch)
+        Create optimized batches of images for processing
+
+        Improved batching strategy:
+        - Smaller batch size (50MB) for better memory management
+        - Max images per batch to prevent thread pool saturation
+        - Balances parallelism with resource usage
 
         Args:
             images: List of uploaded images
-            batch_size_mb: Target batch size in MB
+            batch_size_mb: Target batch size in MB (reduced from 100 to 50)
+            max_images_per_batch: Maximum number of images per batch
 
         Returns:
             List of image batches
@@ -306,7 +317,13 @@ class ImageUploadWorkflow:
         target_size = batch_size_mb * 1024 * 1024  # Convert to bytes
 
         for image in images:
-            if current_size + image.size > target_size and current_batch:
+            # Split batch if we exceed size OR image count limits
+            should_split = (
+                (current_size + image.size > target_size and current_batch) or
+                (len(current_batch) >= max_images_per_batch)
+            )
+
+            if should_split:
                 batches.append(current_batch)
                 current_batch = [image]
                 current_size = image.size
@@ -316,6 +333,11 @@ class ImageUploadWorkflow:
 
         if current_batch:
             batches.append(current_batch)
+
+        # Log batch distribution for monitoring
+        if batches:
+            sizes = [len(b) for b in batches]
+            self.logger.info(f"📦 Created {len(batches)} batches: images/batch={sizes}, avg={sum(sizes)/len(sizes):.1f}")
 
         return batches
 
@@ -989,7 +1011,7 @@ class ImageUploadWorkflow:
 
     def _update_database_batch(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
         """
-        Update database with new design entries
+        Update database with new design entries using bulk insert
 
         Args:
             images: List of images successfully uploaded to NAS
@@ -1006,7 +1028,7 @@ class ImageUploadWorkflow:
             self.logger.warning(f"🗄️  Batch {batch_id}: Database dependencies not available, skipping update")
             return []
 
-        self.logger.info(f"🗄️  Batch {batch_id}: Updating database with {len(images)} records")
+        self.logger.info(f"🗄️  Batch {batch_id}: Updating database with {len(images)} records using bulk insert")
         successful_updates = []
 
         with self.db_lock:  # Serialize database operations
@@ -1016,6 +1038,20 @@ class ImageUploadWorkflow:
             # Check if multi-tenant is enabled
             multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
+            # Get org_id once if multi-tenant
+            org_id = None
+            if multi_tenant:
+                try:
+                    org_result = self.db_session.execute(text("""
+                        SELECT org_id FROM users WHERE id = :user_id
+                    """), {"user_id": self.user_id})
+                    org_row = org_result.fetchone()
+                    org_id = org_row[0] if org_row else None
+                except Exception as e:
+                    self.logger.error(f"   ❌ Failed to get org_id: {e}")
+
+            # Prepare bulk insert data
+            insert_values = []
             for image in images:
                 try:
                     # Skip if image doesn't have required data
@@ -1029,84 +1065,67 @@ class ImageUploadWorkflow:
                     # Generate unique UUID for this design
                     design_id = str(uuid.uuid4())
 
-                    # Note: Duplicate checking has already been done in the workflow
-                    # These images have passed duplicate detection, so we should save them
-                    self.logger.info(f"   💾 Saving unique image: {image.final_filename}")
+                    # Prepare row data
+                    row_data = {
+                        "id": design_id,
+                        "user_id": self.user_id,
+                        "filename": image.final_filename,
+                        "file_path": file_path,
+                        "phash": image.phash,
+                        "ahash": image.ahash,
+                        "dhash": image.dhash,
+                        "whash": image.whash,
+                        "is_active": True,
+                        "is_digital": False,
+                        "created_at": now,
+                        "updated_at": now
+                    }
 
                     if multi_tenant:
-                        # Get user's org_id
-                        org_result = self.db_session.execute(text("""
-                            SELECT org_id FROM users WHERE id = :user_id
-                        """), {"user_id": self.user_id})
-                        org_row = org_result.fetchone()
-                        org_id = org_row[0] if org_row else None
+                        row_data["org_id"] = org_id
 
-                        self.db_session.execute(text("""
-                            INSERT INTO design_images
-                            (id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at)
-                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at)
-                        """), {
-                            "id": design_id,
-                            "user_id": self.user_id,
-                            "org_id": org_id,
-                            "filename": image.final_filename,
-                            "file_path": file_path,
-                            "phash": image.phash,
-                            "ahash": image.ahash,
-                            "dhash": image.dhash,
-                            "whash": image.whash,
-                            "is_active": True,
-                            "is_digital": False,
-                            "created_at": now,
-                            "updated_at": now
-                        })
-                    else:
-                        self.db_session.execute(text("""
-                            INSERT INTO design_images
-                            (id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at)
-                            VALUES (:id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at)
-                        """), {
-                            "id": design_id,
-                            "user_id": self.user_id,
-                            "filename": image.final_filename,
-                            "file_path": file_path,
-                            "phash": image.phash,
-                            "ahash": image.ahash,
-                            "dhash": image.dhash,
-                            "whash": image.whash,
-                            "is_active": True,
-                            "is_digital": False,
-                            "created_at": now,
-                            "updated_at": now
-                        })
-
-                    image.db_updated = True
+                    insert_values.append(row_data)
                     successful_updates.append(image)
 
-                    # Note: Duplicate detection now uses database queries, so no need to maintain in-memory set
+                except Exception as e:
+                    self.logger.error(f"   ❌ Error preparing data for {image.final_filename or 'unknown'}: {e}")
+                    continue
+
+            # Perform bulk insert if we have data
+            if insert_values:
+                try:
+                    # Build bulk INSERT query
+                    if multi_tenant:
+                        columns = "id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at"
+                        placeholders = ":id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at"
+                    else:
+                        columns = "id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at"
+                        placeholders = ":id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at"
+
+                    # Use executemany for bulk insert (much faster than individual inserts)
+                    self.db_session.execute(text(f"""
+                        INSERT INTO design_images ({columns})
+                        VALUES ({placeholders})
+                    """), insert_values)
+
+                    # Mark images as updated
+                    for image in successful_updates:
+                        image.db_updated = True
+
+                    # Commit all database changes
+                    self.db_session.commit()
+                    self.logger.info(f"🗄️  Batch {batch_id}: Successfully bulk inserted {len(insert_values)} records to database")
 
                 except Exception as e:
-                    # Rollback transaction on error to prevent failed transaction state
+                    self.logger.error(f"   ❌ Failed to bulk insert database changes: {e}")
                     try:
                         self.db_session.rollback()
                     except Exception:
-                        pass  # Ignore rollback errors
-
-                    self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
-                    # Continue processing other images - don't let one failure stop all
-
-            # Commit all database changes
-            try:
-                self.db_session.commit()
-                self.logger.info(f"🗄️  Batch {batch_id}: Successfully committed {len(successful_updates)}/{len(images)} records to database")
-            except Exception as e:
-                self.logger.error(f"   ❌ Failed to commit database changes: {e}")
-                try:
-                    self.db_session.rollback()
-                except Exception:
-                    pass
-                # Return empty list if commit failed
-                return []
+                        pass
+                    # Return empty list if commit failed
+                    return []
+            else:
+                self.logger.warning(f"🗄️  Batch {batch_id}: No valid data to insert")
 
         return successful_updates
 
@@ -1214,40 +1233,65 @@ class ImageUploadWorkflow:
             return False
 
     def _get_user_shop_name(self) -> str:
-        """Get the shop name for the current user"""
-        try:
-            if DEPENDENCIES_AVAILABLE:
-                result = self.db_session.execute(text("""
-                    SELECT shop_name FROM users WHERE id = :user_id
-                """), {"user_id": self.user_id})
+        """Get the shop name for the current user (cached)"""
+        # Check cache first
+        if self._shop_name_cache:
+            return self._shop_name_cache
 
-                row = result.fetchone()
-                if row and row[0]:
-                    return row[0]
+        with self._cache_lock:
+            # Double-check after acquiring lock
+            if self._shop_name_cache:
+                return self._shop_name_cache
 
-        except Exception as e:
-            self.logger.info(f"Could not get shop name from database: {e}")
+            try:
+                if DEPENDENCIES_AVAILABLE:
+                    result = self.db_session.execute(text("""
+                        SELECT shop_name FROM users WHERE id = :user_id
+                    """), {"user_id": self.user_id})
 
-        # Fallback to user ID-based shop name
-        return f"user_{self.user_id[:8]}"
+                    row = result.fetchone()
+                    if row and row[0]:
+                        self._shop_name_cache = row[0]
+                        return self._shop_name_cache
+
+            except Exception as e:
+                self.logger.info(f"Could not get shop name from database: {e}")
+
+            # Fallback to user ID-based shop name
+            self._shop_name_cache = f"user_{self.user_id[:8]}"
+            return self._shop_name_cache
 
     def _get_template_name(self, template_id: str) -> str:
-        """Get the template name from template_id"""
-        try:
-            if DEPENDENCIES_AVAILABLE and template_id:
-                result = self.db_session.execute(text("""
-                    SELECT name FROM etsy_product_templates WHERE id = :template_id
-                """), {"template_id": template_id})
+        """Get the template name from template_id (cached)"""
+        if not template_id:
+            return "uploads"
 
-                row = result.fetchone()
-                if row and row[0]:
-                    return row[0]
+        # Check cache first
+        if template_id in self._template_name_cache:
+            return self._template_name_cache[template_id]
 
-        except Exception as e:
-            self.logger.info(f"Could not get template name from database: {e}")
+        with self._cache_lock:
+            # Double-check after acquiring lock
+            if template_id in self._template_name_cache:
+                return self._template_name_cache[template_id]
 
-        # Fallback to "uploads" if template not found
-        return "uploads"
+            try:
+                if DEPENDENCIES_AVAILABLE:
+                    result = self.db_session.execute(text("""
+                        SELECT name FROM etsy_product_templates WHERE id = :template_id
+                    """), {"template_id": template_id})
+
+                    row = result.fetchone()
+                    if row and row[0]:
+                        self._template_name_cache[template_id] = row[0]
+                        return self._template_name_cache[template_id]
+
+            except Exception as e:
+                self.logger.info(f"Could not get template name from database: {e}")
+
+            # Fallback to "uploads" if template not found
+            self._template_name_cache[template_id] = "uploads"
+            return "uploads"
 
     def _generate_filename(self, original_filename: str, template_id: str, file_index: int = 0) -> str:
         """Generate filename with proper mockup numbering using starting_name from design_data"""

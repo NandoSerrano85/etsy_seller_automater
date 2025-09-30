@@ -26,6 +26,7 @@ class EtsyProductTemplateCreate(BaseModel):
     processing_min: Optional[int] = None
     processing_max: Optional[int] = None
     return_policy_id: Optional[int] = None
+    production_partner_ids: Optional[str] = None  # Comma-separated list of production partner IDs
 
 class EtsyProductTemplateUpdate(EtsyProductTemplateCreate):
     pass

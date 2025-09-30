@@ -1380,7 +1380,17 @@ async def upload_mockup_files_to_etsy(
         # Parse materials and tags from string to list if needed
         materials = template.materials.split(',') if template.materials else []
         tags = template.tags.split(',') if template.tags else []
-        
+
+        # Parse production_partner_ids from template (required for physical listings)
+        production_partner_ids = None
+        if hasattr(template, 'production_partner_ids') and template.production_partner_ids:
+            # Convert comma-separated string to list of integers
+            try:
+                production_partner_ids = [int(pid.strip()) for pid in template.production_partner_ids.split(',') if pid.strip()]
+            except (ValueError, AttributeError):
+                logging.warning(f"Invalid production_partner_ids format: {template.production_partner_ids}")
+                production_partner_ids = None
+
         logging.info(f"DEBUG API: Creating Etsy listings for {len(mockup_data)} designs")
         for i,(design, mockups) in enumerate(mockup_data.items()):
             logging.info(f"DEBUG API: Creating listing {i+1}/{len(mockup_data)} for design: {design}")
@@ -1401,6 +1411,7 @@ async def upload_mockup_files_to_etsy(
                 item_weight_unit=template.item_weight_unit,
                 item_dimensions_unit=template.item_dimensions_unit,
                 return_policy_id=template.return_policy_id,
+                production_partner_ids=production_partner_ids,
             )
             listing_id = listing_response["listing_id"]
             logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")

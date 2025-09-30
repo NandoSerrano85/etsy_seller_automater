@@ -42,6 +42,7 @@ class EtsyProductTemplate(Base):
     processing_min = Column(Integer, nullable=True)
     processing_max = Column(Integer, nullable=True)
     return_policy_id = Column(Integer, nullable=True)
+    production_partner_ids = Column(Text, nullable=True)  # Comma-separated list of production partner IDs (required for physical items)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Relationships
