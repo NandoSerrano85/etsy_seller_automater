@@ -71,14 +71,24 @@ class BatchResult:
     processing_time: float
     error_details: List[str]
 
-def calculate_phash_from_content(image_content: bytes, hash_size: int = 16) -> str:
-    """Calculate perceptual hash for image content."""
+def calculate_all_hashes_from_content(image_content: bytes, hash_size: int = 16) -> dict:
+    """Calculate all perceptual hashes for image content."""
     try:
         with Image.open(BytesIO(image_content)) as img:
+            # Calculate all hash types
             phash = imagehash.phash(img, hash_size=hash_size)
-            return str(phash)
+            ahash = imagehash.average_hash(img, hash_size=hash_size)
+            dhash = imagehash.dhash(img, hash_size=hash_size)
+            whash = imagehash.whash(img, hash_size=hash_size)
+
+            return {
+                'phash': str(phash),
+                'ahash': str(ahash),
+                'dhash': str(dhash),
+                'whash': str(whash)
+            }
     except Exception as e:
-        raise Exception(f"Error calculating phash: {e}")
+        raise Exception(f"Error calculating hashes: {e}")
 
 def get_database_connection():
     """Create a new database connection for this thread with clean transaction state"""
@@ -101,9 +111,9 @@ def design_exists(connection, user_id: str, filename: str) -> bool:
     count = result.fetchone()[0]
     return count > 0
 
-def process_single_file(file_info: FileInfo) -> Tuple[bool, str, Optional[str]]:
+def process_single_file(file_info: FileInfo) -> Tuple[bool, str, Optional[dict]]:
     """
-    Process a single file and return (success, error_message, phash)
+    Process a single file and return (success, error_message, hash_dict)
     This function runs in a thread and uses the global nas_storage object
     """
     try:
@@ -120,9 +130,9 @@ def process_single_file(file_info: FileInfo) -> Tuple[bool, str, Optional[str]]:
         if not file_content:
             return False, f"Failed to download {file_info.filename}", None
 
-        # Calculate phash
-        phash = calculate_phash_from_content(file_content)
-        return True, "", phash
+        # Calculate all hashes
+        hash_dict = calculate_all_hashes_from_content(file_content)
+        return True, "", hash_dict
 
     except Exception as e:
         return False, f"Error processing {file_info.filename}: {e}", None
@@ -177,7 +187,7 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
 
                     try:
                         # Get processing result
-                        success, error_msg, phash = future.result()
+                        success, error_msg, hash_dict = future.result()
 
                         if not success:
                             errors += 1
@@ -187,7 +197,7 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                         # Store successful result for batch database insert
                         successful_results.append({
                             'file_info': file_info,
-                            'phash': phash,
+                            'hashes': hash_dict,
                             'design_id': str(uuid.uuid4())
                         })
 
@@ -229,21 +239,21 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                 multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
                 if multi_tenant:
-                    # Batch insert into design_images with org_id
+                    # Batch insert into design_images with org_id and all hash types
                     insert_query = text("""
                         INSERT INTO design_images
-                        (id, user_id, org_id, filename, file_path, phash, is_active, created_at, updated_at)
+                        (id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, created_at, updated_at)
                         VALUES
-                        (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                        (:id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :created_at, :updated_at)
                         ON CONFLICT (id) DO NOTHING
                     """)
                 else:
-                    # Batch insert into design_images without org_id
+                    # Batch insert into design_images without org_id but with all hash types
                     insert_query = text("""
                         INSERT INTO design_images
-                        (id, user_id, filename, file_path, phash, is_active, created_at, updated_at)
+                        (id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, created_at, updated_at)
                         VALUES
-                        (:id, :user_id, :filename, :file_path, :phash, :is_active, :created_at, :updated_at)
+                        (:id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :created_at, :updated_at)
                         ON CONFLICT (id) DO NOTHING
                     """)
 
@@ -268,13 +278,17 @@ def process_batch(batch_files: List[FileInfo], batch_id: int) -> BatchResult:
                 for result in successful_results:
                     file_info = result['file_info']
                     design_id = result['design_id']
+                    hashes = result['hashes']
 
                     design_record = {
                         "id": design_id,
                         "user_id": file_info.user_id,
                         "filename": file_info.filename,
                         "file_path": file_info.file_path,
-                        "phash": result['phash'],
+                        "phash": hashes['phash'],
+                        "ahash": hashes['ahash'],
+                        "dhash": hashes['dhash'],
+                        "whash": hashes['whash'],
                         "is_active": True,
                         "created_at": now,
                         "updated_at": now

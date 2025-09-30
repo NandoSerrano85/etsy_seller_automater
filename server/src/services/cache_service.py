@@ -178,3 +178,42 @@ async def clear_user_cache(user_id: str):
 async def clear_template_cache(template_id: str):
     """Clear template cache"""
     await cache_service.clear_template_cache(template_id)
+
+class ApiCache:
+    """API-specific cache methods for backwards compatibility"""
+
+    @staticmethod
+    async def get_analytics_cache(user_id: str, year: int) -> Optional[dict]:
+        """Get cached analytics data for user and year"""
+        cache_key = f"analytics:{user_id}:{year}"
+        return await cache_manager.get(cache_key)
+
+    @staticmethod
+    async def set_analytics_cache(user_id: str, year: int, data: dict, ttl: int = 3600):
+        """Cache analytics data for user and year"""
+        cache_key = f"analytics:{user_id}:{year}"
+        await cache_manager.set(cache_key, data, ttl)
+
+    @staticmethod
+    async def get_connection_cache(user_id: str) -> Optional[dict]:
+        """Get cached connection verification data"""
+        cache_key = f"connection:{user_id}"
+        return await cache_manager.get(cache_key)
+
+    @staticmethod
+    async def set_connection_cache(user_id: str, data: dict, ttl: int = 300):
+        """Cache connection verification data"""
+        cache_key = f"connection:{user_id}"
+        await cache_manager.set(cache_key, data, ttl)
+
+    @staticmethod
+    async def get_gallery_cache(user_id: str) -> Optional[dict]:
+        """Get cached gallery data"""
+        cache_key = f"gallery:{user_id}"
+        return await cache_manager.get(cache_key)
+
+    @staticmethod
+    async def set_gallery_cache(user_id: str, page: int, data: dict, ttl: int = 1800):
+        """Cache gallery data"""
+        cache_key = f"gallery:{user_id}:page:{page}"
+        await cache_manager.set(cache_key, data, ttl)
