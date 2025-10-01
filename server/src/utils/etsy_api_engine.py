@@ -56,16 +56,19 @@ class EtsyAPI:
             self.taxonomy_id = None
             self.shipping_profile_id = None
             self.shop_section_id = None
+            self.readiness_state_id =
 
         # Only fetch additional data if we have valid tokens and shop_id
         if self.oauth_token and self.shop_id:
             self.taxonomy_id = self.fetch_taxonomies()
             self.shipping_profile_id = self.fetch_shipping_profiles()
             self.shop_section_id = self.fetch_shop_sections()
+            self.readiness_state_id = self.fetch_shop_readiness_state_id()
         else:
             self.taxonomy_id = None
             self.shipping_profile_id = None
             self.shop_section_id = None
+            self.readiness_state_id = None
 
     def is_authenticated(self) -> bool:
         """Check if the engine has valid Etsy authentication"""
@@ -318,6 +321,28 @@ class EtsyAPI:
             
         return shop_id
 
+    def fetch_shop_readiness_state_id(self) -> Optional[int]:
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        readiness_url = f"{self.base_url}/application/shops/{self.shop_id}/readiness-state-definitions"
+
+        readines_response = self.session.get(readiness_url, headers=headers)
+
+        if not readines_response.ok:
+            logging.error(f"Failed to fetch shop readiness state: {readines_response.status_code} {readines_response.text}")
+            return None
+        
+        readiness_data = readines_response.json()
+        readiness_state_id = readiness_data.get('readiness_state_id')
+        if not readiness_state_id:
+            logging.error(f"Readiness state ID not found in response: {readiness_data}")
+            return None
+
+        return readiness_state_id
+
     def create_draft_listing(self, title: str, description: str, price: float,
                            quantity: int, tags: List[str],
                            materials: List[str],
@@ -372,6 +397,7 @@ class EtsyAPI:
             "state": "draft",
             "return_policy_id": return_policy_id if return_policy_id else 1,
             "type": "physical" if not is_digital else "download",
+            "readiness_state_id": self.readiness_state_id if self.readiness_state_id else 1,
         }
 
         # For physical listings, production_partner_ids is required
