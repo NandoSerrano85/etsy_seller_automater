@@ -26,6 +26,7 @@ const ToolsTab = React.lazy(() => import('./pages/HomeTabs/ToolsTab'));
 
 // Shopify components (lazy loaded)
 const ShopifyConnect = React.lazy(() => import('./pages/ShopifyConnect'));
+const ShopifySuccess = React.lazy(() => import('./pages/ShopifySuccess'));
 const ShopifyProducts = React.lazy(() => import('./pages/ShopifyProducts'));
 const ShopifyOrders = React.lazy(() => import('./pages/ShopifyOrders'));
 const ShopifyDashboard = React.lazy(() => import('./pages/ShopifyDashboard'));
@@ -215,6 +216,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ShopifyConnect />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/shopify/success"
+              element={
+                <ProtectedRoute>
+                  <ShopifySuccess />
                 </ProtectedRoute>
               }
             />

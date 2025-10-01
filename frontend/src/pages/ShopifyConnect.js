@@ -34,6 +34,8 @@ const ShopifyConnect = () => {
 
   const [connecting, setConnecting] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [shopDomain, setShopDomain] = useState('');
+  const [shopDomainError, setShopDomainError] = useState('');
 
   // Check for OAuth callback parameters
   useEffect(() => {
@@ -53,11 +55,28 @@ const ShopifyConnect = () => {
   }, [searchParams, addNotification, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const initiateConnection = async () => {
+    // Validate shop domain
+    if (!shopDomain.trim()) {
+      setShopDomainError('Please enter your shop domain');
+      return;
+    }
+
+    // Clean the shop domain (remove .myshopify.com if included)
+    const cleanDomain = shopDomain.replace('.myshopify.com', '').toLowerCase().trim();
+
+    if (!cleanDomain) {
+      setShopDomainError('Please enter a valid shop domain');
+      return;
+    }
+
     try {
       setConnecting(true);
-      await connectStore(null); // Will prompt for shop domain in OAuth flow
+      setShopDomainError('');
+      // Pass the shop domain with .myshopify.com suffix
+      await connectStore(`${cleanDomain}.myshopify.com`);
     } catch (error) {
       console.error('Error connecting to Shopify:', error);
+      setShopDomainError(error.message || 'Failed to connect to Shopify');
     } finally {
       setConnecting(false);
     }
@@ -296,11 +315,39 @@ const ShopifyConnect = () => {
               </div>
             </div>
 
+            {/* Shop Domain Input */}
+            <div className="max-w-md mx-auto mb-6">
+              <label htmlFor="shopDomain" className="block text-sm font-medium text-gray-700 mb-2">
+                Shopify Store Domain
+              </label>
+              <div className="relative">
+                <input
+                  id="shopDomain"
+                  type="text"
+                  value={shopDomain}
+                  onChange={e => {
+                    setShopDomain(e.target.value);
+                    if (shopDomainError) setShopDomainError('');
+                  }}
+                  placeholder="your-store-name"
+                  className={`w-full px-4 py-2 pr-36 border ${
+                    shopDomainError ? 'border-red-500' : 'border-gray-300'
+                  } rounded-lg focus:ring-2 focus:ring-sage-500 focus:border-sage-500`}
+                  disabled={connecting}
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                  <span className="text-gray-500 text-sm">.myshopify.com</span>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">Enter your shop domain without the ".myshopify.com" part</p>
+              {shopDomainError && <p className="text-sm text-red-600 mt-1">{shopDomainError}</p>}
+            </div>
+
             {/* Connect Button */}
             <div className="text-center">
               <button
                 onClick={initiateConnection}
-                disabled={connecting}
+                disabled={connecting || !shopDomain.trim()}
                 className="flex items-center px-6 py-3 bg-sage-600 text-white rounded-lg hover:bg-sage-700 disabled:opacity-50 disabled:cursor-not-allowed mx-auto"
               >
                 {connecting ? (
