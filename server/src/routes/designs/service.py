@@ -500,29 +500,31 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             designs_path = f"{local_root_path}{user.shop_name}/{template.name}/"
         os.makedirs(designs_path, exist_ok=True)
         
-        async def process_image_physical(n, file, id_number):
-            """Process physical images - optimized for speed with in-memory processing and direct NAS upload"""
+        async def resize_and_hash_physical(file):
+            """Resize image and calculate hashes (before duplicate check) - no upload yet"""
             import time
             start_time = time.time()
 
             try:
                 # Read the image file content
-                logging.info(f"📥 Processing physical image: {file.filename}")
+                logging.info(f"📥 Resizing and hashing: {file.filename}")
                 contents = await file.read()
+                await file.seek(0)  # Reset for later use
+
                 nparr = np.frombuffer(contents, np.uint8)
                 image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 
                 if image is None:
                     logging.error("❌ Failed to decode image")
-                    return None, None, None
+                    return None
 
                 # Crop transparent areas
                 crop_start = time.time()
                 cropped_image = crop_transparent(image=image)
                 if cropped_image is None:
                     logging.error("❌ Failed to crop image")
-                    return None, None, None
-                logging.info(f"✂️ Cropped image in {time.time() - crop_start:.2f}s")
+                    return None
+                logging.info(f"✂️ Cropped in {time.time() - crop_start:.2f}s")
 
                 # Resize image
                 resize_start = time.time()
@@ -533,54 +535,95 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                     canvas_id=design_data.canvas_config_id,
                     product_template_id=design_data.product_template_id
                 )
-                logging.info(f"📐 Resized image in {time.time() - resize_start:.2f}s")
+                logging.info(f"📐 Resized in {time.time() - resize_start:.2f}s")
+
+                # Convert to PIL for hashing
+                hash_start = time.time()
+                if len(resized_image.shape) == 3 and resized_image.shape[2] == 4:
+                    img_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGRA2RGB)
+                elif len(resized_image.shape) == 3:
+                    img_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
+                else:
+                    img_rgb = resized_image
+
+                pil_img = Image.fromarray(img_rgb)
+                pil_img_normalized = pil_img.resize((256, 256), Image.Resampling.LANCZOS)
+
+                # Calculate all 4 hash types
+                phash = str(imagehash.phash(pil_img_normalized, hash_size=16))
+                ahash = str(imagehash.average_hash(pil_img_normalized, hash_size=16))
+                dhash = str(imagehash.dhash(pil_img_normalized, hash_size=16))
+                whash = str(imagehash.whash(pil_img_normalized, hash_size=16))
+
+                logging.info(f"🔐 Generated hashes in {time.time() - hash_start:.2f}s: phash={phash[:8]}...")
+
+                # Store resized image for later upload (if not duplicate)
+                total_time = time.time() - start_time
+                logging.info(f"✅ Resize & hash completed in {total_time:.2f}s")
+
+                return {
+                    'resized_image': resized_image,
+                    'phash': phash,
+                    'ahash': ahash,
+                    'dhash': dhash,
+                    'whash': whash,
+                    'original_filename': file.filename
+                }
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                logging.error(f"❌ Error resizing/hashing physical image: {str(e)}")
+                return None
+
+        async def upload_processed_image_physical(processed_data, index, id_number):
+            """Upload previously resized image to NAS with generated filename"""
+            import time
+            upload_start = time.time()
+
+            try:
+                resized_image = processed_data['resized_image']
 
                 # Generate filename
-                current_id_number = str(n + id_number).zfill(3)
+                current_id_number = str(index + id_number).zfill(3)
                 prefix = "UV" if re.search(type_pattern, template.name) else "DTF"
                 postfix = "_".join(str(template.name).split() + [current_id_number])
                 filename = f"{prefix} {current_id_number} {postfix}.png"
 
-                # Convert image to bytes in memory (no local save for ≤2 images)
+                logging.info(f"📤 Uploading to NAS: {filename}")
+
+                # Encode to bytes
                 encode_start = time.time()
                 success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
                 if not success:
                     logging.error("❌ Failed to encode image")
                     return None, None, None
                 image_bytes = encoded_image.tobytes()
-                logging.info(f"💾 Encoded image to bytes in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
+                logging.info(f"💾 Encoded in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
 
-                # Upload directly to NAS from memory
+                # Upload to NAS
                 nas_start = time.time()
-                try:
-                    relative_path = f"{template.name}/{filename}"
-                    success = nas_storage.upload_file_content(
-                        file_content=image_bytes,
-                        shop_name=user.shop_name,
-                        relative_path=relative_path
-                    )
-                    if success:
-                        logging.info(f"✅ Uploaded design to NAS in {time.time() - nas_start:.2f}s: {relative_path}")
-                    else:
-                        logging.warning(f"⚠️ Failed to upload design to NAS: {relative_path}")
-                        return None, None, None
-                except Exception as e:
-                    logging.error(f"❌ Error uploading design to NAS: {e}")
+                relative_path = f"{template.name}/{filename}"
+                success = nas_storage.upload_file_content(
+                    file_content=image_bytes,
+                    shop_name=user.shop_name,
+                    relative_path=relative_path
+                )
+                if success:
+                    logging.info(f"✅ Uploaded to NAS in {time.time() - nas_start:.2f}s: {relative_path}")
+                else:
+                    logging.warning(f"⚠️ Failed to upload to NAS: {relative_path}")
                     return None, None, None
 
-                # Reset file pointer for potential reuse
-                await file.seek(0)
+                total_time = time.time() - upload_start
+                logging.info(f"✅ Upload completed in {total_time:.2f}s")
 
-                # Return image bytes for hash calculation (no local file path)
-                total_time = time.time() - start_time
-                logging.info(f"✅ Total processing time for {filename}: {total_time:.2f}s")
-
-                return image_bytes, filename, relative_path
+                return filename, relative_path, image_bytes
 
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                logging.error(f"❌ Error processing physical image: {str(e)}")
+                logging.error(f"❌ Error uploading physical image: {str(e)}")
                 return None, None, None
 
         def check_duplicate_in_database(phash_hex: str) -> bool:
@@ -662,29 +705,31 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 logging.error(f"❌ Error checking Hamming distance: {e}")
                 return False, None
 
-        async def process_image_digital(n, file, id_number):
-            """Process digital product images - optimized for speed with in-memory processing and direct NAS upload"""
+        async def resize_and_hash_digital(file):
+            """Resize digital image and calculate hashes (before duplicate check) - no upload yet"""
             import time
             start_time = time.time()
 
             try:
                 # Read the image file content
-                logging.info(f"📥 Processing digital image: {file.filename}")
+                logging.info(f"📥 Resizing and hashing digital: {file.filename}")
                 contents = await file.read()
+                await file.seek(0)  # Reset for later use
+
                 nparr = np.frombuffer(contents, np.uint8)
                 image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 
                 if image is None:
                     logging.error("❌ Failed to decode image")
-                    return None, None, None
+                    return None
 
                 # Crop transparent areas
                 crop_start = time.time()
                 cropped_image = crop_transparent(image=image)
                 if cropped_image is None:
                     logging.error("❌ Failed to crop image")
-                    return None, None, None
-                logging.info(f"✂️ Cropped image in {time.time() - crop_start:.2f}s")
+                    return None
+                logging.info(f"✂️ Cropped in {time.time() - crop_start:.2f}s")
 
                 # Get DPI and handle 16-bit images
                 target_dpi = get_dpi_from_image(image)
@@ -702,184 +747,16 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                     ),
                     interpolation=cv2.INTER_CUBIC
                 )
-                logging.info(f"📐 Resized image in {time.time() - resize_start:.2f}s")
-
-                # Generate filename
-                digital_id_number = str(n + id_number).zfill(3)
-                filename = f"Digital {digital_id_number}.png"
-
-                # Convert image to bytes in memory (no local save for ≤2 images)
-                encode_start = time.time()
-                success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
-                if not success:
-                    logging.error("❌ Failed to encode image")
-                    return None, None, None
-                image_bytes = encoded_image.tobytes()
-                logging.info(f"💾 Encoded image to bytes in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
-
-                # Upload directly to NAS from memory
-                nas_start = time.time()
-                try:
-                    relative_path = f"Digital/{template.name}/{filename}"
-                    success = nas_storage.upload_file_content(
-                        file_content=image_bytes,
-                        shop_name=user.shop_name,
-                        relative_path=relative_path
-                    )
-                    if success:
-                        logging.info(f"✅ Uploaded digital design to NAS in {time.time() - nas_start:.2f}s: {relative_path}")
-                    else:
-                        logging.warning(f"⚠️ Failed to upload digital design to NAS: {relative_path}")
-                        return None, None, None
-                except Exception as e:
-                    logging.error(f"❌ Error uploading digital design to NAS: {e}")
-                    return None, None, None
-
-                # Reset file pointer for potential reuse
-                await file.seek(0)
-
-                # Return image bytes for hash calculation (no local file path)
-                total_time = time.time() - start_time
-                logging.info(f"✅ Total processing time for {filename}: {total_time:.2f}s")
-
-                return image_bytes, filename, relative_path
-
-            except Exception as e:
-                logging.error(f"❌ Error processing digital image: {str(e)}")
-                return None, None, None
-        
-        # Step 1: Check for duplicates using optimized database-backed approach
-        if progress_callback:
-            progress_callback(0, "Checking for duplicates using database indexes")
-
-        logging.info(f"🔍 Starting optimized duplicate check for {len(files)} files (≤2 images workflow)")
-
-        # Check for duplicates in uploaded files before processing
-        non_duplicate_files = []
-        duplicate_count = 0
-        checked_hashes = {}  # Track hashes of files in this batch
-
-        for i, file in enumerate(files):
-            import time
-            check_start = time.time()
-            logging.info(f"🔍 [{i+1}/{len(files)}] Checking file for duplicates: {file.filename}")
-
-            # Read file content to create hash
-            contents = await file.read()
-            await file.seek(0)  # Reset file pointer for later use
-
-            # Create hash from uploaded content
-            try:
-                nparr = np.frombuffer(contents, np.uint8)
-                temp_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-
-                if temp_image is not None:
-                    # Normalize image for consistent hashing regardless of size/DPI
-                    if len(temp_image.shape) == 3 and temp_image.shape[2] == 4:
-                        # Convert BGRA to RGB for PIL
-                        temp_image_rgb = cv2.cvtColor(temp_image, cv2.COLOR_BGRA2RGB)
-                    elif len(temp_image.shape) == 3:
-                        # Convert BGR to RGB for PIL
-                        temp_image_rgb = cv2.cvtColor(temp_image, cv2.COLOR_BGR2RGB)
-                    else:
-                        temp_image_rgb = temp_image
-
-                    pil_image = Image.fromarray(temp_image_rgb)
-                    # Resize to standard size for consistent comparison regardless of original size/DPI
-                    pil_image = pil_image.resize((256, 256), Image.Resampling.LANCZOS)
-
-                    # Calculate hash
-                    file_hash = imagehash.phash(pil_image, hash_size=16)
-                    file_hash_hex = str(file_hash)
-
-                    is_duplicate = False
-                    duplicate_source = None
-
-                    # 1. Check against other files in this batch first (fastest)
-                    for other_filename, other_hash_hex in checked_hashes.items():
-                        try:
-                            other_hash = imagehash.hex_to_hash(other_hash_hex)
-                            distance = file_hash - other_hash
-                            if distance <= 5:
-                                logging.warning(f"⚠️ Skipping duplicate file within batch: {file.filename} (matches {other_filename}, distance: {distance})")
-                                duplicate_count += 1
-                                is_duplicate = True
-                                duplicate_source = f"batch file {other_filename}"
-                                break
-                        except Exception as e:
-                            logging.debug(f"Error comparing batch hash: {e}")
-
-                    # 2. Check exact match in database (O(log n) with index)
-                    if not is_duplicate:
-                        if check_duplicate_in_database(file_hash_hex):
-                            logging.warning(f"⚠️ Skipping duplicate file: {file.filename} (exact match in database)")
-                            duplicate_count += 1
-                            is_duplicate = True
-                            duplicate_source = "database (exact match)"
-
-                    # 3. Check Hamming distance against recent 1000 images
-                    if not is_duplicate:
-                        is_similar, similar_filename = check_hamming_distance_in_database(file_hash_hex, threshold=5)
-                        if is_similar:
-                            logging.warning(f"⚠️ Skipping duplicate file: {file.filename} (similar to {similar_filename})")
-                            duplicate_count += 1
-                            is_duplicate = True
-                            duplicate_source = f"database similar to {similar_filename}"
-
-                    if not is_duplicate:
-                        non_duplicate_files.append((file, file_hash_hex))
-                        checked_hashes[file.filename] = file_hash_hex
-                        check_time = time.time() - check_start
-                        logging.info(f"✅ File {file.filename} is unique (checked in {check_time:.2f}s)")
-                    else:
-                        check_time = time.time() - check_start
-                        logging.info(f"⚠️ File {file.filename} is duplicate of {duplicate_source} (checked in {check_time:.2f}s)")
-
-                else:
-                    logging.error(f"❌ Failed to decode image for duplicate check: {file.filename}")
-                    # Still process files that can't be decoded for duplicate checking
-                    non_duplicate_files.append((file, None))
-
-            except Exception as e:
-                logging.error(f"❌ Error checking duplicates for {file.filename}: {str(e)}")
-                # Still process files that fail duplicate checking
-                non_duplicate_files.append((file, None))
-
-        design_results = []
-
-        # Step 2: Process only non-duplicate files
-        logging.info(f"📦 Processing {len(non_duplicate_files)} unique files")
-        for i, (file, file_hash_hex) in enumerate(non_duplicate_files):
-            if progress_callback:
-                progress_callback(1, f"Processing and formatting images ({i+1}/{len(non_duplicate_files)})")
-
-            logging.info(f"📦 [{i+1}/{len(non_duplicate_files)}] Processing non-duplicate file: {file.filename}")
-
-            # Process image (returns image_bytes, filename, nas_relative_path)
-            if design_data.is_digital:
-                image_bytes, filename, nas_relative_path = await process_image_digital(i, file, design_data.starting_name)
-            else:
-                image_bytes, filename, nas_relative_path = await process_image_physical(i, file, design_data.starting_name)
-
-            if not image_bytes or not filename or not nas_relative_path:
-                logging.error(f"❌ Failed to process image for user ID: {user_id}")
-                raise DesignCreateError()
-
-            logging.info(f"✅ Processed: {filename}, NAS path: {nas_relative_path}")
-
-            # Calculate multiple perceptual hashes from image bytes for database storage
-            try:
-                import io
-                nparr = np.frombuffer(image_bytes, np.uint8)
-                img_array = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+                logging.info(f"📐 Resized in {time.time() - resize_start:.2f}s")
 
                 # Convert to PIL for hashing
-                if len(img_array.shape) == 3 and img_array.shape[2] == 4:
-                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGRA2RGB)
-                elif len(img_array.shape) == 3:
-                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB)
+                hash_start = time.time()
+                if len(resized_image.shape) == 3 and resized_image.shape[2] == 4:
+                    img_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGRA2RGB)
+                elif len(resized_image.shape) == 3:
+                    img_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
                 else:
-                    img_rgb = img_array
+                    img_rgb = resized_image
 
                 pil_img = Image.fromarray(img_rgb)
                 pil_img_normalized = pil_img.resize((256, 256), Image.Resampling.LANCZOS)
@@ -890,15 +767,204 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 dhash = str(imagehash.dhash(pil_img_normalized, hash_size=16))
                 whash = str(imagehash.whash(pil_img_normalized, hash_size=16))
 
-                logging.info(f"🔐 Generated hashes for {filename}: phash={phash[:8]}..., ahash={ahash[:8]}..., dhash={dhash[:8]}..., whash={whash[:8]}...")
+                logging.info(f"🔐 Generated hashes in {time.time() - hash_start:.2f}s: phash={phash[:8]}...")
+
+                # Store resized image for later upload (if not duplicate)
+                total_time = time.time() - start_time
+                logging.info(f"✅ Resize & hash completed in {total_time:.2f}s")
+
+                return {
+                    'resized_image': resized_image,
+                    'phash': phash,
+                    'ahash': ahash,
+                    'dhash': dhash,
+                    'whash': whash,
+                    'original_filename': file.filename
+                }
 
             except Exception as e:
-                logging.error(f"❌ Error calculating hashes from bytes: {e}")
-                # Use the hash we already calculated during duplicate check
-                phash = file_hash_hex if file_hash_hex else None
-                ahash = None
-                dhash = None
-                whash = None
+                import traceback
+                traceback.print_exc()
+                logging.error(f"❌ Error resizing/hashing digital image: {str(e)}")
+                return None
+
+        async def upload_processed_image_digital(processed_data, index, id_number):
+            """Upload previously resized digital image to NAS with generated filename"""
+            import time
+            upload_start = time.time()
+
+            try:
+                resized_image = processed_data['resized_image']
+
+                # Generate filename
+                digital_id_number = str(index + id_number).zfill(3)
+                filename = f"Digital {digital_id_number}.png"
+
+                logging.info(f"📤 Uploading to NAS: {filename}")
+
+                # Encode to bytes
+                encode_start = time.time()
+                success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+                if not success:
+                    logging.error("❌ Failed to encode image")
+                    return None, None, None
+                image_bytes = encoded_image.tobytes()
+                logging.info(f"💾 Encoded in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
+
+                # Upload to NAS
+                nas_start = time.time()
+                relative_path = f"Digital/{template.name}/{filename}"
+                success = nas_storage.upload_file_content(
+                    file_content=image_bytes,
+                    shop_name=user.shop_name,
+                    relative_path=relative_path
+                )
+                if success:
+                    logging.info(f"✅ Uploaded to NAS in {time.time() - nas_start:.2f}s: {relative_path}")
+                else:
+                    logging.warning(f"⚠️ Failed to upload to NAS: {relative_path}")
+                    return None, None, None
+
+                total_time = time.time() - upload_start
+                logging.info(f"✅ Upload completed in {total_time:.2f}s")
+
+                return filename, relative_path, image_bytes
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                logging.error(f"❌ Error uploading digital image: {str(e)}")
+                return None, None, None
+        
+        # Step 1: Resize and hash all images first
+        if progress_callback:
+            progress_callback(0, "Resizing and hashing images")
+
+        logging.info(f"📦 Starting optimized workflow for {len(files)} files (≤2 images)")
+
+        processed_images = []  # Store {file, processed_data} for non-duplicates
+
+        for i, file in enumerate(files):
+            import time
+            step_start = time.time()
+            logging.info(f"📦 [{i+1}/{len(files)}] Processing: {file.filename}")
+
+            # Resize and hash (appropriate for digital vs physical)
+            if design_data.is_digital:
+                processed_data = await resize_and_hash_digital(file)
+            else:
+                processed_data = await resize_and_hash_physical(file)
+
+            if not processed_data:
+                logging.error(f"❌ Failed to resize/hash: {file.filename}")
+                continue
+
+            logging.info(f"✅ Processed {file.filename} in {time.time() - step_start:.2f}s")
+            processed_images.append({'file': file, 'data': processed_data})
+
+        # Step 2: Check for duplicates using the hashes from resized images
+        if progress_callback:
+            progress_callback(0, "Checking for duplicates using database indexes")
+
+        logging.info(f"🔍 Checking {len(processed_images)} processed images for duplicates")
+
+        non_duplicate_images = []
+        duplicate_count = 0
+        checked_hashes = {}  # Track {phash: filename} for batch duplicate detection
+
+        for i, item in enumerate(processed_images):
+            import time
+            check_start = time.time()
+
+            file = item['file']
+            data = item['data']
+            phash = data['phash']
+            ahash = data['ahash']
+            dhash = data['dhash']
+            whash = data['whash']
+
+            logging.info(f"🔍 [{i+1}/{len(processed_images)}] Checking for duplicates: {file.filename}")
+
+            is_duplicate = False
+            duplicate_source = None
+
+            # 1. Check against other images in this batch first (fastest)
+            for other_phash, other_filename in checked_hashes.items():
+                try:
+                    hash_obj = imagehash.hex_to_hash(phash)
+                    other_hash_obj = imagehash.hex_to_hash(other_phash)
+                    distance = hash_obj - other_hash_obj
+                    if distance <= 5:
+                        logging.warning(f"⚠️ Duplicate within batch: {file.filename} matches {other_filename} (distance: {distance})")
+                        duplicate_count += 1
+                        is_duplicate = True
+                        duplicate_source = f"batch file {other_filename}"
+                        break
+                except Exception as e:
+                    logging.debug(f"Error comparing batch hash: {e}")
+
+            # 2. Check exact match in database using phash (O(log n) indexed query)
+            if not is_duplicate:
+                if check_duplicate_in_database(phash):
+                    logging.warning(f"⚠️ Duplicate in database (exact match): {file.filename}")
+                    duplicate_count += 1
+                    is_duplicate = True
+                    duplicate_source = "database (exact phash match)"
+
+            # 3. Check Hamming distance against recent 1000 images
+            if not is_duplicate:
+                is_similar, similar_filename = check_hamming_distance_in_database(phash, threshold=5)
+                if is_similar:
+                    logging.warning(f"⚠️ Duplicate in database (similar): {file.filename} matches {similar_filename}")
+                    duplicate_count += 1
+                    is_duplicate = True
+                    duplicate_source = f"database (similar to {similar_filename})"
+
+            if not is_duplicate:
+                non_duplicate_images.append(item)
+                checked_hashes[phash] = file.filename
+                check_time = time.time() - check_start
+                logging.info(f"✅ {file.filename} is unique (checked in {check_time:.3f}s)")
+            else:
+                check_time = time.time() - check_start
+                logging.info(f"⚠️ {file.filename} is duplicate of {duplicate_source} (checked in {check_time:.3f}s)")
+
+        design_results = []
+
+        # Step 3: Upload only non-duplicate images and save to database
+        if progress_callback:
+            progress_callback(1, f"Uploading {len(non_duplicate_images)} unique images to NAS")
+
+        logging.info(f"📤 Uploading {len(non_duplicate_images)} unique images to NAS")
+
+        for i, item in enumerate(non_duplicate_images):
+            if progress_callback:
+                progress_callback(1, f"Uploading images to NAS ({i+1}/{len(non_duplicate_images)})")
+
+            file = item['file']
+            data = item['data']
+
+            logging.info(f"📤 [{i+1}/{len(non_duplicate_images)}] Uploading: {file.filename}")
+
+            # Upload image (returns filename, nas_relative_path, image_bytes)
+            if design_data.is_digital:
+                filename, nas_relative_path, image_bytes = await upload_processed_image_digital(data, i, design_data.starting_name)
+            else:
+                filename, nas_relative_path, image_bytes = await upload_processed_image_physical(data, i, design_data.starting_name)
+
+            if not filename or not nas_relative_path:
+                logging.error(f"❌ Failed to upload image for user ID: {user_id}")
+                raise DesignCreateError()
+
+            logging.info(f"✅ Uploaded: {filename} to NAS path: {nas_relative_path}")
+
+            # Use pre-calculated hashes from resize step
+            phash = data['phash']
+            ahash = data['ahash']
+            dhash = data['dhash']
+            whash = data['whash']
+
+            logging.info(f"🔐 Using hashes: phash={phash[:8]}..., ahash={ahash[:8]}..., dhash={dhash[:8]}..., whash={whash[:8]}...")
 
             # Build NAS file path for storage
             nas_file_path = f"/share/Graphics/NookTransfers/{user.shop_name}/{nas_relative_path}"
