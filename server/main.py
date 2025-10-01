@@ -77,11 +77,20 @@ async def lifespan(app: FastAPI):
         print(f"⚠️  Warning: Failed to initialize cache service: {e}")
         # Continue without caching rather than failing startup
 
-    # Only start token refresh service in production after API is fully ready
+    # Start OAuth token refresh service
+    try:
+        from server.src.services.oauth_token_refresh_service import start_oauth_refresh_service
+        print("🔄 Starting OAuth token refresh service...")
+        await start_oauth_refresh_service()
+        print("✅ OAuth token refresh service started")
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to start OAuth token refresh service: {e}")
+
+    # Only start legacy token refresh service in production after API is fully ready
     if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
         try:
             from server.src.services.token_refresh_service import start_token_refresh_service
-            print("🔄 Scheduling automatic token refresh service for delayed start...")
+            print("🔄 Scheduling automatic legacy token refresh service for delayed start...")
 
             # Start the token refresh service as a background task with error handling
             # and delay to ensure API is fully ready first
@@ -94,12 +103,12 @@ async def lifespan(app: FastAPI):
                     print(f"⚠️  Token refresh service stopped due to error: {e}")
 
             token_refresh_task = asyncio.create_task(safe_token_service())
-            print("✅ Token refresh service scheduled for delayed start")
+            print("✅ Legacy token refresh service scheduled for delayed start")
 
         except Exception as e:
-            print(f"⚠️  Warning: Failed to schedule token refresh service: {e}")
+            print(f"⚠️  Warning: Failed to schedule legacy token refresh service: {e}")
     else:
-        print("ℹ️  Skipping token refresh service in development mode")
+        print("ℹ️  Skipping legacy token refresh service in development mode")
 
     print("✅ Application services started")
 
@@ -107,6 +116,14 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("🛑 Shutting down application services...")
+
+    # Shutdown OAuth token refresh service
+    try:
+        from server.src.services.oauth_token_refresh_service import stop_oauth_refresh_service
+        await stop_oauth_refresh_service()
+        print("✅ OAuth token refresh service stopped")
+    except Exception as e:
+        print(f"⚠️  Warning: Error stopping OAuth token refresh service: {e}")
 
     # Shutdown cache service
     try:

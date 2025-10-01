@@ -69,7 +69,8 @@ const LoginRegister = () => {
           if (result.needsOrganizationSelection) {
             navigate('/organization-select', { replace: true });
           } else {
-            navigate('/connect-etsy', { replace: true });
+            // Redirect to dashboard overview after login
+            navigate('/?tab=overview', { replace: true });
           }
         } else {
           setError(result.error);
@@ -84,7 +85,8 @@ const LoginRegister = () => {
         };
         const result = await register(registrationData);
         if (result.success) {
-          navigate('/', { replace: true });
+          // Redirect to dashboard overview after registration
+          navigate('/?tab=overview', { replace: true });
         } else {
           setError(result.error);
         }
