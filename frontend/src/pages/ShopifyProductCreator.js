@@ -298,7 +298,7 @@ const TemplateSelection = ({ templates, onSelect, loading }) => {
         <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Available</h3>
         <p className="text-gray-600 mb-6">Create your first product template to get started.</p>
         <button
-          onClick={() => (window.location.href = '/shopify/templates/create')}
+          onClick={() => (window.location.href = '/templates/create')}
           className="inline-flex items-center px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 transition-colors"
         >
           <PlusIcon className="w-5 h-5 mr-2" />
@@ -313,7 +313,7 @@ const TemplateSelection = ({ templates, onSelect, loading }) => {
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Select a Template</h2>
         <button
-          onClick={() => (window.location.href = '/shopify/templates/create')}
+          onClick={() => (window.location.href = '/templates/create')}
           className="flex items-center px-3 py-2 text-sm bg-sage-600 text-white rounded-lg hover:bg-sage-700 transition-colors"
         >
           <PlusIcon className="w-4 h-4 mr-1" />

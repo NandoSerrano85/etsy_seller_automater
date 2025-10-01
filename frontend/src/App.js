@@ -33,6 +33,9 @@ const ShopifyDashboard = React.lazy(() => import('./pages/ShopifyDashboard'));
 const ShopifyProductCreator = React.lazy(() => import('./pages/ShopifyProductCreator'));
 const ShopifyTemplateCreator = React.lazy(() => import('./pages/ShopifyTemplateCreator'));
 
+// Template components (lazy loaded)
+const TemplateCreator = React.lazy(() => import('./pages/TemplateCreator'));
+
 // Loading component for suspense fallback
 const LoadingSpinner = () => (
   <div className="flex items-center justify-center min-h-screen">
@@ -249,6 +252,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ShopifyProductCreator />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/templates/create"
+              element={
+                <ProtectedRoute>
+                  <TemplateCreator />
                 </ProtectedRoute>
               }
             />
