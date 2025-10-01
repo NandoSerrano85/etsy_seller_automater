@@ -704,73 +704,221 @@ def create_mockups_for_etsy(
     # Initialize current_id_number
     current_id_number = str(id_number).zfill(3)
 
-    for n, filename in enumerate(design_filenames):
-        current_id_number = str(n + id_number).zfill(3)
-        generated_mockup_path_list = list()
-        for i, mockup_image in enumerate(mockup.mockup_images):
-            if mockup_image.id in mask_data:
-                current_masks = []
-                current_points = []
-                current_is_cropped = []
-                current_alignments = []
-                # Get all masks with their individual properties
-                for mask in mockup_image.mask_data:
-                    if isinstance(mask.masks, str):
-                        masks = json.loads(mask.masks)
+    # Use parallel processing for large batches (>10 designs)
+    use_parallel = len(design_filenames) > 10
+
+    if use_parallel:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+
+        # Limit to 8 workers to match Etsy upload workers
+        max_workers = min(8, len(design_filenames))
+        logger = logging.getLogger(__name__)
+        logger.info(f"🚀 Processing {len(design_filenames)} mockups in parallel with {max_workers} workers")
+
+        def process_single_design(n, filename):
+            """Process mockups for a single design"""
+            design_id = str(n + id_number).zfill(3)
+            mockup_paths = []
+
+            try:
+                for i, mockup_image in enumerate(mockup.mockup_images):
+                    if mockup_image.id in mask_data:
+                        current_masks = []
+                        current_points = []
+                        current_is_cropped = []
+                        current_alignments = []
+
+                        # Get all masks with their individual properties
+                        for mask in mockup_image.mask_data:
+                            if isinstance(mask.masks, str):
+                                masks = json.loads(mask.masks)
+                            else:
+                                masks = mask.masks
+
+                            if isinstance(mask.points, str):
+                                points = json.loads(mask.points)
+                            else:
+                                points = mask.points
+
+                            is_cropped_list = mask.is_cropped_list if hasattr(mask, 'is_cropped_list') and mask.is_cropped_list else None
+                            alignment_list = mask.alignment_list if hasattr(mask, 'alignment_list') and mask.alignment_list else None
+
+                            for idx, (m, p) in enumerate(zip(masks, points)):
+                                current_masks.append(m)
+                                current_points.append(p)
+
+                                if is_cropped_list and idx < len(is_cropped_list):
+                                    current_is_cropped.append(is_cropped_list[idx])
+                                else:
+                                    current_is_cropped.append(mask.is_cropped)
+
+                                if alignment_list and idx < len(alignment_list):
+                                    current_alignments.append(alignment_list[idx])
+                                else:
+                                    current_alignments.append(mask.alignment)
                     else:
-                        masks = mask.masks
+                        current_masks = []
+                        current_points = []
+                        current_is_cropped = [False]
+                        current_alignments = ['center']
 
-                    if isinstance(mask.points, str):
-                        points = json.loads(mask.points)
+                    # Create mockup with all masks
+                    assembled_mockup = mockup_processor.create_mockup(
+                        current_masks,
+                        current_points,
+                        image_type=template_name,
+                        image=filename,
+                        index=i,
+                        is_cropped_list=current_is_cropped,
+                        alignment_list=current_alignments
+                    )
+
+                    # Add watermark
+                    assembled_mockup_with_watermark = mockup_processor.add_watermark(
+                        assembled_mockup,
+                        watermark_path,
+                        current_points,
+                        current_masks,
+                        image_type=template_name,
+                        opacity=0.45
+                    )
+
+                    # Resize for display
+                    height, width = assembled_mockup_with_watermark.shape[:2]
+                    scale_factor = min(2000 / width, 2000 / height)
+                    new_size = (int(width * scale_factor), int(height * scale_factor))
+                    resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
+
+                    # Determine color suffix
+                    postfix = "_".join(template_name.split()+[design_id]+[f"BG_{i}"])
+                    prefix = "UV" if re.search(type_pattern, template_name) else "DTF"
+                    mockup_filename = f"{prefix} {design_id} {postfix}.jpg"
+
+                    # Extract shop name
+                    shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+                    shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+                    nas_mockup_path = f"/share/Graphics/{shop_name}/Mockups/{template_name}/{mockup_filename}"
+
+                    # Check if production
+                    is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+                    if is_production:
+                        from server.src.utils.nas_storage import nas_storage
+                        logger = logging.getLogger(__name__)
+
+                        success, buffer = cv2.imencode('.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                        if not success:
+                            logger.error(f"❌ Failed to encode mockup {mockup_filename}")
+                            raise ValueError(f"Failed to encode mockup: {mockup_filename}")
+
+                        image_bytes = buffer.tobytes()
+                        nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
+
+                        # Try NAS upload with retry
+                        upload_success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
+
+                        if upload_success:
+                            logger.info(f"✅ Saved mockup to NAS: {mockup_filename}")
+                            mockup_paths.append(nas_mockup_path)
+                        else:
+                            logger.error(f"❌ Failed to save mockup to NAS: {mockup_filename}")
+                            # Still append path so Etsy knows to look for it
+                            mockup_paths.append(nas_mockup_path)
                     else:
-                        points = mask.points
+                        local_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
+                        os.makedirs(os.path.dirname(local_mockup_path), exist_ok=True)
+                        cv2.imwrite(local_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                        mockup_paths.append(nas_mockup_path)
 
-                    # Use individual mask properties if available, otherwise fall back to single values
-                    is_cropped_list = mask.is_cropped_list if hasattr(mask, 'is_cropped_list') and mask.is_cropped_list else None
-                    alignment_list = mask.alignment_list if hasattr(mask, 'alignment_list') and mask.alignment_list else None
+                return (filename, mockup_paths, design_id, True)
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ Failed to process mockup for {filename}: {e}")
+                return (filename, [], design_id, False)
 
-                    # Add each mask with its properties
-                    for idx, (m, p) in enumerate(zip(masks, points)):
-                        current_masks.append(m)
-                        current_points.append(p)
+        # Process all designs in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_single_design, n, filename): filename
+                      for n, filename in enumerate(design_filenames)}
 
-                        # Use individual properties if available, otherwise use the single value
-                        if is_cropped_list and idx < len(is_cropped_list):
-                            current_is_cropped.append(is_cropped_list[idx])
+            for future in as_completed(futures):
+                filename, paths, design_id, success = future.result()
+                if success:
+                    mockup_return[filename] = paths
+                    current_id_number = design_id
+
+        logger.info(f"✅ Completed parallel mockup generation")
+
+    else:
+        # Use sequential processing for small batches (≤10 designs)
+        for n, filename in enumerate(design_filenames):
+            current_id_number = str(n + id_number).zfill(3)
+            generated_mockup_path_list = list()
+            for i, mockup_image in enumerate(mockup.mockup_images):
+                if mockup_image.id in mask_data:
+                    current_masks = []
+                    current_points = []
+                    current_is_cropped = []
+                    current_alignments = []
+                    # Get all masks with their individual properties
+                    for mask in mockup_image.mask_data:
+                        if isinstance(mask.masks, str):
+                            masks = json.loads(mask.masks)
                         else:
-                            current_is_cropped.append(mask.is_cropped)
+                            masks = mask.masks
 
-                        if alignment_list and idx < len(alignment_list):
-                            current_alignments.append(alignment_list[idx])
+                        if isinstance(mask.points, str):
+                            points = json.loads(mask.points)
                         else:
-                            current_alignments.append(mask.alignment)
-            else:
-                # Fallback to empty defaults if no mask data
-                current_masks = []
-                current_points = []
-                current_is_cropped = [False]
-                current_alignments = ['center']
+                            points = mask.points
 
-            # Create mockup with all masks
-            logger = logging.getLogger(__name__)
-            logger.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
-            logger.info(f"Using {len(current_masks)} masks with properties:")
-            for idx, (is_crop, align) in enumerate(zip(current_is_cropped, current_alignments)):
-                logger.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
+                        # Use individual mask properties if available, otherwise fall back to single values
+                        is_cropped_list = mask.is_cropped_list if hasattr(mask, 'is_cropped_list') and mask.is_cropped_list else None
+                        alignment_list = mask.alignment_list if hasattr(mask, 'alignment_list') and mask.alignment_list else None
 
-            assembled_mockup = mockup_processor.create_mockup(
-                current_masks,
-                current_points,
-                image_type=template_name, 
-                image=filename, 
-                index=i,
-                is_cropped_list=current_is_cropped,
-                alignment_list=current_alignments
-            )
-            
-            # Add watermark
-            assembled_mockup_with_watermark = mockup_processor.add_watermark(
-                assembled_mockup, 
+                        # Add each mask with its properties
+                        for idx, (m, p) in enumerate(zip(masks, points)):
+                            current_masks.append(m)
+                            current_points.append(p)
+
+                            # Use individual properties if available, otherwise use the single value
+                            if is_cropped_list and idx < len(is_cropped_list):
+                                current_is_cropped.append(is_cropped_list[idx])
+                            else:
+                                current_is_cropped.append(mask.is_cropped)
+
+                            if alignment_list and idx < len(alignment_list):
+                                current_alignments.append(alignment_list[idx])
+                            else:
+                                current_alignments.append(mask.alignment)
+                else:
+                    # Fallback to empty defaults if no mask data
+                    current_masks = []
+                    current_points = []
+                    current_is_cropped = [False]
+                    current_alignments = ['center']
+
+                # Create mockup with all masks
+                logger = logging.getLogger(__name__)
+                logger.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
+                logger.info(f"Using {len(current_masks)} masks with properties:")
+                for idx, (is_crop, align) in enumerate(zip(current_is_cropped, current_alignments)):
+                    logger.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
+
+                assembled_mockup = mockup_processor.create_mockup(
+                    current_masks,
+                    current_points,
+                    image_type=template_name,
+                    image=filename,
+                    index=i,
+                    is_cropped_list=current_is_cropped,
+                    alignment_list=current_alignments
+                )
+
+                # Add watermark
+                assembled_mockup_with_watermark = mockup_processor.add_watermark(
+                    assembled_mockup, 
                 watermark_path, 
                 current_points,
                 current_masks,
@@ -818,18 +966,18 @@ def create_mockups_for_etsy(
 
                     # Upload to NAS using the correct path structure
                     nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
-                    success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
+                    upload_success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
 
-                    if success:
+                    if upload_success:
                         logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
                     else:
                         logger.error(f"❌ Failed to save mockup to NAS: {nas_mockup_path}")
-                        raise ValueError(f"Failed to upload mockup to NAS: {mockup_filename}")
+                        # Don't raise - continue processing other mockups
 
                 except Exception as e:
                     logger = logging.getLogger(__name__)
                     logger.error(f"❌ Error saving mockup to NAS {nas_mockup_path}: {e}")
-                    raise
+                    # Don't raise - continue processing other mockups
             else:
                 # Local development - save to local filesystem
                 local_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'

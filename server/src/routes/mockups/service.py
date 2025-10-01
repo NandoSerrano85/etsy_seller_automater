@@ -1391,53 +1391,91 @@ async def upload_mockup_files_to_etsy(
                 logging.warning(f"Invalid production_partner_ids format: {template.production_partner_ids}")
                 production_partner_ids = None
 
-        logging.info(f"DEBUG API: Creating Etsy listings for {len(mockup_data)} designs")
-        for i,(design, mockups) in enumerate(mockup_data.items()):
-            logging.info(f"DEBUG API: Creating listing {i+1}/{len(mockup_data)} for design: {design}")
-            title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
-            listing_response = etsy_api.create_draft_listing(
-                title=' '.join(title + [template.title]) if template.title else ' '.join(title),
-                description=template.description,
-                price=template.price,
-                quantity=template.quantity,
-                tags=tags,
-                materials=materials,
-                is_digital=is_digital,
-                when_made=template.when_made,
-                item_weight=template.item_weight,
-                item_length=template.item_length,
-                item_width=template.item_width,
-                item_height=template.item_height,
-                item_weight_unit=template.item_weight_unit,
-                item_dimensions_unit=template.item_dimensions_unit,
-                return_policy_id=template.return_policy_id,
-                production_partner_ids=production_partner_ids,
-            )
-            listing_id = listing_response["listing_id"]
-            logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
-            
-            # Upload images to the listing
-            for j, mockup_image in enumerate(random.sample(mockups, len(mockups))):
-                logging.info(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
-                etsy_api.upload_listing_image(listing_id, mockup_image)
-            logging.info(f"DEBUG API: Completed listing {i+1}")
+        # Process Etsy listings in parallel for much faster bulk uploads
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
 
-            # Upload digital file(s) if digital template
-            if is_digital:
-                # The digital file path and name are the key (design) in mockup_data.items()
-                if local_root_path:
-                    # Development/local mode: use local storage path
-                    digital_file_path = os.path.join(f"{local_root_path}{shop_name}/Digital/{template.name}/", design)
+        # Use thread pool to create listings in parallel
+        # Limit to 8 concurrent Etsy API calls to avoid rate limiting
+        max_workers = min(8, len(mockup_data))
+        logging.info(f"DEBUG API: Creating {len(mockup_data)} Etsy listings in parallel with {max_workers} workers")
+
+        successful_listings = 0
+        failed_listings = 0
+
+        def process_single_listing(item_data):
+            """Process a single design: create listing, upload mockups, upload digital files"""
+            design, mockups = item_data
+            try:
+                title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
+
+                # Create draft listing
+                listing_response = etsy_api.create_draft_listing(
+                    title=' '.join(title + [template.title]) if template.title else ' '.join(title),
+                    description=template.description,
+                    price=template.price,
+                    quantity=template.quantity,
+                    tags=tags,
+                    materials=materials,
+                    is_digital=is_digital,
+                    when_made=template.when_made,
+                    item_weight=template.item_weight,
+                    item_length=template.item_length,
+                    item_width=template.item_width,
+                    item_height=template.item_height,
+                    item_weight_unit=template.item_weight_unit,
+                    item_dimensions_unit=template.item_dimensions_unit,
+                    return_policy_id=template.return_policy_id,
+                    production_partner_ids=production_partner_ids,
+                )
+                listing_id = listing_response["listing_id"]
+                logging.info(f"✅ Created listing {listing_id} for {design}")
+
+                # Upload mockup images to the listing (ensure no duplicates)
+                # Convert to set to remove duplicates, then back to list
+                unique_mockups = list(set(mockups)) if mockups else []
+                logging.info(f"📤 Uploading {len(unique_mockups)} unique mockup(s) to listing {listing_id}")
+
+                for j, mockup_image in enumerate(unique_mockups):
+                    try:
+                        etsy_api.upload_listing_image(listing_id, mockup_image)
+                        logging.info(f"✅ Uploaded mockup {j+1}/{len(unique_mockups)}: {mockup_image}")
+                    except Exception as img_error:
+                        logging.error(f"❌ Failed to upload image {j+1} to listing {listing_id}: {img_error}")
+
+                # Upload digital file(s) if digital template
+                if is_digital:
+                    if local_root_path:
+                        digital_file_path = os.path.join(f"{local_root_path}{shop_name}/Digital/{template.name}/", design)
+                    else:
+                        digital_file_path = f"/share/Graphics/{shop_name}/Digital/{template.name}/{design}"
+
+                    try:
+                        etsy_api.upload_listing_file(listing_id, digital_file_path, design)
+                        logging.info(f"✅ Uploaded digital file for listing {listing_id}")
+                    except Exception as file_error:
+                        logging.error(f"❌ Failed to upload digital file for listing {listing_id}: {file_error}")
+
+                return (design, True, None)
+
+            except Exception as e:
+                logging.error(f"❌ Failed to process listing for {design}: {e}")
+                return (design, False, str(e))
+
+        # Process all listings in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_single_listing, item): item for item in mockup_data.items()}
+
+            for i, future in enumerate(as_completed(futures)):
+                design, success, error = future.result()
+                if success:
+                    successful_listings += 1
+                    logging.info(f"📊 Progress: {successful_listings + failed_listings}/{len(mockup_data)} completed")
                 else:
-                    # Production mode: use NAS path structure
-                    digital_file_path = f"/share/Graphics/{shop_name}/Digital/{template.name}/{design}"
-                digital_file_name = design
-                logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
-                try:
-                    etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
-                    logging.info(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
-                except Exception as e:
-                    logging.error(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
+                    failed_listings += 1
+                    logging.error(f"📊 Failed {failed_listings} listings so far")
+
+        logging.info(f"✅ Completed: {successful_listings} successful, {failed_listings} failed out of {len(mockup_data)} total")
 
         # Update starting_name to next available number
         # current_id_number is the last ID used, so increment by 1 for next batch
