@@ -336,7 +336,7 @@ class EtsyAPI:
             return None
         
         readiness_data = readines_response.json()
-        readiness_state_id = readiness_data['results'].get('readiness_state_id')
+        readiness_state_id = readiness_data['results'][0].get('readiness_state_id')
         if not readiness_state_id:
             logging.error(f"Readiness state ID not found in response: {readiness_data}")
             return None
