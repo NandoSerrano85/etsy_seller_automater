@@ -33,8 +33,31 @@ router = APIRouter(
 # Shopify OAuth configuration
 SHOPIFY_API_KEY = os.getenv('SHOPIFY_API_KEY')
 SHOPIFY_API_SECRET = os.getenv('SHOPIFY_API_SECRET')
-SHOPIFY_REDIRECT_URI = os.getenv('SHOPIFY_REDIRECT_URI', 'http://localhost:3003/api/shopify/callback')
+
+# Determine redirect URI based on environment
+# Railway sets RAILWAY_PUBLIC_DOMAIN and RAILWAY_ENVIRONMENT_NAME
+is_railway = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('RAILWAY_PUBLIC_DOMAIN')
+backend_url = os.getenv('BACKEND_URL') or os.getenv('RAILWAY_PUBLIC_DOMAIN')
+
+if is_railway and backend_url:
+    # Production on Railway
+    if not backend_url.startswith('http'):
+        backend_url = f"https://{backend_url}"
+    default_redirect_uri = f"{backend_url}/api/shopify/callback"
+else:
+    # Local development
+    default_redirect_uri = 'http://localhost:3003/api/shopify/callback'
+
+SHOPIFY_REDIRECT_URI = os.getenv('SHOPIFY_REDIRECT_URI', default_redirect_uri)
 SHOPIFY_SCOPES = os.getenv('SHOPIFY_SCOPES', 'read_products,write_products,read_orders')
+
+# Log configuration on startup
+logger.info(f"🔧 Shopify OAuth Configuration:")
+logger.info(f"   Environment: {'Railway Production' if is_railway else 'Local Development'}")
+logger.info(f"   Redirect URI: {SHOPIFY_REDIRECT_URI}")
+logger.info(f"   API Key configured: {'✅ Yes' if SHOPIFY_API_KEY else '❌ No'}")
+logger.info(f"   API Secret configured: {'✅ Yes' if SHOPIFY_API_SECRET else '❌ No'}")
+logger.info(f"   Scopes: {SHOPIFY_SCOPES}")
 
 # OAuth state storage (in production, use Redis or database)
 oauth_states = {}
@@ -152,8 +175,19 @@ async def initiate_shopify_oauth(
 ):
     """Initiate Shopify OAuth flow"""
     try:
+        # Check if Shopify credentials are configured
+        if not SHOPIFY_API_KEY or not SHOPIFY_API_SECRET:
+            logger.error("❌ Shopify API credentials not configured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Shopify integration is not configured. Please contact the administrator to set up SHOPIFY_API_KEY and SHOPIFY_API_SECRET."
+            )
+
         # Debug logging
-        logger.info(f"Received shop_domain: {request.shop_domain!r}")
+        logger.info(f"🔗 Shopify OAuth Initiation")
+        logger.info(f"   User: {current_user.get_uuid()}")
+        logger.info(f"   Received shop_domain: {request.shop_domain!r}")
+        logger.info(f"   Redirect URI: {SHOPIFY_REDIRECT_URI}")
 
         # Validate shop_domain is not empty
         if not request.shop_domain or not request.shop_domain.strip():
@@ -165,7 +199,7 @@ async def initiate_shopify_oauth(
 
         # Clean the shop domain
         clean_domain = request.shop_domain.strip()
-        logger.info(f"Cleaned shop_domain: {clean_domain!r}")
+        logger.info(f"   Cleaned shop_domain: {clean_domain!r}")
 
         # Generate state parameter for CSRF protection
         state = secrets.token_urlsafe(32)
@@ -179,7 +213,8 @@ async def initiate_shopify_oauth(
         # Build OAuth URL
         authorization_url = build_oauth_url(clean_domain, state)
 
-        logger.info(f"Initiated Shopify OAuth for user {current_user.get_uuid()} with shop {clean_domain}")
+        logger.info(f"✅ Generated OAuth URL: {authorization_url}")
+        logger.info(f"   State stored for user {current_user.get_uuid()}")
 
         return model.ShopifyOAuthInitResponse(
             authorization_url=authorization_url,
@@ -208,6 +243,9 @@ async def shopify_oauth_callback(
 ):
     """Handle Shopify OAuth callback"""
     try:
+        logger.info(f"🔗 Shopify OAuth Callback received")
+        logger.info(f"   Full URL: {request.url}")
+
         # Get query parameters
         query_params = dict(request.query_params)
         code = query_params.get('code')
@@ -215,21 +253,27 @@ async def shopify_oauth_callback(
         shop = query_params.get('shop')
         hmac_param = query_params.get('hmac')
 
+        logger.info(f"   Parameters: code={'✅ Present' if code else '❌ Missing'}, state={'✅ Present' if state else '❌ Missing'}, shop={shop if shop else '❌ Missing'}")
+
         if not code or not state or not shop:
+            logger.error(f"❌ Missing required OAuth parameters")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing required parameters"
+                detail="Missing required parameters (code, state, or shop)"
             )
 
         # Verify state parameter
         if state not in oauth_states:
+            logger.error(f"❌ Invalid or expired state parameter: {state}")
+            logger.error(f"   Available states: {list(oauth_states.keys())}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid state parameter"
+                detail="Invalid or expired state parameter. Please try connecting again."
             )
 
         oauth_data = oauth_states[state]
         user_id = oauth_data['user_id']
+        logger.info(f"   User ID from state: {user_id}")
 
         # Verify HMAC (optional but recommended)
         if hmac_param:
@@ -239,18 +283,24 @@ async def shopify_oauth_callback(
                 # Don't fail the request, but log the warning
 
         # Exchange code for access token
+        logger.info(f"   Exchanging code for access token...")
         token_data = exchange_code_for_token(shop, code)
         access_token = token_data.get('access_token')
 
         if not access_token:
+            logger.error(f"❌ Failed to obtain access token from Shopify")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to obtain access token"
+                detail="Failed to obtain access token from Shopify"
             )
 
+        logger.info(f"   ✅ Access token obtained")
+
         # Get shop information
+        logger.info(f"   Fetching shop information...")
         shop_info = get_shop_info(shop, access_token)
         shop_data = shop_info.get('shop', {})
+        logger.info(f"   ✅ Shop info retrieved: {shop_data.get('name', shop)}")
 
         # Get user from database
         user = db.query(User).filter(User.id == user_id).first()
@@ -289,11 +339,16 @@ async def shopify_oauth_callback(
         # Clean up state
         del oauth_states[state]
 
-        logger.info(f"Successfully connected Shopify store {shop} for user {user_id}")
+        logger.info(f"✅ Successfully connected Shopify store {shop} for user {user_id}")
+        logger.info(f"   Store ID: {store.id}")
+        logger.info(f"   Shop Name: {store.shop_name}")
 
         # Return a redirect response to frontend success page
         frontend_url = os.getenv('FRONTEND_URL', 'http://localhost:3000')
-        return RedirectResponse(url=f"{frontend_url}/shopify/success")
+        redirect_url = f"{frontend_url}/shopify/success"
+        logger.info(f"   Redirecting to: {redirect_url}")
+
+        return RedirectResponse(url=redirect_url)
 
     except HTTPException:
         raise
@@ -558,6 +613,19 @@ async def upload_product_image(
     )
 
     return {"image": uploaded_image, "message": "Image uploaded successfully"}
+
+@router.get("/config")
+async def get_shopify_config():
+    """Get current Shopify OAuth configuration (for debugging)"""
+    return {
+        "environment": "Railway Production" if is_railway else "Local Development",
+        "redirect_uri": SHOPIFY_REDIRECT_URI,
+        "frontend_url": os.getenv('FRONTEND_URL', 'http://localhost:3000'),
+        "api_key_configured": bool(SHOPIFY_API_KEY),
+        "api_secret_configured": bool(SHOPIFY_API_SECRET),
+        "scopes": SHOPIFY_SCOPES,
+        "backend_url": backend_url if is_railway else "localhost:3003"
+    }
 
 @router.get("/test-connection")
 async def test_shopify_connection(
