@@ -1293,8 +1293,8 @@ async def upload_mockup_files_to_etsy(
 
         # Use the design_ids provided in the request
         if not product_data.design_ids:
-            logging.error("upload_mockup_files_to_etsy: No design IDs provided in request")
-            raise HTTPException(status_code=400, detail="No design IDs provided")
+            logging.warning("upload_mockup_files_to_etsy: No design IDs provided - likely all uploads were duplicates")
+            raise HTTPException(status_code=400, detail="No design IDs provided. All uploaded images may have been duplicates.")
 
         designs = (
             db.query(DesignImages)

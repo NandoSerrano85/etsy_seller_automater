@@ -990,12 +990,17 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
         if duplicate_count > 0:
             logging.info(f"⚠️ Skipped {duplicate_count} duplicate designs out of {len(files)} total files")
 
+        # Check if all images were duplicates
+        if len(design_results) == 0 and len(files) > 0:
+            logging.warning(f"⚠️ All {len(files)} uploaded images were duplicates - no new designs created")
+
         response = model.DesignImageListResponse(
             designs=[model.DesignImageResponse.model_validate(design) for design in design_results],
             total=len(design_results)
         )
 
-        logging.info(f"✅ Successfully created {len(design_results)} designs for user: {user_id}")
+        if len(design_results) > 0:
+            logging.info(f"✅ Successfully created {len(design_results)} designs for user: {user_id}")
         logging.info(f"📊 Summary: {len(files)} uploaded, {duplicate_count} duplicates skipped, {len(design_results)} created")
 
         # Invalidate user cache after creating designs
