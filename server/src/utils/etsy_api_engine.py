@@ -56,7 +56,7 @@ class EtsyAPI:
             self.taxonomy_id = None
             self.shipping_profile_id = None
             self.shop_section_id = None
-            self.readiness_state_id =
+            self.readiness_state_id = None
 
         # Only fetch additional data if we have valid tokens and shop_id
         if self.oauth_token and self.shop_id:
