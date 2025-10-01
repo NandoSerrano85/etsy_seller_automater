@@ -357,9 +357,54 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         const designResponse = await api.postFormDataWithRetry('/designs/', uploadFormData);
 
-        addLog('success', `Successfully uploaded ${designResponse.designs?.length || 0} designs`, {
+        // Check if any designs were created
+        const uploadedCount = files.length;
+        const createdCount = designResponse.designs?.length || 0;
+        const duplicateCount = uploadedCount - createdCount;
+
+        addLog('success', `Successfully uploaded ${createdCount} designs`, {
           designIds: designResponse.designs?.map(d => d.id) || [],
+          duplicatesSkipped: duplicateCount,
         });
+
+        // Handle case where all images were duplicates
+        if (!designResponse.designs || designResponse.designs.length === 0) {
+          console.warn('⚠️ No new designs created - all images were duplicates');
+
+          const duplicateMessage =
+            uploadedCount === 1
+              ? 'The uploaded image was a duplicate. No new design was created.'
+              : `All ${uploadedCount} uploaded images were duplicates. No new designs were created.`;
+
+          addLog('warning', duplicateMessage, {
+            uploadedCount,
+            duplicatesSkipped: uploadedCount,
+          });
+
+          updateDetailedProgress({
+            filesProcessed: files.length,
+            currentOperation: 'Upload completed - duplicates detected',
+          });
+
+          alert(duplicateMessage);
+
+          if (onUploadComplete) {
+            onUploadComplete();
+          } else if (onUpload) {
+            onUpload();
+          }
+          onClose();
+          return; // Stop here - don't attempt mockup upload
+        }
+
+        // Log if some duplicates were skipped
+        if (duplicateCount > 0) {
+          console.warn(`⚠️ Skipped ${duplicateCount} duplicate image(s)`);
+          addLog('info', `${createdCount} design(s) created (${duplicateCount} duplicate(s) skipped)`, {
+            created: createdCount,
+            duplicates: duplicateCount,
+          });
+        }
 
         const productData = {
           product_template_id: selectedTemplate.id,
@@ -373,9 +418,10 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         mockupFormData.append('product_data', JSON.stringify(productData));
 
-        addLog('info', 'Creating product mockups...', {
+        addLog('info', `Creating product mockups for ${createdCount} design(s)...`, {
           templateId: selectedTemplate.id,
           mockupId: selectedMockup.id,
+          designCount: createdCount,
         });
         updateDetailedProgress({ currentOperation: 'Creating product mockups...' });
 
@@ -385,7 +431,10 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
           result: result.result?.message || 'Mockups created successfully',
         });
 
-        let successMessage = 'Design saved and files uploaded successfully!';
+        let successMessage = `Successfully created ${createdCount} design(s)!`;
+        if (duplicateCount > 0) {
+          successMessage += `\n(${duplicateCount} duplicate(s) skipped)`;
+        }
         if (result.result?.digital_message) {
           successMessage += `\n\n${result.result.digital_message}`;
         }
@@ -395,6 +444,8 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
 
         // Log final success
         addLog('success', 'Upload process completed successfully!', {
+          createdCount,
+          duplicatesSkipped: duplicateCount,
           digitalMessage: result.result?.digital_message,
           finalMessage: result.result?.message,
         });
