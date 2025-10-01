@@ -1439,8 +1439,12 @@ async def upload_mockup_files_to_etsy(
                 except Exception as e:
                     logging.error(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
 
-        setattr(mockup, "starting_name", current_id_number)
-        
+        # Update starting_name to next available number
+        # current_id_number is the last ID used, so increment by 1 for next batch
+        next_starting_name = current_id_number + 1
+        logging.info(f"Updating mockup starting_name from {mockup.starting_name} to {next_starting_name} (processed {len(designs)} designs)")
+        setattr(mockup, "starting_name", next_starting_name)
+
         db.commit()
         db.refresh(mockup)
 
