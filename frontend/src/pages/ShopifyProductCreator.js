@@ -298,7 +298,7 @@ const TemplateSelection = ({ templates, onSelect, loading }) => {
         <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Available</h3>
         <p className="text-gray-600 mb-6">Create your first product template to get started.</p>
         <button
-          onClick={() => navigate('/shopify/templates/create')}
+          onClick={() => (window.location.href = '/shopify/templates/create')}
           className="inline-flex items-center px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 transition-colors"
         >
           <PlusIcon className="w-5 h-5 mr-2" />
