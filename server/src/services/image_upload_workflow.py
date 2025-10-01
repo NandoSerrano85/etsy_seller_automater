@@ -170,6 +170,10 @@ class ImageUploadWorkflow:
         self._duplicate_check_cache: Dict[str, bool] = {}  # hash -> is_duplicate
         self._duplicate_cache_lock = threading.Lock()
 
+        # Shared counter for sequential file naming across parallel batches
+        self._unique_file_counter = 0
+        self._file_counter_lock = threading.Lock()
+
         # Cache for frequently accessed data (reduces DB queries)
         self._shop_name_cache: Optional[str] = None
         self._template_name_cache: Dict[str, str] = {}
@@ -363,14 +367,12 @@ class ImageUploadWorkflow:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit batches with staggered start
             future_to_batch = {}
-            file_counter = 0
             for i, batch in enumerate(batches):
                 batch_id = i + 1
                 # Small delay to stagger batch starts
                 if i > 0:
                     time.sleep(0.1)
-                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data, file_counter)] = batch_id
-                file_counter += len(batch)
+                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data)] = batch_id
 
             # Collect results as they complete
             for future in as_completed(future_to_batch):
@@ -401,7 +403,7 @@ class ImageUploadWorkflow:
 
         return batch_results
 
-    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None, batch_file_start_index: int = 0) -> BatchResult:
+    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None) -> BatchResult:
         """
         Process a single batch of images through the complete workflow
 
@@ -440,7 +442,7 @@ class ImageUploadWorkflow:
                             i / len(images) if images else 0
                         )
 
-                    processed_image = self._process_single_image(image, design_data, batch_file_start_index + i)
+                    processed_image = self._process_single_image(image, design_data, i)
 
                     # Only check for duplicates if processing was successful
                     if processed_image.phash and not processed_image.error:
@@ -520,8 +522,23 @@ class ImageUploadWorkflow:
             logging.info(f"🔍 DEBUG: Skipping duplicate images: {[img.final_filename for img in duplicate_images]}")
             logging.info(f"🔍 DEBUG: Skipping error images: {[img.final_filename for img in error_images]}")
 
-            # Duplicate detection is now properly tuned with Hamming threshold of 2
-            # No secondary validation needed
+            # Step 2.5: Rename only the unique images with sequential numbering (no gaps)
+            # Use thread-safe counter to ensure sequential numbering across parallel batches
+            logging.info(f"📦 Batch {batch_id}: Renaming {len(unique_images)} unique images with sequential numbering")
+            for img in unique_images:
+                # Atomically increment the shared counter for each unique image
+                with self._file_counter_lock:
+                    file_index = self._unique_file_counter
+                    self._unique_file_counter += 1
+
+                # Regenerate filename with correct sequential index
+                final_filename = self._generate_filename(
+                    img.upload_info.original_filename,
+                    img.upload_info.template_id,
+                    file_index
+                )
+                logging.info(f"   🔄 Renamed: {img.final_filename} → {final_filename} (index: {file_index})")
+                img.final_filename = final_filename
 
             # Step 3: Upload to NAS
             if batch_id == 1:  # Only send progress for the first batch to avoid spam
