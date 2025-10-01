@@ -397,10 +397,9 @@ class EtsyAPI:
             "state": "draft",
             "return_policy_id": return_policy_id if return_policy_id else 1,
             "type": "physical" if not is_digital else "download",
-            "readiness_state_id": self.readiness_state_id if self.readiness_state_id else 1,
         }
 
-        # For physical listings, production_partner_ids is required
+        # For physical listings, production_partner_ids and readiness_state_id are required
         # This indicates "ready to ship" status
         if not is_digital:
             if production_partner_ids:
@@ -408,6 +407,18 @@ class EtsyAPI:
             else:
                 # Default to empty array which means "ready to ship" (made by seller)
                 payload["production_partner_ids"] = []
+
+            # Ensure readiness_state_id is set for physical listings (REQUIRED by Etsy)
+            # If not already set, use 1 (the default "Ready to ship" state)
+            if not self.readiness_state_id:
+                logging.warning("readiness_state_id not set, using default value of 1 (Ready to ship)")
+                payload["readiness_state_id"] = 1
+            else:
+                payload["readiness_state_id"] = self.readiness_state_id
+        else:
+            # For digital listings, readiness_state_id is optional
+            if self.readiness_state_id:
+                payload["readiness_state_id"] = self.readiness_state_id
 
         # Only include return_policy_id if it's valid (>= 1)
         if return_policy_id and return_policy_id >= 1:
@@ -424,11 +435,11 @@ class EtsyAPI:
 
     def upload_listing_image(self, listing_id: int, image_path: str) -> Dict:
         """
-        Upload an image to a listing
-        
+        Upload an image to a listing (supports both local and NAS paths)
+
         Args:
             listing_id (int): The ID of the listing to add the image to
-            image_path (str): Path to the image file
+            image_path (str): Path to the image file (local or NAS path)
         Returns:
             Dict: Response from Etsy API
         """
@@ -437,13 +448,49 @@ class EtsyAPI:
             "x-api-key": self.client_id,
             "Authorization": f"Bearer {self.oauth_token}"
         }
-        with open(image_path, 'rb') as image_file:
-            files = {
-                'image': (os.path.basename(image_path), image_file, 'image/jpeg')
-            }
-            response = self.session.post(endpoint, headers=headers, files=files)
-            response.raise_for_status()
-            return response.json()
+
+        # Check if running in production and path is NAS
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production and image_path.startswith('/share/'):
+            # Load from NAS
+            try:
+                from server.src.utils.nas_storage import nas_storage
+                logging.info(f"Loading image from NAS for Etsy upload: {image_path}")
+
+                # Extract shop_name and relative_path from full path
+                # Path format: /share/Graphics/ShopName/RelativePath
+                path_parts = image_path.split('/')
+                if len(path_parts) >= 4 and path_parts[2] == 'Graphics':
+                    shop_name = path_parts[3]
+                    relative_path = '/'.join(path_parts[4:])
+
+                    # Download file to memory
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        files = {
+                            'image': (os.path.basename(image_path), file_content, 'image/jpeg')
+                        }
+                        response = self.session.post(endpoint, headers=headers, files=files)
+                        response.raise_for_status()
+                        logging.info(f"Successfully uploaded image from NAS to Etsy listing {listing_id}")
+                        return response.json()
+                    else:
+                        raise Exception(f"Failed to download image from NAS: {image_path}")
+                else:
+                    raise Exception(f"Invalid NAS path format: {image_path}")
+            except Exception as e:
+                logging.error(f"Error loading image from NAS: {str(e)}")
+                raise
+        else:
+            # Load from local filesystem
+            with open(image_path, 'rb') as image_file:
+                files = {
+                    'image': (os.path.basename(image_path), image_file, 'image/jpeg')
+                }
+                response = self.session.post(endpoint, headers=headers, files=files)
+                response.raise_for_status()
+                return response.json()
 
     def publish_listing(self, listing_id: int) -> Dict:
         """
@@ -842,10 +889,11 @@ class EtsyAPI:
 
     def upload_listing_file(self, listing_id: int, file_path: str, file_name: str) -> dict:
         """
-        Upload a digital file to a digital listing.
+        Upload a digital file to a digital listing (supports both local and NAS paths)
+
         Args:
             listing_id (int): The ID of the listing to add the file to
-            file_path (str): Path to the digital file
+            file_path (str): Path to the digital file (local or NAS path)
             file_name (str): The name of the file to show on Etsy
         Returns:
             dict: Response from Etsy API
@@ -855,14 +903,51 @@ class EtsyAPI:
             "x-api-key": self.client_id,
             "Authorization": f"Bearer {self.oauth_token}"
         }
-        with open(file_path, 'rb') as file_obj:
-            files = {
-                'file': (file_name, file_obj, 'application/octet-stream'),
-                'name': (None, file_name)
-            }
-            response = self.session.post(endpoint, headers=headers, files=files)
-            response.raise_for_status()
-            return response.json()
+
+        # Check if running in production and path is NAS
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production and file_path.startswith('/share/'):
+            # Load from NAS
+            try:
+                from server.src.utils.nas_storage import nas_storage
+                logging.info(f"Loading digital file from NAS for Etsy upload: {file_path}")
+
+                # Extract shop_name and relative_path from full path
+                # Path format: /share/Graphics/ShopName/RelativePath
+                path_parts = file_path.split('/')
+                if len(path_parts) >= 4 and path_parts[2] == 'Graphics':
+                    shop_name = path_parts[3]
+                    relative_path = '/'.join(path_parts[4:])
+
+                    # Download file to memory
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        files = {
+                            'file': (file_name, file_content, 'application/octet-stream'),
+                            'name': (None, file_name)
+                        }
+                        response = self.session.post(endpoint, headers=headers, files=files)
+                        response.raise_for_status()
+                        logging.info(f"Successfully uploaded digital file from NAS to Etsy listing {listing_id}")
+                        return response.json()
+                    else:
+                        raise Exception(f"Failed to download digital file from NAS: {file_path}")
+                else:
+                    raise Exception(f"Invalid NAS path format: {file_path}")
+            except Exception as e:
+                logging.error(f"Error loading digital file from NAS: {str(e)}")
+                raise
+        else:
+            # Load from local filesystem
+            with open(file_path, 'rb') as file_obj:
+                files = {
+                    'file': (file_name, file_obj, 'application/octet-stream'),
+                    'name': (None, file_name)
+                }
+                response = self.session.post(endpoint, headers=headers, files=files)
+                response.raise_for_status()
+                return response.json()
 
     def fetch_order_summary(self, model) -> dict:
         headers = {
