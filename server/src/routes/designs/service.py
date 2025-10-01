@@ -966,13 +966,16 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
             logging.info(f"🔐 Using hashes: phash={phash[:8]}..., ahash={ahash[:8]}..., dhash={dhash[:8]}..., whash={whash[:8]}...")
 
-            # Build NAS file path for storage
-            nas_file_path = f"/share/Graphics/NookTransfers/{user.shop_name}/{nas_relative_path}"
+            # Build NAS file path for storage (matching nas_storage.upload_file_content format)
+            # nas_storage.base_path = "/share/Graphics"
+            # upload_file_content builds: {base_path}/{shop_name}/{relative_path}
+            # So actual path is: /share/Graphics/{shop_name}/{nas_relative_path}
+            nas_file_path = f"/share/Graphics/{user.shop_name}/{nas_relative_path}"
 
             design = DesignImages(
                 user_id=user_id,
                 filename=filename,
-                file_path=nas_file_path,  # Store NAS path, not local path
+                file_path=nas_file_path,  # Store full NAS path
                 description=design_data.description,
                 phash=phash,
                 ahash=ahash,
