@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useApi } from '../hooks/useApi';
 import { useNotifications } from '../components/NotificationSystem';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,6 +21,7 @@ import {
 
 const ShopifyOrders = () => {
   const { token } = useAuth();
+  const api = useApi();
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 
@@ -44,31 +46,15 @@ const ShopifyOrders = () => {
         setLoading(true);
       }
 
-      const response = await fetch('/api/shopify/orders', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          // No store connected
-          setStoreConnected(false);
-          return;
-        }
-        throw new Error('Failed to load orders');
-      }
-
-      const data = await response.json();
+      const data = await api.get('/api/shopify/orders');
       setOrders(data.orders || []);
       setStoreConnected(true);
     } catch (error) {
       console.error('Error loading orders:', error);
-      if (error.message.includes('store')) {
+      if (error.status === 404 || error.message?.includes('store')) {
         setStoreConnected(false);
       } else {
-        addNotification('Failed to load orders', 'error');
+        addNotification('Failed to load orders. Please try again.', 'error');
       }
     } finally {
       setLoading(false);
@@ -82,18 +68,7 @@ const ShopifyOrders = () => {
 
   const getOrderById = async orderId => {
     try {
-      const response = await fetch(`/api/shopify/orders/${orderId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to load order details');
-      }
-
-      const data = await response.json();
+      const data = await api.get(`/api/shopify/orders/${orderId}`);
       return data;
     } catch (error) {
       console.error('Error loading order details:', error);
