@@ -665,40 +665,124 @@ async def get_templates(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get available product templates"""
-    template_service = ShopifyTemplateProductService(db)
-    templates = template_service.get_available_templates(current_user.get_uuid())
-    return {"templates": templates}
+    """Get available Shopify product templates"""
+    from server.src.entities.template import ShopifyProductTemplate
+
+    # Query Shopify templates for the current user
+    templates = db.query(ShopifyProductTemplate).filter(
+        ShopifyProductTemplate.user_id == current_user.get_uuid()
+    ).order_by(ShopifyProductTemplate.created_at.desc()).all()
+
+    logger.info(f"📋 Found {len(templates)} Shopify templates for user {current_user.get_uuid()}")
+
+    return {
+        "templates": [template.to_dict() for template in templates]
+    }
 
 @router.post("/templates")
 async def create_template(
     current_user: CurrentUser,
     db: Session = Depends(get_db),
+    # Template metadata
     name: str = Form(...),
     template_title: str = Form(...),
     description: str = Form(""),
+
+    # Pricing
     price: float = Form(...),
-    template_type: str = Form("physical"),
-    tags: str = Form("")
+    compare_at_price: float = Form(None),
+    cost_per_item: float = Form(None),
+
+    # Product details
+    vendor: str = Form(None),
+    product_type: str = Form(None),
+    tags: str = Form(""),
+
+    # Inventory & Shipping
+    sku_prefix: str = Form(None),
+    barcode_prefix: str = Form(None),
+    track_inventory: bool = Form(True),
+    inventory_quantity: int = Form(0),
+    inventory_policy: str = Form("deny"),
+    fulfillment_service: str = Form("manual"),
+    requires_shipping: bool = Form(True),
+    weight: float = Form(None),
+    weight_unit: str = Form("g"),
+
+    # Product variants
+    has_variants: bool = Form(False),
+    option1_name: str = Form(None),
+    option1_values: str = Form(None),
+    option2_name: str = Form(None),
+    option2_values: str = Form(None),
+    option3_name: str = Form(None),
+    option3_values: str = Form(None),
+
+    # Publishing & SEO
+    status: str = Form("draft"),
+    published_scope: str = Form("web"),
+    seo_title: str = Form(None),
+    seo_description: str = Form(None),
+
+    # Tax settings
+    is_taxable: bool = Form(True),
+    tax_code: str = Form(None),
+
+    # Additional settings
+    gift_card: bool = Form(False),
+    template_suffix: str = Form(None)
 ):
-    """Create a new Shopify product template"""
-    from server.src.entities.template import EtsyProductTemplate
+    """Create a new Shopify product template with all options"""
+    from server.src.entities.template import ShopifyProductTemplate
     from uuid import uuid4
+    import os
 
     # Create new template
-    template = EtsyProductTemplate(
-        id=uuid4(),
-        user_id=current_user.get_uuid(),
-        name=name,
-        template_title=template_title,
-        description=description,
-        price=price,
-        type=template_type,
-        tags=tags,
-        taxonomy_id=None,  # Optional for Shopify
-        is_taxable=True,
-        is_digital=template_type == "digital"
-    )
+    template_data = {
+        'id': uuid4(),
+        'user_id': current_user.get_uuid(),
+        'name': name,
+        'template_title': template_title,
+        'description': description,
+        'price': price,
+        'compare_at_price': compare_at_price,
+        'cost_per_item': cost_per_item,
+        'vendor': vendor,
+        'product_type': product_type,
+        'tags': tags,
+        'sku_prefix': sku_prefix,
+        'barcode_prefix': barcode_prefix,
+        'track_inventory': track_inventory,
+        'inventory_quantity': inventory_quantity,
+        'inventory_policy': inventory_policy,
+        'fulfillment_service': fulfillment_service,
+        'requires_shipping': requires_shipping,
+        'weight': weight,
+        'weight_unit': weight_unit,
+        'has_variants': has_variants,
+        'option1_name': option1_name,
+        'option1_values': option1_values,
+        'option2_name': option2_name,
+        'option2_values': option2_values,
+        'option3_name': option3_name,
+        'option3_values': option3_values,
+        'status': status,
+        'published_scope': published_scope,
+        'seo_title': seo_title,
+        'seo_description': seo_description,
+        'is_taxable': is_taxable,
+        'tax_code': tax_code,
+        'gift_card': gift_card,
+        'template_suffix': template_suffix
+    }
+
+    # Add org_id if multi-tenant is enabled
+    if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
+        org_id = getattr(current_user, 'org_id', None)
+        if org_id:
+            template_data['org_id'] = org_id
+
+    template = ShopifyProductTemplate(**template_data)
 
     db.add(template)
     db.commit()
@@ -709,14 +793,181 @@ async def create_template(
     return {
         "success": True,
         "message": "Template created successfully",
-        "template": {
-            "id": str(template.id),
-            "name": template.name,
-            "template_title": template.template_title,
-            "description": template.description,
-            "price": template.price,
-            "type": template.type
-        }
+        "template": template.to_dict()
+    }
+
+@router.get("/templates/{template_id}")
+async def get_template(
+    template_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get a specific Shopify product template"""
+    from server.src.entities.template import ShopifyProductTemplate
+
+    template = db.query(ShopifyProductTemplate).filter(
+        ShopifyProductTemplate.id == UUID(template_id),
+        ShopifyProductTemplate.user_id == current_user.get_uuid()
+    ).first()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found"
+        )
+
+    return template.to_dict()
+
+@router.put("/templates/{template_id}")
+async def update_template(
+    template_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    # Template metadata
+    name: str = Form(None),
+    template_title: str = Form(None),
+    description: str = Form(None),
+
+    # Pricing
+    price: float = Form(None),
+    compare_at_price: float = Form(None),
+    cost_per_item: float = Form(None),
+
+    # Product details
+    vendor: str = Form(None),
+    product_type: str = Form(None),
+    tags: str = Form(None),
+
+    # Inventory & Shipping
+    sku_prefix: str = Form(None),
+    barcode_prefix: str = Form(None),
+    track_inventory: bool = Form(None),
+    inventory_quantity: int = Form(None),
+    inventory_policy: str = Form(None),
+    fulfillment_service: str = Form(None),
+    requires_shipping: bool = Form(None),
+    weight: float = Form(None),
+    weight_unit: str = Form(None),
+
+    # Product variants
+    has_variants: bool = Form(None),
+    option1_name: str = Form(None),
+    option1_values: str = Form(None),
+    option2_name: str = Form(None),
+    option2_values: str = Form(None),
+    option3_name: str = Form(None),
+    option3_values: str = Form(None),
+
+    # Publishing & SEO
+    status: str = Form(None),
+    published_scope: str = Form(None),
+    seo_title: str = Form(None),
+    seo_description: str = Form(None),
+
+    # Tax settings
+    is_taxable: bool = Form(None),
+    tax_code: str = Form(None),
+
+    # Additional settings
+    gift_card: bool = Form(None),
+    template_suffix: str = Form(None)
+):
+    """Update a Shopify product template"""
+    from server.src.entities.template import ShopifyProductTemplate
+
+    template = db.query(ShopifyProductTemplate).filter(
+        ShopifyProductTemplate.id == UUID(template_id),
+        ShopifyProductTemplate.user_id == current_user.get_uuid()
+    ).first()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found"
+        )
+
+    # Update fields if provided
+    update_fields = {
+        'name': name,
+        'template_title': template_title,
+        'description': description,
+        'price': price,
+        'compare_at_price': compare_at_price,
+        'cost_per_item': cost_per_item,
+        'vendor': vendor,
+        'product_type': product_type,
+        'tags': tags,
+        'sku_prefix': sku_prefix,
+        'barcode_prefix': barcode_prefix,
+        'track_inventory': track_inventory,
+        'inventory_quantity': inventory_quantity,
+        'inventory_policy': inventory_policy,
+        'fulfillment_service': fulfillment_service,
+        'requires_shipping': requires_shipping,
+        'weight': weight,
+        'weight_unit': weight_unit,
+        'has_variants': has_variants,
+        'option1_name': option1_name,
+        'option1_values': option1_values,
+        'option2_name': option2_name,
+        'option2_values': option2_values,
+        'option3_name': option3_name,
+        'option3_values': option3_values,
+        'status': status,
+        'published_scope': published_scope,
+        'seo_title': seo_title,
+        'seo_description': seo_description,
+        'is_taxable': is_taxable,
+        'tax_code': tax_code,
+        'gift_card': gift_card,
+        'template_suffix': template_suffix
+    }
+
+    # Only update fields that were provided (not None)
+    for field, value in update_fields.items():
+        if value is not None:
+            setattr(template, field, value)
+
+    db.commit()
+    db.refresh(template)
+
+    logger.info(f"✏️ Updated Shopify template '{template.name}' for user {current_user.get_uuid()}")
+
+    return {
+        "success": True,
+        "message": "Template updated successfully",
+        "template": template.to_dict()
+    }
+
+@router.delete("/templates/{template_id}")
+async def delete_template(
+    template_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Delete a Shopify product template"""
+    from server.src.entities.template import ShopifyProductTemplate
+
+    template = db.query(ShopifyProductTemplate).filter(
+        ShopifyProductTemplate.id == UUID(template_id),
+        ShopifyProductTemplate.user_id == current_user.get_uuid()
+    ).first()
+
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Template not found"
+        )
+
+    template_name = template.name
+    db.delete(template)
+    db.commit()
+
+    logger.info(f"🗑️ Deleted Shopify template '{template_name}' for user {current_user.get_uuid()}")
+
+    return {
+        "success": True,
+        "message": f"Template '{template_name}' deleted successfully"
     }
 
 @router.get("/templates/{template_id}/mockups")

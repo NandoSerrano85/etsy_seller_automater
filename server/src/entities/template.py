@@ -54,3 +54,114 @@ class EtsyProductTemplate(Base):
     size_configs = relationship('SizeConfig', back_populates='product_template')
     design_images = relationship('DesignImages', secondary='design_template_association', back_populates='product_templates')
     shopify_products = relationship('ShopifyProduct', back_populates='template')
+
+
+class ShopifyProductTemplate(Base):
+    __tablename__ = 'shopify_product_templates'
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
+
+    # Template metadata
+    name = Column(String, nullable=False)  # Internal template name
+
+    # Product details
+    template_title = Column(String, nullable=False)  # Product title template (can include {design_name} placeholder)
+    description = Column(Text, nullable=True)  # Product description
+    vendor = Column(String, nullable=True)  # Product vendor
+    product_type = Column(String, nullable=True)  # Product type/category
+    tags = Column(Text, nullable=True)  # Comma-separated tags
+
+    # Pricing
+    price = Column(Float, nullable=False)  # Base price
+    compare_at_price = Column(Float, nullable=True)  # Compare at price (for sales)
+    cost_per_item = Column(Float, nullable=True)  # Cost per item
+
+    # Inventory & Shipping
+    sku_prefix = Column(String, nullable=True)  # SKU prefix for variants
+    barcode_prefix = Column(String, nullable=True)  # Barcode prefix
+    track_inventory = Column(Boolean, default=True)  # Track inventory
+    inventory_quantity = Column(Integer, default=0)  # Default inventory quantity
+    inventory_policy = Column(String, default='deny')  # 'deny' or 'continue' (allow overselling)
+    fulfillment_service = Column(String, default='manual')  # 'manual' or fulfillment service
+    requires_shipping = Column(Boolean, default=True)  # Requires shipping
+    weight = Column(Float, nullable=True)  # Weight in grams
+    weight_unit = Column(String, default='g')  # Weight unit (g, kg, oz, lb)
+
+    # Product options/variants
+    has_variants = Column(Boolean, default=False)  # Whether product has variants
+    option1_name = Column(String, nullable=True)  # First option name (e.g., "Size")
+    option1_values = Column(Text, nullable=True)  # Comma-separated values (e.g., "Small,Medium,Large")
+    option2_name = Column(String, nullable=True)  # Second option name (e.g., "Color")
+    option2_values = Column(Text, nullable=True)  # Comma-separated values
+    option3_name = Column(String, nullable=True)  # Third option name
+    option3_values = Column(Text, nullable=True)  # Comma-separated values
+
+    # Publishing & SEO
+    status = Column(String, default='draft')  # 'active', 'draft', 'archived'
+    published_scope = Column(String, default='web')  # 'web', 'global'
+    seo_title = Column(String, nullable=True)  # SEO title
+    seo_description = Column(Text, nullable=True)  # SEO meta description
+
+    # Tax settings
+    is_taxable = Column(Boolean, default=True)  # Is product taxable
+    tax_code = Column(String, nullable=True)  # Tax code
+
+    # Additional settings
+    gift_card = Column(Boolean, default=False)  # Is this a gift card
+    template_suffix = Column(String, nullable=True)  # Theme template suffix
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    user = relationship('User', back_populates='shopify_product_templates')
+
+    def to_dict(self):
+        """Convert template to dictionary"""
+        return {
+            'id': str(self.id),
+            'user_id': str(self.user_id),
+            'org_id': str(self.org_id) if MULTI_TENANT_ENABLED and self.org_id else None,
+            'name': self.name,
+            'template_title': self.template_title,
+            'description': self.description,
+            'vendor': self.vendor,
+            'product_type': self.product_type,
+            'tags': self.tags,
+            'price': self.price,
+            'compare_at_price': self.compare_at_price,
+            'cost_per_item': self.cost_per_item,
+            'sku_prefix': self.sku_prefix,
+            'barcode_prefix': self.barcode_prefix,
+            'track_inventory': self.track_inventory,
+            'inventory_quantity': self.inventory_quantity,
+            'inventory_policy': self.inventory_policy,
+            'fulfillment_service': self.fulfillment_service,
+            'requires_shipping': self.requires_shipping,
+            'weight': self.weight,
+            'weight_unit': self.weight_unit,
+            'has_variants': self.has_variants,
+            'option1_name': self.option1_name,
+            'option1_values': self.option1_values,
+            'option2_name': self.option2_name,
+            'option2_values': self.option2_values,
+            'option3_name': self.option3_name,
+            'option3_values': self.option3_values,
+            'status': self.status,
+            'published_scope': self.published_scope,
+            'seo_title': self.seo_title,
+            'seo_description': self.seo_description,
+            'is_taxable': self.is_taxable,
+            'tax_code': self.tax_code,
+            'gift_card': self.gift_card,
+            'template_suffix': self.template_suffix,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }

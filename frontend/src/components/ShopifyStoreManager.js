@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useApi } from '../hooks/useApi';
 import { useNotifications } from './NotificationSystem';
 import { useNavigate } from 'react-router-dom';
 import apiCache, { CACHE_KEYS } from '../utils/apiCache';
@@ -20,6 +21,7 @@ import {
 
 const ShopifyStoreManager = () => {
   const { token } = useAuth();
+  const api = useApi();
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 
@@ -48,43 +50,22 @@ const ShopifyStoreManager = () => {
 
       setLoading(true);
 
-      // Fetch with timeout
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
-
-      const response = await fetch('/api/shopify/store', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (response.ok) {
-        const storeData = await response.json();
-        setStore(storeData);
-        setConnectionStatus('connected');
-        // Cache the store data
-        apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: true, store: storeData }, 30);
-      } else if (response.status === 404) {
+      const storeData = await api.get('/api/shopify/store');
+      setStore(storeData);
+      setConnectionStatus('connected');
+      // Cache the store data
+      apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: true, store: storeData }, 30);
+    } catch (error) {
+      if (error.status === 404) {
         // No store connected
         setStore(null);
         setConnectionStatus('disconnected');
         apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: false }, 30);
       } else {
-        throw new Error('Failed to load store information');
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.warn('Store info request timed out');
-        addNotification('Request timed out. Please check your connection.', 'warning');
-      } else {
         console.error('Error loading store info:', error);
         addNotification('Failed to load store information', 'error');
+        setConnectionStatus('error');
       }
-      setConnectionStatus('error');
     } finally {
       setLoading(false);
     }
@@ -94,18 +75,7 @@ const ShopifyStoreManager = () => {
     try {
       setTestingConnection(true);
 
-      const response = await fetch('/api/shopify/test-connection', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Connection test failed');
-      }
-
-      const data = await response.json();
+      const data = await api.get('/api/shopify/test-connection');
 
       if (data.status === 'connected') {
         addNotification('Connection test successful - store is working properly', 'success');
@@ -140,19 +110,11 @@ const ShopifyStoreManager = () => {
     try {
       setDisconnecting(true);
 
-      const response = await fetch('/api/shopify/disconnect', {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to disconnect store');
-      }
+      await api.delete('/api/shopify/disconnect');
 
       setStore(null);
       setConnectionStatus('disconnected');
+      apiCache.set(CACHE_KEYS.SHOPIFY_STORE, { connected: false }, 30);
       addNotification('Store disconnected successfully', 'success');
     } catch (error) {
       console.error('Error disconnecting store:', error);
