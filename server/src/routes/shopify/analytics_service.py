@@ -85,6 +85,26 @@ class ShopifyAnalyticsService:
                 status="any"
             )
 
+            # Handle empty store case
+            if not orders:
+                logger.info(f"No orders found for store {store.shop_name}")
+                return {
+                    "store_name": store.shop_name,
+                    "date_range": {
+                        "start": start_date.isoformat(),
+                        "end": end_date.isoformat()
+                    },
+                    "group_by": group_by,
+                    "summary": {
+                        "total_orders": 0,
+                        "total_revenue": 0.0,
+                        "average_order_value": 0.0,
+                        "orders_growth": 0.0,
+                        "revenue_growth": 0.0
+                    },
+                    "time_series": []
+                }
+
             # Process orders for analytics
             stats = self._process_order_stats(orders, start_date, end_date, group_by)
 
@@ -288,6 +308,19 @@ class ShopifyAnalyticsService:
                 limit=250,
                 status="any"
             )
+
+            # Handle empty store case
+            if not orders:
+                logger.info(f"No orders found for store {store.shop_name} - returning empty top products")
+                return {
+                    "store_name": store.shop_name,
+                    "date_range": {
+                        "start": start_date.isoformat(),
+                        "end": end_date.isoformat()
+                    },
+                    "top_by_quantity": [],
+                    "top_by_revenue": []
+                }
 
             # Process orders to extract product sales data
             product_stats = self._process_product_sales(orders, start_date, end_date)

@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
-import { ChevronRightIcon, PhotoIcon, CubeIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { ChevronRightIcon, PhotoIcon, CubeIcon, SparklesIcon, PlusIcon } from '@heroicons/react/24/outline';
 
 const ShopifyProductCreator = () => {
+  const navigate = useNavigate();
   const { user, token } = useAuth();
   const { addNotification } = useNotifications();
 
@@ -294,14 +296,30 @@ const TemplateSelection = ({ templates, onSelect, loading }) => {
       <div className="text-center py-12">
         <CubeIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Available</h3>
-        <p className="text-gray-600">Please create some product templates first.</p>
+        <p className="text-gray-600 mb-6">Create your first product template to get started.</p>
+        <button
+          onClick={() => navigate('/shopify/templates/create')}
+          className="inline-flex items-center px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 transition-colors"
+        >
+          <PlusIcon className="w-5 h-5 mr-2" />
+          Create Template
+        </button>
       </div>
     );
   }
 
   return (
     <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Select a Template</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold text-gray-900">Select a Template</h2>
+        <button
+          onClick={() => (window.location.href = '/shopify/templates/create')}
+          className="flex items-center px-3 py-2 text-sm bg-sage-600 text-white rounded-lg hover:bg-sage-700 transition-colors"
+        >
+          <PlusIcon className="w-4 h-4 mr-1" />
+          New Template
+        </button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {templates.map(template => (
           <div

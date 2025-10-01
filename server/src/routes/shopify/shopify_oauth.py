@@ -670,6 +670,55 @@ async def get_templates(
     templates = template_service.get_available_templates(current_user.get_uuid())
     return {"templates": templates}
 
+@router.post("/templates")
+async def create_template(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    name: str = Form(...),
+    template_title: str = Form(...),
+    description: str = Form(""),
+    price: float = Form(...),
+    template_type: str = Form("physical"),
+    tags: str = Form("")
+):
+    """Create a new Shopify product template"""
+    from server.src.entities.template import EtsyProductTemplate
+    from uuid import uuid4
+
+    # Create new template
+    template = EtsyProductTemplate(
+        id=uuid4(),
+        user_id=current_user.get_uuid(),
+        name=name,
+        template_title=template_title,
+        description=description,
+        price=price,
+        type=template_type,
+        tags=tags,
+        taxonomy_id=None,  # Optional for Shopify
+        is_taxable=True,
+        is_digital=template_type == "digital"
+    )
+
+    db.add(template)
+    db.commit()
+    db.refresh(template)
+
+    logger.info(f"✅ Created Shopify template '{name}' for user {current_user.get_uuid()}")
+
+    return {
+        "success": True,
+        "message": "Template created successfully",
+        "template": {
+            "id": str(template.id),
+            "name": template.name,
+            "template_title": template.template_title,
+            "description": template.description,
+            "price": template.price,
+            "type": template.type
+        }
+    }
+
 @router.get("/templates/{template_id}/mockups")
 async def get_template_mockups(
     template_id: str,
