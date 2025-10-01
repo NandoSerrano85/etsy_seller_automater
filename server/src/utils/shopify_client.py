@@ -205,14 +205,25 @@ class ShopifyClient:
         headers = self._get_headers(store.access_token)
 
         try:
+            logger.info(f"🔗 Fetching orders from {store.shop_name}")
+            logger.info(f"   URL: {url}")
+            logger.info(f"   Params: {params}")
+
             response = self._make_request_with_retry('GET', url, headers, params=params)
             data = response.json()
 
-            logger.info(f"Successfully fetched {len(data.get('orders', []))} orders from store {store.shop_name}")
+            logger.info(f"✅ Successfully fetched {len(data.get('orders', []))} orders from store {store.shop_name}")
             return data.get('orders', [])
 
+        except ShopifyAPIError as e:
+            logger.error(f"❌ Shopify API error fetching orders from {store.shop_name}: {e}")
+            # If it's a 400 error about ID, it might be an empty store - return empty list
+            if "expected String to be a id" in str(e):
+                logger.warning(f"⚠️  Store {store.shop_name} may be new/empty - returning empty orders list")
+                return []
+            raise
         except Exception as e:
-            logger.error(f"Failed to fetch orders from store {store_id}: {e}")
+            logger.error(f"❌ Failed to fetch orders from store {store_id}: {e}")
             raise
 
     def get_products(self, store_id: str, limit: int = 250,
