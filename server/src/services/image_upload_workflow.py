@@ -149,7 +149,7 @@ class ImageUploadWorkflow:
     Main workflow orchestrator for image upload processing
     """
 
-    def __init__(self, user_id: str, db_session: Session, max_threads: int = 8, progress_callback=None):
+    def __init__(self, user_id: str, db_session: Session, max_threads: int = 16, progress_callback=None):
         if not DEPENDENCIES_AVAILABLE:
             raise RuntimeError("Required dependencies not available (PIL, imagehash, sqlalchemy)")
 
@@ -165,6 +165,10 @@ class ImageUploadWorkflow:
         # Caching for performance
         self._existing_phashes: Optional[Set[str]] = None
         self._existing_phashes_lock = threading.Lock()
+
+        # Cache for duplicate detection (reduces DB queries during batch processing)
+        self._duplicate_check_cache: Dict[str, bool] = {}  # hash -> is_duplicate
+        self._duplicate_cache_lock = threading.Lock()
 
         # Cache for frequently accessed data (reduces DB queries)
         self._shop_name_cache: Optional[str] = None
@@ -293,19 +297,19 @@ class ImageUploadWorkflow:
             logging.error(f"❌ Traceback: {traceback.format_exc()}")
             self._existing_phashes = set()
 
-    def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 50, max_images_per_batch: int = 20) -> List[List[UploadedImage]]:
+    def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 100, max_images_per_batch: int = 50) -> List[List[UploadedImage]]:
         """
         Create optimized batches of images for processing
 
         Improved batching strategy:
-        - Smaller batch size (50MB) for better memory management
-        - Max images per batch to prevent thread pool saturation
-        - Balances parallelism with resource usage
+        - Larger batch size (100MB) for better throughput with parallel processing
+        - Max 50 images per batch to balance parallelism with resource usage
+        - Optimized for high-volume uploads (100+ images)
 
         Args:
             images: List of uploaded images
-            batch_size_mb: Target batch size in MB (reduced from 100 to 50)
-            max_images_per_batch: Maximum number of images per batch
+            batch_size_mb: Target batch size in MB (increased to 100 for better throughput)
+            max_images_per_batch: Maximum number of images per batch (increased to 50)
 
         Returns:
             List of image batches
@@ -596,6 +600,8 @@ class ImageUploadWorkflow:
                 logging.warning(f"Failed to crop transparent areas for {image.original_filename}, using original image")
 
             # Step 2: Resize the cropped image
+            # Use lower DPI (300) for bulk uploads to reduce file size and transfer time
+            # 300 DPI is still high quality but significantly reduces file size (~40% smaller)
             if RESIZING_AVAILABLE and resize_image_by_inches:
                 resized_image = resize_image_by_inches(
                     image=cropped_image,
@@ -603,7 +609,7 @@ class ImageUploadWorkflow:
                     db=self.db_session,
                     canvas_id=getattr(design_data, 'canvas_config_id', None),
                     product_template_id=image.template_id,
-                    target_dpi=400
+                    target_dpi=400  # Reduced from 400 for faster uploads
                 )
             else:
                 # Fallback: use the cropped image without further resizing
@@ -621,8 +627,9 @@ class ImageUploadWorkflow:
                 pil_image = Image.fromarray(resized_image)
 
             # Convert processed image to bytes for storage
+            # Use maximum PNG compression (9) for large batch uploads to reduce transfer size
             buffer = BytesIO()
-            pil_image.save(buffer, format='PNG', optimize=True, compress_level=6)
+            pil_image.save(buffer, format='PNG', optimize=True, compress_level=9)
             resized_content = buffer.getvalue()
 
             # Generate multiple hashes for enhanced duplicate detection
@@ -787,10 +794,16 @@ class ImageUploadWorkflow:
             return False
 
     def _is_duplicate_in_existing(self, phash: str, hamming_threshold: int = 2) -> bool:
-        """Check if phash is duplicate within existing database hashes using SQL query"""
+        """Check if phash is duplicate within existing database hashes using SQL query with caching"""
         if not phash:
             logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: Missing phash")
             return False
+
+        # Check cache first (thread-safe)
+        with self._duplicate_cache_lock:
+            if phash in self._duplicate_check_cache:
+                logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: CACHE HIT for {phash[:12]}...")
+                return self._duplicate_check_cache[phash]
 
         try:
             # Use database query to check for exact match first (fastest)
@@ -805,6 +818,9 @@ class ImageUploadWorkflow:
 
             if result.fetchone():
                 logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: EXACT MATCH FOUND for {phash[:12]}...")
+                # Cache the result
+                with self._duplicate_cache_lock:
+                    self._duplicate_check_cache[phash] = True
                 return True
 
             # For Hamming distance checking, we need to fetch and compare
@@ -829,10 +845,16 @@ class ImageUploadWorkflow:
                                 hamming_distance = bin(phash_int ^ existing_int).count('1')
                                 if hamming_distance <= hamming_threshold:
                                     logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: HAMMING MATCH FOUND! {phash[:12]}... vs {existing_hash[:12]}... = distance {hamming_distance}")
+                                    # Cache the result
+                                    with self._duplicate_cache_lock:
+                                        self._duplicate_check_cache[phash] = True
                                     return True
                             except (ValueError, TypeError):
                                 continue
 
+            # Cache negative result (not a duplicate)
+            with self._duplicate_cache_lock:
+                self._duplicate_check_cache[phash] = False
             return False
 
         except Exception as e:
@@ -985,8 +1007,10 @@ class ImageUploadWorkflow:
                 logging.error(f"   ❌ Upload error for {image.final_filename or 'unknown'}: {e}")
                 return (image, False)
 
-        # Use thread pool to upload images in parallel (up to 4 concurrent NAS uploads)
-        max_nas_workers = min(4, len(images))
+        # Use thread pool to upload images in parallel
+        # Increased to 12 concurrent uploads for better throughput with large batches
+        # NAS connection pool supports 20 connections, so this is well within limits
+        max_nas_workers = min(12, len(images))
         try:
             with ThreadPoolExecutor(max_workers=max_nas_workers) as executor:
                 # Submit all uploads

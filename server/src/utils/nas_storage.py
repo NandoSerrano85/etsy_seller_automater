@@ -158,8 +158,8 @@ class NASStorage:
         else:
             self.enabled = True
             # Initialize connection pool for better concurrent access
-            # Increased default from 5 to 10 for better parallel upload performance
-            max_connections = int(os.getenv('NAS_MAX_CONNECTIONS', '10'))
+            # Increased default to 20 for high-volume parallel uploads (supports 16+ threads)
+            max_connections = int(os.getenv('NAS_MAX_CONNECTIONS', '20'))
             self.connection_pool = SFTPConnectionPool(
                 host=self.host,
                 port=self.port,
