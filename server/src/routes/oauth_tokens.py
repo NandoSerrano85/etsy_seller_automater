@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 
 from server.src.database.core import get_db
-from server.src.routes.auth.dependencies import CurrentUser
+from server.src.routes.auth.service import CurrentUser
 from server.src.entities.platform_connection import PlatformType
 from server.src.services.oauth_token_refresh_service import get_oauth_refresh_service
 
