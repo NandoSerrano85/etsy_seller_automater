@@ -24,7 +24,7 @@ const OverviewTab = ({ user, isConnected, designs, topSellers, authUrl }) => {
       isConnected: isConnected,
       connectUrl: authUrl,
       connectLabel: 'Connect Etsy Shop',
-      dashboardUrl: '/connect-etsy',
+      dashboardUrl: '/?tab=orders',
     },
     {
       id: 'shopify',

@@ -22,7 +22,8 @@ const LoginRegister = () => {
   // Redirect if already logged in
   useEffect(() => {
     if (isUserAuthenticated) {
-      const from = location.state?.from?.pathname || '/';
+      // If user is already authenticated, redirect to dashboard overview
+      const from = location.state?.from?.pathname || '/?tab=overview';
       navigate(from, { replace: true });
     }
   }, [isUserAuthenticated, navigate, location]);
