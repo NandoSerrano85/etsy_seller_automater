@@ -87,9 +87,16 @@ const PrinterTab = () => {
           setSelectedPrinterId(result.data.id);
         }
       } else {
+        // Parse error message to make it more user-friendly
+        let errorMsg = result.error;
+        if (typeof result.error === 'object' && result.error.detail) {
+          errorMsg = Array.isArray(result.error.detail)
+            ? result.error.detail.map(e => e.msg || e.message).join(', ')
+            : result.error.detail;
+        }
         addNotification({
           type: 'error',
-          message: `Failed to create printer: ${result.error}`,
+          message: `Failed to create printer: ${errorMsg}`,
         });
       }
     } catch (error) {

@@ -81,7 +81,7 @@ class PrinterService {
       console.error('Error response:', error.response?.data);
       return {
         success: false,
-        error: error.response?.data?.detail || 'Failed to create printer',
+        error: error.response?.data || error.response?.data?.detail || 'Failed to create printer',
       };
     }
   }
