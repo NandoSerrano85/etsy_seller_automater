@@ -39,7 +39,7 @@ class PrinterService {
       const response = await this.api.get('/printers/');
       return {
         success: true,
-        data: response.data,
+        data: response.data.printers || response.data, // Handle both new format (with .printers) and legacy format
       };
     } catch (error) {
       console.error('Failed to get user printers:', error);
