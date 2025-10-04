@@ -106,6 +106,7 @@ def discover_migrations():
         "add_production_partner_ids",  # Adds production_partner_ids column
         "add_readiness_state_id",         # Adds readiness_state_id column
         "add_shopify_product_templates",  # Adds Shopify product templates table
+        "add_org_id_to_shopify_templates", # Adds org_id column to shopify templates if missing
 
         # Design-related migrations
         "add_phash_to_designs",           # Adds phash column to designs

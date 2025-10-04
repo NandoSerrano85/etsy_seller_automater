@@ -125,10 +125,15 @@ class ShopifyProductTemplate(Base):
 
     def to_dict(self):
         """Convert template to dictionary"""
+        # Get org_id value - will be None if not multi-tenant or not set
+        org_id_value = None
+        if hasattr(self, 'org_id'):
+            org_id_value = str(self.org_id) if self.org_id is not None else None
+
         return {
             'id': str(self.id),
             'user_id': str(self.user_id),
-            'org_id': str(self.org_id) if MULTI_TENANT_ENABLED and self.org_id else None,
+            'org_id': org_id_value,
             'name': self.name,
             'template_title': self.template_title,
             'description': self.description,
@@ -162,6 +167,6 @@ class ShopifyProductTemplate(Base):
             'tax_code': self.tax_code,
             'gift_card': self.gift_card,
             'template_suffix': self.template_suffix,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None else None,
         }

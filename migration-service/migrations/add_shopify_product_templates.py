@@ -23,17 +23,13 @@ def upgrade(connection):
         """))
 
         if not result.fetchone():
-            # Build the CREATE TABLE statement
-            org_id_column = ""
-            if MULTI_TENANT_ENABLED:
-                org_id_column = "org_id UUID REFERENCES organizations(id) ON DELETE CASCADE,"
-
-            # Create the table
-            connection.execute(text(f"""
+            # Create the table - always include org_id for consistency
+            # even if multi-tenant is not enabled (will be NULL)
+            connection.execute(text("""
                 CREATE TABLE shopify_product_templates (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     user_id UUID NOT NULL REFERENCES users(id),
-                    {org_id_column}
+                    org_id UUID,
 
                     -- Template metadata
                     name VARCHAR NOT NULL,
@@ -91,6 +87,23 @@ def upgrade(connection):
             """))
             logging.info("Created shopify_product_templates table")
 
+            # Add foreign key constraint for org_id if organizations table exists
+            org_table_check = connection.execute(text("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_name = 'organizations'
+            """))
+
+            if org_table_check.fetchone():
+                connection.execute(text("""
+                    ALTER TABLE shopify_product_templates
+                    ADD CONSTRAINT fk_shopify_templates_org
+                    FOREIGN KEY (org_id)
+                    REFERENCES organizations(id)
+                    ON DELETE CASCADE
+                """))
+                logging.info("Added foreign key constraint for org_id")
+
             # Add indexes
             connection.execute(text("""
                 CREATE INDEX idx_shopify_product_templates_user_id
@@ -98,12 +111,12 @@ def upgrade(connection):
             """))
             logging.info("Created index on user_id")
 
-            if MULTI_TENANT_ENABLED:
-                connection.execute(text("""
-                    CREATE INDEX idx_shopify_product_templates_org_id
-                    ON shopify_product_templates(org_id)
-                """))
-                logging.info("Created index on org_id")
+            # Always create org_id index since column always exists
+            connection.execute(text("""
+                CREATE INDEX idx_shopify_product_templates_org_id
+                ON shopify_product_templates(org_id)
+            """))
+            logging.info("Created index on org_id")
 
             connection.execute(text("""
                 CREATE INDEX idx_shopify_product_templates_name
