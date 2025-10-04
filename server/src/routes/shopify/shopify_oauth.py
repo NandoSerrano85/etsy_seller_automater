@@ -18,7 +18,8 @@ from .template_service import ShopifyTemplateProductService
 from .analytics_service import ShopifyAnalyticsService
 import requests
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
+import urllib.parse
 from typing import List, Optional
 from uuid import UUID
 from fastapi import File, UploadFile, Form
@@ -49,7 +50,7 @@ else:
     default_redirect_uri = 'http://localhost:3003/api/shopify/callback'
 
 SHOPIFY_REDIRECT_URI = os.getenv('SHOPIFY_REDIRECT_URI', default_redirect_uri)
-SHOPIFY_SCOPES = os.getenv('SHOPIFY_SCOPES', 'read_products,write_products,read_orders')
+SHOPIFY_SCOPES = os.getenv('SHOPIFY_SCOPES', 'read_products,write_products,read_orders,read_themes')
 
 # Log configuration on startup
 logger.info(f"🔧 Shopify OAuth Configuration:")
@@ -451,6 +452,89 @@ async def disconnect_shopify_store(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disconnect Shopify store"
+        )
+
+@router.post("/reauthorize", response_model=model.ShopifyOAuthInitResponse)
+async def reauthorize_shopify_store(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """
+    Initiate re-authorization flow for existing Shopify store with updated scopes.
+    This allows users to grant additional permissions (like read_themes) without disconnecting.
+    """
+    try:
+        user_id = current_user.get_uuid()
+
+        # Get the existing store
+        store = db.query(ShopifyStore).filter(
+            ShopifyStore.user_id == user_id,
+            ShopifyStore.is_active == True
+        ).first()
+
+        if not store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Shopify store found. Please connect a store first."
+            )
+
+        shop_domain = store.shop_domain
+
+        # Check if Shopify credentials are configured
+        if not SHOPIFY_API_KEY or not SHOPIFY_API_SECRET:
+            logger.error("❌ Shopify API credentials not configured")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Shopify integration is not configured"
+            )
+
+        logger.info(f"🔄 Shopify Re-authorization Initiated")
+        logger.info(f"   User: {user_id}")
+        logger.info(f"   Shop: {shop_domain}")
+        logger.info(f"   New scopes: {SHOPIFY_SCOPES}")
+
+        # Normalize shop domain
+        if not shop_domain.endswith('.myshopify.com'):
+            shop_domain = f"{shop_domain}.myshopify.com"
+
+        # Generate state token
+        state = secrets.token_urlsafe(32)
+        oauth_states[state] = {
+            'user_id': str(user_id),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'reauthorize': True,  # Flag to indicate this is a reauth
+            'store_id': str(store.id)
+        }
+
+        # Build authorization URL with updated scopes
+        auth_params = {
+            'client_id': SHOPIFY_API_KEY,
+            'scope': SHOPIFY_SCOPES,
+            'redirect_uri': SHOPIFY_REDIRECT_URI,
+            'state': state,
+            'grant_options[]': 'per-user'  # Request online access tokens
+        }
+
+        auth_url = f"https://{shop_domain}/admin/oauth/authorize?{urllib.parse.urlencode(auth_params)}"
+
+        logger.info(f"✅ Re-authorization URL generated")
+        logger.info(f"   Redirect URI: {SHOPIFY_REDIRECT_URI}")
+        logger.info(f"   State: {state[:10]}...")
+
+        return model.ShopifyOAuthInitResponse(
+            authorization_url=auth_url,
+            state=state
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error initiating re-authorization: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initiate Shopify re-authorization: {str(e)}"
         )
 
 # Additional API endpoints for Shopify operations
@@ -1269,6 +1353,7 @@ async def get_shopify_themes(
 ):
     """Get themes from Shopify store"""
     from server.src.utils.shopify_engine import ShopifyEngine
+    from server.src.utils.shopify_client import ShopifyAPIError
 
     try:
         engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
@@ -1278,6 +1363,20 @@ async def get_shopify_themes(
             "themes": themes,
             "count": len(themes)
         }
+    except ShopifyAPIError as e:
+        # If permission error, return empty array instead of failing
+        if "403" in str(e) or "read_themes" in str(e):
+            logger.warning(f"Theme access not permitted for store {store_id}: {e}")
+            return {
+                "themes": [],
+                "count": 0,
+                "warning": "Theme access requires additional Shopify permissions (read_themes scope)"
+            }
+        logger.error(f"Error fetching themes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch themes: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Error fetching themes: {e}")
         raise HTTPException(
@@ -1294,6 +1393,7 @@ async def get_shopify_theme_templates(
 ):
     """Get product template suffixes from Shopify theme"""
     from server.src.utils.shopify_engine import ShopifyEngine
+    from server.src.utils.shopify_client import ShopifyAPIError
 
     try:
         engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
@@ -1303,6 +1403,20 @@ async def get_shopify_theme_templates(
             "templates": templates,
             "count": len(templates)
         }
+    except ShopifyAPIError as e:
+        # If permission error, return empty array instead of failing
+        if "403" in str(e) or "read_themes" in str(e):
+            logger.warning(f"Theme template access not permitted for store {store_id}: {e}")
+            return {
+                "templates": [],
+                "count": 0,
+                "warning": "Theme template access requires additional Shopify permissions (read_themes scope)"
+            }
+        logger.error(f"Error fetching theme templates: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch theme templates: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Error fetching theme templates: {e}")
         raise HTTPException(
