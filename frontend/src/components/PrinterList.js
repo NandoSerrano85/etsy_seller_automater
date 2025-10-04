@@ -4,6 +4,19 @@ import usePrinterStore from '../stores/printerStore';
 const PrinterList = ({ printers, selectedPrinterId, defaultPrinterId, onPrinterSelect, onRefresh }) => {
   const { printersLoading } = usePrinterStore();
 
+  // Debug logging
+  console.log(
+    'PrinterList received printers:',
+    printers,
+    'Type:',
+    typeof printers,
+    'IsArray:',
+    Array.isArray(printers)
+  );
+
+  // Ensure printers is always an array
+  const printerList = Array.isArray(printers) ? printers : [];
+
   const getPrinterTypeIcon = printerType => {
     switch (printerType) {
       case 'uvdtf':
@@ -72,7 +85,7 @@ const PrinterList = ({ printers, selectedPrinterId, defaultPrinterId, onPrinterS
     return type.charAt(0).toUpperCase() + type.slice(1);
   };
 
-  if (printersLoading && printers.length === 0) {
+  if (printersLoading && printerList.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow-sm border border-sage-200 p-6">
         <div className="animate-pulse">
@@ -116,7 +129,7 @@ const PrinterList = ({ printers, selectedPrinterId, defaultPrinterId, onPrinterS
       </div>
 
       <div className="p-6">
-        {printers.length === 0 ? (
+        {printerList.length === 0 ? (
           <div className="text-center py-8">
             <div className="text-sage-400 mb-4">
               <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,7 +146,7 @@ const PrinterList = ({ printers, selectedPrinterId, defaultPrinterId, onPrinterS
           </div>
         ) : (
           <div className="space-y-3">
-            {printers.map(printer => (
+            {printerList.map(printer => (
               <div
                 key={printer.id}
                 onClick={() => onPrinterSelect(printer.id)}

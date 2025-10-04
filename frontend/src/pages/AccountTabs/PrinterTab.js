@@ -27,18 +27,22 @@ const PrinterTab = () => {
 
   // Load printers on mount
   useEffect(() => {
+    console.log('PrinterTab mounted, isUserAuthenticated:', isUserAuthenticated);
     if (isUserAuthenticated) {
       loadPrinters();
     }
   }, [isUserAuthenticated]);
 
   const loadPrinters = async () => {
+    console.log('loadPrinters called');
     setPrintersLoading(true);
     setPrintersError(null);
 
     try {
       const result = await printerService.getUserPrinters();
+      console.log('Printer service result:', result);
       if (result.success) {
+        console.log('Setting printers:', result.data);
         setPrinters(result.data);
 
         // Set default printer if available
