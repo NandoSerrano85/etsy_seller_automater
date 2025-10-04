@@ -120,3 +120,69 @@ async def delete_product_template_by_id(product_template_id: UUID, current_user:
         return service.delete_etsy_product_template(user_id, product_template_id, db)
 
     await delete_product_template_by_id_threaded()
+
+# Shopify Product Template Endpoints
+@router.post('/shopify-product-template', response_model=model.ShopifyProductTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_shopify_product_template(product_template: model.ShopifyProductTemplateCreate, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Create Shopify product template (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def create_shopify_product_template_threaded():
+        return service.create_shopify_product_template(product_template, user_id, db)
+
+    return await create_shopify_product_template_threaded()
+
+@router.get('/shopify-product-template', response_model=List[model.ShopifyProductTemplateResponse])
+async def get_all_shopify_product_templates(current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Get all Shopify product templates (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def get_all_shopify_product_templates_threaded():
+        return service.get_shopify_product_templates(user_id, db)
+
+    return await get_all_shopify_product_templates_threaded()
+
+@router.get('/shopify-product-template/{product_template_id}', response_model=model.ShopifyProductTemplateResponse)
+async def get_shopify_product_template_by_id(product_template_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Get Shopify product template by ID (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def get_shopify_product_template_by_id_threaded():
+        return service.get_shopify_product_template_by_id(product_template_id, user_id, db)
+
+    return await get_shopify_product_template_by_id_threaded()
+
+@router.put('/shopify-product-template/{product_template_id}', response_model=model.ShopifyProductTemplateResponse)
+async def update_shopify_product_template_by_id(product_template: model.ShopifyProductTemplateUpdate, product_template_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Update Shopify product template by ID (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def update_shopify_product_template_by_id_threaded():
+        return service.update_shopify_product_template(product_template, user_id, product_template_id, db)
+
+    return await update_shopify_product_template_by_id_threaded()
+
+@router.delete('/shopify-product-template/{product_template_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_shopify_product_template_by_id(product_template_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Delete Shopify product template by ID (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def delete_shopify_product_template_by_id_threaded():
+        return service.delete_shopify_product_template(user_id, product_template_id, db)
+
+    await delete_shopify_product_template_by_id_threaded()

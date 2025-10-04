@@ -1,12 +1,12 @@
 from typing import List, Annotated
 from uuid import UUID
 from sqlalchemy.orm import Session
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from . import model
-from server.src.entities.template import EtsyProductTemplate
+from server.src.entities.template import EtsyProductTemplate, ShopifyProductTemplate
 from server.src.routes.auth.service import CurrentUser
 from server.src.message import (
-    EtsyProductTemplateAlreadyExists, 
+    EtsyProductTemplateAlreadyExists,
     EtsyProductTemplateCreateError,
     EtsyProductTemplateGetAllError,
     EtsyProductTemplateNotFound,
@@ -187,14 +187,14 @@ def delete_etsy_product_template(user_id: UUID, product_template_id: UUID, db: S
     """Delete a template for the current user."""
     try:
         db_template = db.query(EtsyProductTemplate).filter(
-            EtsyProductTemplate.id == product_template_id, 
+            EtsyProductTemplate.id == product_template_id,
             EtsyProductTemplate.user_id == user_id
         ).first()
-        
+
         if not db_template:
             logging.warning(f"Could not find etsy product template with template ID: {product_template_id} for user ID: {user_id}")
             raise EtsyProductTemplateNotFound(product_template_id)
-        
+
         db.delete(db_template)
         db.commit()
         logging.info(f"Successfully delted etsy product template with template ID: {product_template_id} for user ID: {user_id}")
@@ -202,3 +202,202 @@ def delete_etsy_product_template(user_id: UUID, product_template_id: UUID, db: S
     except Exception as e:
         logging.error(f"Error deleting template {product_template_id}: {str(e)}")
         raise EtsyProductTemplateDeleteError(product_template_id)
+
+
+# Shopify Product Template Service Functions
+def create_shopify_product_template(product_template: model.ShopifyProductTemplateCreate, user_id: UUID, db: Session) -> ShopifyProductTemplate:
+    """Create a new Shopify template for the current user."""
+    try:
+        # Check if template name already exists for this user
+        existing_template = db.query(ShopifyProductTemplate).filter(
+            ShopifyProductTemplate.user_id == user_id,
+            ShopifyProductTemplate.name == product_template.name
+        ).first()
+
+        if existing_template:
+            logging.warning(f"Shopify template with name: {product_template.name} for user ID: {user_id} already exists with ID: {existing_template.id}")
+            raise HTTPException(status_code=400, detail=f"Template with name '{product_template.name}' already exists")
+
+        # Handle tags and option values conversion
+        tags_str = None
+        if product_template.tags:
+            if isinstance(product_template.tags, list):
+                tags_str = ','.join(str(item) for item in product_template.tags if item)
+            else:
+                tags_str = str(product_template.tags)
+
+        # Convert option values to comma-separated strings
+        option1_values_str = None
+        if product_template.option1_values:
+            if isinstance(product_template.option1_values, list):
+                option1_values_str = ','.join(str(item) for item in product_template.option1_values if item)
+            else:
+                option1_values_str = str(product_template.option1_values)
+
+        option2_values_str = None
+        if product_template.option2_values:
+            if isinstance(product_template.option2_values, list):
+                option2_values_str = ','.join(str(item) for item in product_template.option2_values if item)
+            else:
+                option2_values_str = str(product_template.option2_values)
+
+        option3_values_str = None
+        if product_template.option3_values:
+            if isinstance(product_template.option3_values, list):
+                option3_values_str = ','.join(str(item) for item in product_template.option3_values if item)
+            else:
+                option3_values_str = str(product_template.option3_values)
+
+        db_template = ShopifyProductTemplate(
+            user_id=user_id,
+            name=product_template.name,
+            template_title=product_template.template_title,
+            description=product_template.description,
+            vendor=product_template.vendor,
+            product_type=product_template.product_type,
+            tags=tags_str,
+            price=product_template.price,
+            compare_at_price=product_template.compare_at_price,
+            cost_per_item=product_template.cost_per_item,
+            sku_prefix=product_template.sku_prefix,
+            barcode_prefix=product_template.barcode_prefix,
+            track_inventory=product_template.track_inventory,
+            inventory_quantity=product_template.inventory_quantity,
+            inventory_policy=product_template.inventory_policy,
+            fulfillment_service=product_template.fulfillment_service,
+            requires_shipping=product_template.requires_shipping,
+            weight=product_template.weight,
+            weight_unit=product_template.weight_unit,
+            has_variants=product_template.has_variants,
+            option1_name=product_template.option1_name,
+            option1_values=option1_values_str,
+            option2_name=product_template.option2_name,
+            option2_values=option2_values_str,
+            option3_name=product_template.option3_name,
+            option3_values=option3_values_str,
+            status=product_template.status,
+            published_scope=product_template.published_scope,
+            seo_title=product_template.seo_title,
+            seo_description=product_template.seo_description,
+            is_taxable=product_template.is_taxable,
+            tax_code=product_template.tax_code,
+            gift_card=product_template.gift_card,
+            template_suffix=product_template.template_suffix
+        )
+
+        db.add(db_template)
+        db.commit()
+        db.refresh(db_template)
+        logging.info(f"Successfully created Shopify product template with name: {product_template.name} for user ID: {user_id}")
+
+        return db_template
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Failed to create Shopify template for user ID: {user_id}. Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to create Shopify template")
+
+
+def get_shopify_product_templates(user_id: UUID, db: Session) -> List[ShopifyProductTemplate]:
+    """Get all Shopify templates for the current user."""
+    try:
+        templates = db.query(ShopifyProductTemplate).filter(ShopifyProductTemplate.user_id == user_id).all()
+        logging.info(f"Successfully gathered all Shopify templates for user ID: {user_id}")
+        return templates
+    except Exception as e:
+        logging.error(f"Failed to get Shopify product templates for user ID: {user_id}. Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve Shopify templates")
+
+
+def get_shopify_product_template_by_id(product_template_id: UUID, user_id: UUID, db: Session) -> ShopifyProductTemplate:
+    """Get a specific Shopify template by ID for the current user."""
+    try:
+        template = db.query(ShopifyProductTemplate).filter(
+            ShopifyProductTemplate.id == product_template_id,
+            ShopifyProductTemplate.user_id == user_id
+        ).first()
+
+        if not template:
+            logging.warning(f"Could not find Shopify product template with ID: {product_template_id} for user ID: {user_id}")
+            raise HTTPException(status_code=404, detail=f"Shopify template with ID {product_template_id} not found")
+
+        logging.info(f"Successfully retrieved Shopify product template with ID: {product_template_id} for user ID: {user_id}")
+        return template
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error fetching Shopify template {product_template_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve Shopify template")
+
+
+def update_shopify_product_template(product_template: model.ShopifyProductTemplateUpdate, user_id: UUID, product_template_id: UUID, db: Session) -> ShopifyProductTemplate:
+    """Update an existing Shopify template for the current user."""
+    try:
+        db_template = db.query(ShopifyProductTemplate).filter(
+            ShopifyProductTemplate.id == product_template_id,
+            ShopifyProductTemplate.user_id == user_id
+        ).first()
+
+        if not db_template:
+            logging.warning(f"Could not find Shopify product template with ID: {product_template_id} for user ID: {user_id}")
+            raise HTTPException(status_code=404, detail=f"Shopify template with ID {product_template_id} not found")
+
+        # Check if new name conflicts with existing template (excluding current template)
+        if product_template.name != db_template.name:
+            existing_template = db.query(ShopifyProductTemplate).filter(
+                ShopifyProductTemplate.user_id == user_id,
+                ShopifyProductTemplate.name == product_template.name,
+                ShopifyProductTemplate.id != product_template_id
+            ).first()
+
+            if existing_template:
+                logging.warning(f"Shopify template name '{product_template.name}' is already used by template ID: {existing_template.id} for user ID: {user_id}")
+                raise HTTPException(status_code=400, detail=f"Template with name '{product_template.name}' already exists")
+
+        # Update template fields
+        for field, value in product_template.dict(exclude_unset=True).items():
+            if field == 'tags' and value is not None:
+                if isinstance(value, list):
+                    setattr(db_template, field, ','.join(str(item) for item in value if item))
+                else:
+                    setattr(db_template, field, str(value))
+            elif field in ['option1_values', 'option2_values', 'option3_values'] and value is not None:
+                if isinstance(value, list):
+                    setattr(db_template, field, ','.join(str(item) for item in value if item))
+                else:
+                    setattr(db_template, field, str(value))
+            else:
+                setattr(db_template, field, value)
+
+        db.commit()
+        db.refresh(db_template)
+
+        logging.info(f"Successfully updated Shopify product template with ID: {product_template_id} for user ID: {user_id}")
+        return db_template
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating Shopify template {product_template_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to update Shopify template")
+
+
+def delete_shopify_product_template(user_id: UUID, product_template_id: UUID, db: Session) -> None:
+    """Delete a Shopify template for the current user."""
+    try:
+        db_template = db.query(ShopifyProductTemplate).filter(
+            ShopifyProductTemplate.id == product_template_id,
+            ShopifyProductTemplate.user_id == user_id
+        ).first()
+
+        if not db_template:
+            logging.warning(f"Could not find Shopify product template with ID: {product_template_id} for user ID: {user_id}")
+            raise HTTPException(status_code=404, detail=f"Shopify template with ID {product_template_id} not found")
+
+        db.delete(db_template)
+        db.commit()
+        logging.info(f"Successfully deleted Shopify product template with ID: {product_template_id} for user ID: {user_id}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error deleting Shopify template {product_template_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to delete Shopify template")

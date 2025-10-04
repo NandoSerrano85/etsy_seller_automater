@@ -45,3 +45,50 @@ class EtsyProductTemplateData(BaseModel):
         if self.product_template_id:
             return UUID(self.product_template_id)
         return None
+
+# Shopify Product Template Models
+class ShopifyProductTemplateCreate(BaseModel):
+    name: str
+    template_title: str
+    description: Optional[str] = None
+    vendor: Optional[str] = None
+    product_type: Optional[str] = None
+    tags: Optional[Union[str, List[str]]] = None
+    price: float
+    compare_at_price: Optional[float] = None
+    cost_per_item: Optional[float] = None
+    sku_prefix: Optional[str] = None
+    barcode_prefix: Optional[str] = None
+    track_inventory: Optional[bool] = True
+    inventory_quantity: Optional[int] = 0
+    inventory_policy: Optional[str] = 'deny'
+    fulfillment_service: Optional[str] = 'manual'
+    requires_shipping: Optional[bool] = True
+    weight: Optional[float] = None
+    weight_unit: Optional[str] = 'g'
+    has_variants: Optional[bool] = False
+    option1_name: Optional[str] = None
+    option1_values: Optional[Union[str, List[str]]] = None
+    option2_name: Optional[str] = None
+    option2_values: Optional[Union[str, List[str]]] = None
+    option3_name: Optional[str] = None
+    option3_values: Optional[Union[str, List[str]]] = None
+    status: Optional[str] = 'draft'
+    published_scope: Optional[str] = 'web'
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    is_taxable: Optional[bool] = True
+    tax_code: Optional[str] = None
+    gift_card: Optional[bool] = False
+    template_suffix: Optional[str] = None
+
+class ShopifyProductTemplateUpdate(ShopifyProductTemplateCreate):
+    pass
+
+class ShopifyProductTemplateResponse(ShopifyProductTemplateCreate):
+    id: UUID
+    user_id: UUID
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
