@@ -39,8 +39,11 @@ def get_orders(current_user, db) -> model.OrdersResponse:
         logging.error(f"Error fetching orders: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch orders: {str(e)}")
 
-def create_gang_sheets_from_mockups(template_name: str, current_user, db):
+def create_gang_sheets_from_mockups(template_name: str, current_user, db, printer_id=None, canvas_config_id=None):
     """Create gang sheets from mockup images stored in the database."""
+    from server.src.entities.printer import Printer
+    from server.src.entities.canvas_config import CanvasConfig
+
     # Get user information from database
     user_id = current_user.get_uuid()
     user = db.query(User).filter(User.id == user_id).first()
@@ -49,6 +52,31 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
 
     if not user.shop_name:
         raise HTTPException(status_code=400, detail="User shop name not set")
+
+    # Get default printer if not specified
+    if printer_id is None:
+        default_printer = db.query(Printer).filter(
+            Printer.user_id == user_id,
+            Printer.is_default == True,
+            Printer.is_active == True
+        ).first()
+        if default_printer:
+            printer_id = default_printer.id
+            logging.info(f"Using default printer: {default_printer.name}")
+
+    # Get canvas config from template if not specified
+    if canvas_config_id is None:
+        template = db.query(EtsyProductTemplate).filter(
+            EtsyProductTemplate.name == template_name,
+            EtsyProductTemplate.user_id == user_id
+        ).first()
+        if template and template.canvas_configs:
+            # Use first active canvas config
+            for canvas in template.canvas_configs:
+                if canvas.is_active:
+                    canvas_config_id = canvas.id
+                    logging.info(f"Using canvas config: {canvas.name}")
+                    break
 
     # Use temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -59,7 +87,9 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
             db=db,
             user_id=user_id,
             template_name=template_name,
-            output_path=output_dir
+            output_path=output_dir,
+            printer_id=printer_id,
+            canvas_config_id=canvas_config_id
         )
 
         if result is None:
@@ -97,8 +127,11 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db):
             "files_count": len(uploaded_files)
         }
 
-def create_print_files(current_user, db):
+def create_print_files(current_user, db, printer_id=None, canvas_config_id=None):
     """Get item summary from Etsy and optionally create gang sheets."""
+    from server.src.entities.printer import Printer
+    from server.src.entities.canvas_config import CanvasConfig
+
     try:
         user_id = current_user.get_uuid()
         etsy_api = EtsyAPI(user_id, db)
@@ -113,6 +146,26 @@ def create_print_files(current_user, db):
             raise HTTPException(status_code=400, detail="User shop name not set")
 
         logging.info(f"Creating print files for user: {user_id}, shop: {shop_name}, template: {template_name}")
+
+        # Get default printer if not specified
+        if printer_id is None:
+            default_printer = db.query(Printer).filter(
+                Printer.user_id == user_id,
+                Printer.is_default == True,
+                Printer.is_active == True
+            ).first()
+            if default_printer:
+                printer_id = default_printer.id
+                logging.info(f"Using default printer: {default_printer.name}")
+
+        # Get canvas config from template if not specified
+        if canvas_config_id is None and template and template.canvas_configs:
+            # Use first active canvas config
+            for canvas in template.canvas_configs:
+                if canvas.is_active:
+                    canvas_config_id = canvas.id
+                    logging.info(f"Using canvas config: {canvas.name}")
+                    break
 
         # Use NAS-compatible version for production, fallback to local for development
         if nas_storage.enabled:

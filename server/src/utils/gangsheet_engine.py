@@ -18,13 +18,16 @@ from sqlalchemy.orm import Session
 
 
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
-GANG_SHEET_MAX_WIDTH = 23  # inches
+
+# DEPRECATED: These constants are being replaced with dynamic values from printer and canvas_config
+# They remain here only for backward compatibility during migration
+GANG_SHEET_MAX_WIDTH = 23  # inches - USE printer.max_width_inches instead
 GANG_SHEET_SPACING = {
     'UVDTF 16oz': {'width': 0.32, 'height': 0.5},
     # Add more template spacing configurations here as needed
 }
-GANG_SHEET_MAX_HEIGHT = 215  # inches (was incorrectly set to 215)
-STD_DPI = 400
+GANG_SHEET_MAX_HEIGHT = 215  # inches - USE printer.max_height_inches instead
+STD_DPI = 400  # USE printer.dpi or canvas_config.dpi instead
 
 @lru_cache(maxsize=None)
 def cached_inches_to_pixels(inches, dpi):
@@ -78,28 +81,84 @@ def get_mockup_images_with_mask_data_from_service(db, user_id, template_name):
     return result
 
 
-def create_gang_sheets_from_db(db: Session, user_id: int, template_name: str, output_path: str, dpi: int = 400, text: str = 'Single '):
+def create_gang_sheets_from_db(
+    db: Session,
+    user_id: int,
+    template_name: str,
+    output_path: str,
+    printer_id=None,
+    canvas_config_id=None,
+    dpi: int = None,
+    text: str = 'Single '
+):
    """
    Create gang sheets from mockup images stored in the database.
-   
+
    Args:
        db: Database session
        user_id: ID of the user
        template_name: Name of the template (e.g., 'UVDTF 16oz')
        output_path: Path where gang sheets will be saved
-       dpi: DPI for the gang sheets
+       printer_id: Optional printer ID to get dimensions and DPI from
+       canvas_config_id: Optional canvas config ID to get spacing from
+       dpi: DPI for the gang sheets (defaults to printer.dpi or canvas_config.dpi or 400)
        text: Text to include in the filename
    """
+   import logging
+   from server.src.entities.printer import Printer
+   from server.src.entities.canvas_config import CanvasConfig
+
+   # Get printer configuration if provided
+   printer = None
+   if printer_id:
+       printer = db.query(Printer).filter(Printer.id == printer_id).first()
+       if not printer:
+           logging.warning(f"Printer {printer_id} not found, using default dimensions")
+
+   # Get canvas configuration if provided
+   canvas_config = None
+   if canvas_config_id:
+       canvas_config = db.query(CanvasConfig).filter(CanvasConfig.id == canvas_config_id).first()
+       if not canvas_config:
+           logging.warning(f"Canvas config {canvas_config_id} not found, using default spacing")
+
+   # Determine gang sheet dimensions from printer or defaults
+   max_width = printer.max_width_inches if printer else GANG_SHEET_MAX_WIDTH
+   max_height = printer.max_height_inches if printer else GANG_SHEET_MAX_HEIGHT
+
+   # Determine DPI from canvas_config, printer, or parameter
+   if dpi is None:
+       if canvas_config and canvas_config.dpi:
+           dpi = canvas_config.dpi
+       elif printer and printer.dpi:
+           dpi = printer.dpi
+       else:
+           dpi = STD_DPI
+
+   # Determine spacing from canvas_config or defaults
+   if canvas_config:
+       spacing_width = canvas_config.spacing_width_inches
+       spacing_height = canvas_config.spacing_height_inches
+   elif template_name in GANG_SHEET_SPACING:
+       spacing_width = GANG_SHEET_SPACING[template_name]['width']
+       spacing_height = GANG_SHEET_SPACING[template_name]['height']
+   else:
+       # Default spacing
+       spacing_width = 0.125
+       spacing_height = 0.125
+
+   logging.info(f"Gang sheet config: {max_width}\"x{max_height}\" @ {dpi} DPI, spacing: {spacing_width}\"x{spacing_height}\"")
+
    # Get mockup images with mask data from service
    mockup_images = get_mockup_images_with_mask_data_from_service(db, user_id, template_name)
-   
+
    if not mockup_images:
        print(f"No mockup images found for user {user_id} and template {template_name}")
        return None
-   
+
    # Pre-calculate common values
-   width_px = cached_inches_to_pixels(GANG_SHEET_MAX_WIDTH, dpi)
-   height_px = cached_inches_to_pixels(GANG_SHEET_MAX_HEIGHT, dpi)
+   width_px = cached_inches_to_pixels(max_width, dpi)
+   height_px = cached_inches_to_pixels(max_height, dpi)
 
    # Group mockup images by design_id to handle multiple mockups per design
    design_groups = {}
@@ -141,12 +200,70 @@ def create_gang_sheets_from_db(db: Session, user_id: int, template_name: str, ou
        print(f"No valid mockup images found for gangsheet creation")
        return None
 
-   # Create gang sheets using the existing logic
-   return create_gang_sheets(image_data, template_name, output_path, len(image_data['Title']), dpi, text)
+   # Create gang sheets using the existing logic with dynamic parameters
+   return create_gang_sheets(
+       image_data=image_data,
+       image_type=template_name,
+       output_path=output_path,
+       total_images=len(image_data['Title']),
+       max_width_inches=max_width,
+       max_height_inches=max_height,
+       spacing_width_inches=spacing_width,
+       spacing_height_inches=spacing_height,
+       dpi=dpi,
+       std_dpi=dpi,  # Use same DPI for output
+       text=text
+   )
 
 
-def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=400, text='Single '):
+def create_gang_sheets(
+    image_data,
+    image_type,
+    output_path,
+    total_images,
+    max_width_inches=None,
+    max_height_inches=None,
+    spacing_width_inches=None,
+    spacing_height_inches=None,
+    dpi=400,
+    std_dpi=None,
+    text='Single '
+):
+   """
+   Create gang sheets from image data.
+
+   Args:
+       image_data: Dictionary with 'Title', 'Size', and optionally 'Total' keys
+       image_type: Type/name of the template
+       output_path: Directory to save gang sheets
+       total_images: Total number of images to process
+       max_width_inches: Maximum width of gang sheet (defaults to GANG_SHEET_MAX_WIDTH)
+       max_height_inches: Maximum height of gang sheet (defaults to GANG_SHEET_MAX_HEIGHT)
+       spacing_width_inches: Horizontal spacing between images (defaults to template config or 0.125)
+       spacing_height_inches: Vertical spacing between images (defaults to template config or 0.125)
+       dpi: DPI for gang sheet creation
+       std_dpi: Standard DPI for output scaling (defaults to dpi)
+       text: Text prefix for output filename
+   """
    import logging
+
+   # Use defaults if not provided
+   if max_width_inches is None:
+       max_width_inches = GANG_SHEET_MAX_WIDTH
+   if max_height_inches is None:
+       max_height_inches = GANG_SHEET_MAX_HEIGHT
+   if std_dpi is None:
+       std_dpi = dpi
+
+   # Determine spacing
+   if spacing_width_inches is None or spacing_height_inches is None:
+       if image_type in GANG_SHEET_SPACING:
+           spacing_width_inches = spacing_width_inches or GANG_SHEET_SPACING[image_type]['width']
+           spacing_height_inches = spacing_height_inches or GANG_SHEET_SPACING[image_type]['height']
+       else:
+           spacing_width_inches = spacing_width_inches or 0.125
+           spacing_height_inches = spacing_height_inches or 0.125
+
    try:
        
        # Validate input data
@@ -168,9 +285,9 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
        
        # Pre-calculate common values with safety checks
        try:
-           width_px = cached_inches_to_pixels(GANG_SHEET_MAX_WIDTH, dpi)
-           height_px = cached_inches_to_pixels(GANG_SHEET_MAX_HEIGHT, dpi)
-           logging.info(f"Gang sheet dimensions: {GANG_SHEET_MAX_WIDTH}\"×{GANG_SHEET_MAX_HEIGHT}\" = {width_px}×{height_px} pixels at {dpi} DPI")
+           width_px = cached_inches_to_pixels(max_width_inches, dpi)
+           height_px = cached_inches_to_pixels(max_height_inches, dpi)
+           logging.info(f"Gang sheet dimensions: {max_width_inches}\"×{max_height_inches}\" = {width_px}×{height_px} pixels at {dpi} DPI")
        except Exception as e:
            logging.error(f"Error calculating dimensions: {e}")
            return None
@@ -327,14 +444,10 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                        current_image_amount_left = 0
                    
                    logging.debug(f"Processing image {i}: key={key}, current_image_amount_left={current_image_amount_left}")
-                   
-                   # Check spacing configuration exists
-                   if image_type not in GANG_SHEET_SPACING:
-                       logging.error(f"No spacing configuration for image_type: {image_type}")
-                       continue
-                   
-                   spacing_width_px = cached_inches_to_pixels(GANG_SHEET_SPACING[image_type]['width'], dpi)
-                   spacing_height_px = cached_inches_to_pixels(GANG_SHEET_SPACING[image_type]['height'], dpi)
+
+                   # Use provided spacing configuration
+                   spacing_width_px = cached_inches_to_pixels(spacing_width_inches, dpi)
+                   spacing_height_px = cached_inches_to_pixels(spacing_height_inches, dpi)
 
                    img_height, img_width = img.shape[:2]
 
@@ -452,8 +565,8 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                    xmax = min(xmax + margin, gang_sheet.shape[1] - 1)
                    cropped_gang_sheet = gang_sheet[ymin:ymax+1, xmin:xmax+1]
                    print(f"dpi: {dpi}")
-                   print(f"STD_DPI: {STD_DPI}")
-                   scale_factor = STD_DPI / dpi
+                   print(f"std_dpi: {std_dpi}")
+                   scale_factor = std_dpi / dpi
                    new_width, new_height = int((xmax - xmin + 1) * scale_factor), int((ymax - ymin + 1) * scale_factor)
                    
                    if new_width > 0 and new_height > 0:
