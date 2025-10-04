@@ -49,14 +49,14 @@ const CreatePrinterModal = ({ isOpen, onClose, onSubmit }) => {
 
     if (!formData.max_width_inches || formData.max_width_inches <= 0) {
       newErrors.max_width_inches = 'Valid width is required';
-    } else if (formData.max_width_inches > 100) {
-      newErrors.max_width_inches = 'Width must be 100 inches or less';
+    } else if (formData.max_width_inches > 500) {
+      newErrors.max_width_inches = 'Width must be 500 inches or less';
     }
 
     if (!formData.max_height_inches || formData.max_height_inches <= 0) {
       newErrors.max_height_inches = 'Valid height is required';
-    } else if (formData.max_height_inches > 100) {
-      newErrors.max_height_inches = 'Height must be 100 inches or less';
+    } else if (formData.max_height_inches > 500) {
+      newErrors.max_height_inches = 'Height must be 500 inches or less';
     }
 
     if (!formData.dpi || formData.dpi < 72) {
@@ -199,7 +199,7 @@ const CreatePrinterModal = ({ isOpen, onClose, onSubmit }) => {
                     onChange={handleInputChange}
                     step="0.1"
                     min="0.1"
-                    max="100"
+                    max="500"
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-500 transition-colors ${
                       errors.max_width_inches
                         ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
@@ -223,7 +223,7 @@ const CreatePrinterModal = ({ isOpen, onClose, onSubmit }) => {
                     onChange={handleInputChange}
                     step="0.1"
                     min="0.1"
-                    max="100"
+                    max="500"
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-sage-500 transition-colors ${
                       errors.max_height_inches
                         ? 'border-red-300 focus:border-red-500 focus:ring-red-500'

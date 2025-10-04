@@ -21,8 +21,8 @@ class PrinterCreate(BaseModel):
     manufacturer: Optional[str] = Field(None, max_length=100)
     model: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
-    max_width_inches: float = Field(..., gt=0, le=100, description="Maximum print width in inches")
-    max_height_inches: float = Field(..., gt=0, le=100, description="Maximum print height in inches")
+    max_width_inches: float = Field(..., gt=0, le=500, description="Maximum print width in inches")
+    max_height_inches: float = Field(..., gt=0, le=500, description="Maximum print height in inches")
     dpi: int = Field(default=300, ge=150, le=1200, description="Printer DPI")
     supported_template_ids: List[UUID] = Field(default_factory=list)
     is_default: bool = Field(default=False, description="Set as default printer")
@@ -41,8 +41,8 @@ class PrinterUpdate(BaseModel):
     manufacturer: Optional[str] = Field(None, max_length=100)
     model: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
-    max_width_inches: Optional[float] = Field(None, gt=0, le=100)
-    max_height_inches: Optional[float] = Field(None, gt=0, le=100)
+    max_width_inches: Optional[float] = Field(None, gt=0, le=500)
+    max_height_inches: Optional[float] = Field(None, gt=0, le=500)
     dpi: Optional[int] = Field(None, ge=150, le=1200)
     supported_template_ids: Optional[List[UUID]] = None
     is_active: Optional[bool] = None
