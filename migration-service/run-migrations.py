@@ -105,6 +105,7 @@ def discover_migrations():
         "remove_shopify_unique_constraint", # Removes Shopify constraints
         "add_production_partner_ids",  # Adds production_partner_ids column
         "add_readiness_state_id",         # Adds readiness_state_id column
+        "add_shopify_product_templates",  # Adds Shopify product templates table
 
         # Design-related migrations
         "add_phash_to_designs",           # Adds phash column to designs
