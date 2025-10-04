@@ -158,7 +158,7 @@ def update_etsy_product_template(product_template: model.EtsyProductTemplateUpda
                 raise EtsyProductTemplateAlreadyExists(product_template_id)
         
         # Update template fields
-        for field, value in product_template.dict(exclude_unset=True).items():
+        for field, value in product_template.model_dump(exclude_unset=True).items():
             if field == 'materials' and value is not None:
                 if isinstance(value, list):
                     setattr(db_template, field, ','.join(str(item) for item in value if item))
@@ -355,7 +355,7 @@ def update_shopify_product_template(product_template: model.ShopifyProductTempla
                 raise HTTPException(status_code=400, detail=f"Template with name '{product_template.name}' already exists")
 
         # Update template fields
-        for field, value in product_template.dict(exclude_unset=True).items():
+        for field, value in product_template.model_dump(exclude_unset=True).items():
             if field == 'tags' and value is not None:
                 if isinstance(value, list):
                     setattr(db_template, field, ','.join(str(item) for item in value if item))
