@@ -1183,3 +1183,155 @@ async def get_analytics_summary(
     )
 
     return summary
+
+# Shopify metadata endpoints for template creation
+
+@router.get("/metadata/product-types")
+async def get_shopify_product_types(
+    store_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    limit: int = 250
+):
+    """Get unique product types from Shopify store"""
+    from server.src.utils.shopify_engine import ShopifyEngine
+
+    try:
+        engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
+        product_types = engine.get_product_types(store_id, limit=limit)
+
+        return {
+            "product_types": product_types,
+            "count": len(product_types)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching product types: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch product types: {str(e)}"
+        )
+
+@router.get("/metadata/vendors")
+async def get_shopify_vendors(
+    store_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    limit: int = 250
+):
+    """Get unique vendors from Shopify store"""
+    from server.src.utils.shopify_engine import ShopifyEngine
+
+    try:
+        engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
+        vendors = engine.get_vendors(store_id, limit=limit)
+
+        return {
+            "vendors": vendors,
+            "count": len(vendors)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching vendors: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch vendors: {str(e)}"
+        )
+
+@router.get("/metadata/tags")
+async def get_shopify_tags(
+    store_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    limit: int = 250
+):
+    """Get unique tags from Shopify store"""
+    from server.src.utils.shopify_engine import ShopifyEngine
+
+    try:
+        engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
+        tags = engine.get_tags(store_id, limit=limit)
+
+        return {
+            "tags": tags,
+            "count": len(tags)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching tags: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch tags: {str(e)}"
+        )
+
+@router.get("/metadata/themes")
+async def get_shopify_themes(
+    store_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get themes from Shopify store"""
+    from server.src.utils.shopify_engine import ShopifyEngine
+
+    try:
+        engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
+        themes = engine.get_themes(store_id)
+
+        return {
+            "themes": themes,
+            "count": len(themes)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching themes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch themes: {str(e)}"
+        )
+
+@router.get("/metadata/theme-templates")
+async def get_shopify_theme_templates(
+    store_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    theme_id: Optional[str] = None
+):
+    """Get product template suffixes from Shopify theme"""
+    from server.src.utils.shopify_engine import ShopifyEngine
+
+    try:
+        engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
+        templates = engine.get_theme_templates(store_id, theme_id=theme_id)
+
+        return {
+            "templates": templates,
+            "count": len(templates)
+        }
+    except Exception as e:
+        logger.error(f"Error fetching theme templates: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch theme templates: {str(e)}"
+        )
+
+@router.get("/metadata/countries-hs-codes")
+async def get_shopify_countries_and_hs_codes(
+    store_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get available countries and HS codes for variants"""
+    from server.src.utils.shopify_engine import ShopifyEngine
+
+    try:
+        engine = ShopifyEngine(db, user_id=str(current_user.get_uuid()))
+        data = engine.get_countries_and_hs_codes(store_id)
+
+        return {
+            "countries": data['countries'],
+            "hs_codes": data['hs_codes'],
+            "countries_count": len(data['countries']),
+            "hs_codes_count": len(data['hs_codes'])
+        }
+    except Exception as e:
+        logger.error(f"Error fetching countries and HS codes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch countries and HS codes: {str(e)}"
+        )

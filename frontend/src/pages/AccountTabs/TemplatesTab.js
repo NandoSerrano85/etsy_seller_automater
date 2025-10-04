@@ -431,6 +431,18 @@ const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
   const [loading, setLoading] = useState(false);
   const [taxonomies, setTaxonomies] = useState([]);
   const [shopSections, setShopSections] = useState([]);
+
+  // Shopify metadata states
+  const [shopifyStores, setShopifyStores] = useState([]);
+  const [selectedStore, setSelectedStore] = useState(null);
+  const [productTypes, setProductTypes] = useState([]);
+  const [vendors, setVendors] = useState([]);
+  const [themes, setThemes] = useState([]);
+  const [themeTemplates, setThemeTemplates] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [hsCodes, setHsCodes] = useState([]);
+  const [loadingMetadata, setLoadingMetadata] = useState(false);
+
   const api = useApi();
 
   useEffect(() => {
@@ -447,10 +459,70 @@ const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
           setTaxonomies([]);
           setShopSections([]);
         }
+      } else if (templateType === 'shopify') {
+        // Fetch Shopify stores
+        try {
+          const storesData = await api.get('/shopify/stores');
+          setShopifyStores(storesData.stores || []);
+
+          // Auto-select first store if available
+          if (storesData.stores && storesData.stores.length > 0) {
+            setSelectedStore(storesData.stores[0].id);
+          }
+        } catch (err) {
+          console.error('Error fetching Shopify stores:', err);
+          setShopifyStores([]);
+        }
       }
     };
     fetchData();
   }, [templateType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch Shopify metadata when store is selected
+  useEffect(() => {
+    const fetchShopifyMetadata = async () => {
+      if (templateType === 'shopify' && selectedStore) {
+        setLoadingMetadata(true);
+        try {
+          const [typesData, vendorsData, themesData, countriesData] = await Promise.all([
+            api.get(`/shopify/metadata/product-types?store_id=${selectedStore}`),
+            api.get(`/shopify/metadata/vendors?store_id=${selectedStore}`),
+            api.get(`/shopify/metadata/themes?store_id=${selectedStore}`),
+            api.get(`/shopify/metadata/countries-hs-codes?store_id=${selectedStore}`),
+          ]);
+
+          setProductTypes(typesData.product_types || []);
+          setVendors(vendorsData.vendors || []);
+          setThemes(themesData.themes || []);
+          setCountries(countriesData.countries || []);
+          setHsCodes(countriesData.hs_codes || []);
+        } catch (err) {
+          console.error('Error fetching Shopify metadata:', err);
+        } finally {
+          setLoadingMetadata(false);
+        }
+      }
+    };
+    fetchShopifyMetadata();
+  }, [selectedStore, templateType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch theme templates when theme is selected
+  useEffect(() => {
+    const fetchThemeTemplates = async () => {
+      if (templateType === 'shopify' && selectedStore && formData.theme_id) {
+        try {
+          const templatesData = await api.get(
+            `/shopify/metadata/theme-templates?store_id=${selectedStore}&theme_id=${formData.theme_id}`
+          );
+          setThemeTemplates(templatesData.templates || []);
+        } catch (err) {
+          console.error('Error fetching theme templates:', err);
+          setThemeTemplates([]);
+        }
+      }
+    };
+    fetchThemeTemplates();
+  }, [formData.theme_id, selectedStore, templateType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -535,6 +607,13 @@ const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
               handleArrayChange={handleArrayChange}
               handleArrayKeyPress={handleArrayKeyPress}
               removeArrayItem={removeArrayItem}
+              productTypes={productTypes}
+              vendors={vendors}
+              themes={themes}
+              themeTemplates={themeTemplates}
+              countries={countries}
+              hsCodes={hsCodes}
+              loadingMetadata={loadingMetadata}
             />
           )}
 
@@ -990,9 +1069,22 @@ const ShopifyTemplateForm = ({
   handleArrayChange,
   handleArrayKeyPress,
   removeArrayItem,
+  productTypes = [],
+  vendors = [],
+  themes = [],
+  themeTemplates = [],
+  countries = [],
+  hsCodes = [],
+  loadingMetadata = false,
 }) => {
   return (
     <>
+      {loadingMetadata && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <p className="text-sm text-blue-700">Loading Shopify metadata...</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Basic Information */}
         <div className="space-y-4">
@@ -1035,24 +1127,96 @@ const ShopifyTemplateForm = ({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-            <input
-              type="text"
-              value={formData.vendor || ''}
-              onChange={e => handleInputChange('vendor', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Product vendor"
-            />
+            {vendors.length > 0 ? (
+              <select
+                value={formData.vendor || ''}
+                onChange={e => handleInputChange('vendor', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select vendor or type new...</option>
+                {vendors.map((vendor, index) => (
+                  <option key={index} value={vendor}>
+                    {vendor}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={formData.vendor || ''}
+                onChange={e => handleInputChange('vendor', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Product vendor"
+              />
+            )}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
-            <input
-              type="text"
-              value={formData.product_type || ''}
-              onChange={e => handleInputChange('product_type', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g., Apparel, Accessories"
-            />
+            {productTypes.length > 0 ? (
+              <select
+                value={formData.product_type || ''}
+                onChange={e => handleInputChange('product_type', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select product type or type new...</option>
+                {productTypes.map((type, index) => (
+                  <option key={index} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={formData.product_type || ''}
+                onChange={e => handleInputChange('product_type', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Apparel, Accessories"
+              />
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Theme Template</label>
+            {themes.length > 0 && (
+              <div className="mb-2">
+                <select
+                  value={formData.theme_id || ''}
+                  onChange={e => handleInputChange('theme_id', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select theme...</option>
+                  {themes.map(theme => (
+                    <option key={theme.id} value={theme.id}>
+                      {theme.name} ({theme.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {themeTemplates.length > 0 ? (
+              <select
+                value={formData.template_suffix || ''}
+                onChange={e => handleInputChange('template_suffix', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Default template</option>
+                {themeTemplates.map((template, index) => (
+                  <option key={index} value={template}>
+                    {template}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={formData.template_suffix || ''}
+                onChange={e => handleInputChange('template_suffix', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Template suffix (optional)"
+              />
+            )}
           </div>
 
           <div>
@@ -1513,6 +1677,244 @@ const ShopifyTemplateForm = ({
           </div>
         </div>
       </div>
+
+      {/* Variant Configurations Section */}
+      {formData.has_variants && (
+        <div className="border-t pt-6 mt-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Variant Configurations</h3>
+            <button
+              type="button"
+              onClick={() => {
+                const newVariant = {
+                  option1: '',
+                  option2: '',
+                  option3: '',
+                  price: formData.price || 0,
+                  weight: formData.weight || 0,
+                  sku: formData.sku_prefix || '',
+                  country_code_of_origin: '',
+                  harmonized_system_code: '',
+                };
+                const variants = formData.variant_configs || [];
+                handleInputChange('variant_configs', [...variants, newVariant]);
+              }}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
+            >
+              + Add Variant
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {(formData.variant_configs || []).map((variant, index) => (
+              <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-medium text-gray-900">Variant {index + 1}</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const variants = formData.variant_configs || [];
+                      handleInputChange(
+                        'variant_configs',
+                        variants.filter((_, i) => i !== index)
+                      );
+                    }}
+                    className="text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Option 1 */}
+                  {formData.option1_name && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{formData.option1_name}</label>
+                      <input
+                        type="text"
+                        value={variant.option1 || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], option1: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={`e.g., ${formData.option1_values?.[0] || ''}`}
+                      />
+                    </div>
+                  )}
+
+                  {/* Option 2 */}
+                  {formData.option2_name && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{formData.option2_name}</label>
+                      <input
+                        type="text"
+                        value={variant.option2 || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], option2: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={`e.g., ${formData.option2_values?.[0] || ''}`}
+                      />
+                    </div>
+                  )}
+
+                  {/* Option 3 */}
+                  {formData.option3_name && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{formData.option3_name}</label>
+                      <input
+                        type="text"
+                        value={variant.option3 || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], option3: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder={`e.g., ${formData.option3_values?.[0] || ''}`}
+                      />
+                    </div>
+                  )}
+
+                  {/* Price */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Price ($)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={variant.price || ''}
+                      onChange={e => {
+                        const variants = [...(formData.variant_configs || [])];
+                        variants[index] = { ...variants[index], price: parseFloat(e.target.value) || 0 };
+                        handleInputChange('variant_configs', variants);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  {/* Weight */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Weight ({formData.weight_unit || 'g'})
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={variant.weight || ''}
+                      onChange={e => {
+                        const variants = [...(formData.variant_configs || [])];
+                        variants[index] = { ...variants[index], weight: parseFloat(e.target.value) || 0 };
+                        handleInputChange('variant_configs', variants);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0.00"
+                    />
+                  </div>
+
+                  {/* SKU */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
+                    <input
+                      type="text"
+                      value={variant.sku || ''}
+                      onChange={e => {
+                        const variants = [...(formData.variant_configs || [])];
+                        variants[index] = { ...variants[index], sku: e.target.value };
+                        handleInputChange('variant_configs', variants);
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Product SKU"
+                    />
+                  </div>
+
+                  {/* Country of Origin */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Country of Origin</label>
+                    {countries.length > 0 ? (
+                      <select
+                        value={variant.country_code_of_origin || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], country_code_of_origin: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select country...</option>
+                        {countries.map(country => (
+                          <option key={country} value={country}>
+                            {country}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={variant.country_code_of_origin || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], country_code_of_origin: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g., US"
+                      />
+                    )}
+                  </div>
+
+                  {/* HS Code */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">HS Code</label>
+                    {hsCodes.length > 0 ? (
+                      <select
+                        value={variant.harmonized_system_code || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], harmonized_system_code: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select HS code...</option>
+                        {hsCodes.map(code => (
+                          <option key={code} value={code}>
+                            {code}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={variant.harmonized_system_code || ''}
+                        onChange={e => {
+                          const variants = [...(formData.variant_configs || [])];
+                          variants[index] = { ...variants[index], harmonized_system_code: e.target.value };
+                          handleInputChange('variant_configs', variants);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Harmonized System Code"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {(!formData.variant_configs || formData.variant_configs.length === 0) && (
+              <div className="text-center py-8 text-gray-500">
+                <p>No variants configured. Click "Add Variant" to create variant configurations.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 };

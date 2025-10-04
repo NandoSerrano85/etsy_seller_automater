@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from server.src.database.core import Base
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSON
 
 # Check if multi-tenant is enabled
 MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
@@ -116,6 +116,11 @@ class ShopifyProductTemplate(Base):
     gift_card = Column(Boolean, default=False)  # Is this a gift card
     template_suffix = Column(String, nullable=True)  # Theme template suffix
 
+    # Nested variant structure (JSON)
+    # Stores complex variant configurations with nested options
+    # Example: [{"option1": "5 Pack", "option2": "Red", "price": 25.00, "weight": 500, "sku": "...", "country_code_of_origin": "US", "harmonized_system_code": "123456"}]
+    variant_configs = Column(JSON, nullable=True)  # JSON array of variant configurations
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -167,6 +172,7 @@ class ShopifyProductTemplate(Base):
             'tax_code': self.tax_code,
             'gift_card': self.gift_card,
             'template_suffix': self.template_suffix,
+            'variant_configs': self.variant_configs,
             'created_at': self.created_at.isoformat() if self.created_at is not None else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at is not None else None,
         }
