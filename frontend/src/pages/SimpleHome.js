@@ -285,7 +285,7 @@ const Home = () => {
       )}
 
       {/* Connection Status */}
-      {isEtsyConnected && (etsyUserInfo || etsyShopInfo) && (
+      {process.env.REACT_APP_DEBUG === 'true' && isEtsyConnected && (etsyUserInfo || etsyShopInfo) && (
         <div className="bg-gradient-to-r from-mint-100 to-mint-200 border border-mint-300 rounded-xl p-4 mb-6">
           <div className="flex items-center space-x-3">
             <div className="w-3 h-3 bg-mint-500 rounded-full animate-pulse"></div>
@@ -313,26 +313,28 @@ const Home = () => {
       )}
 
       {/* Debug Panel - Remove after fixing */}
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
-        <p className="text-gray-700 text-sm mb-2">🐛 Debug Panel:</p>
-        <div className="flex gap-2 text-sm">
-          <button onClick={debugTokens} className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
-            Check Tokens
-          </button>
-          <button onClick={debugCache} className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">
-            Check Cache
-          </button>
-          <button
-            onClick={refreshAllData}
-            className="px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
-          >
-            Force Refresh
-          </button>
-          <span className="text-gray-600">
-            Connection Status: <strong>{isEtsyConnected ? '✅ Connected' : '❌ Disconnected'}</strong>
-          </span>
+      {process.env.REACT_APP_DEBUG === 'true' && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+          <p className="text-gray-700 text-sm mb-2">🐛 Debug Panel:</p>
+          <div className="flex gap-2 text-sm">
+            <button onClick={debugTokens} className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+              Check Tokens
+            </button>
+            <button onClick={debugCache} className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">
+              Check Cache
+            </button>
+            <button
+              onClick={refreshAllData}
+              className="px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
+            >
+              Force Refresh
+            </button>
+            <span className="text-gray-600">
+              Connection Status: <strong>{isEtsyConnected ? '✅ Connected' : '❌ Disconnected'}</strong>
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tab Content */}
       {renderTabContent()}

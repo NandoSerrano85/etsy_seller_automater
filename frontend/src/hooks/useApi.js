@@ -97,10 +97,22 @@ export const apiCall = async (url, options = {}, token = null) => {
 };
 
 export const useApi = () => {
-  const { userToken } = useAuth();
+  const { userToken, logout } = useAuth();
 
   const authenticatedApiCall = async (url, options = {}) => {
-    return apiCall(url, options, userToken);
+    try {
+      return await apiCall(url, options, userToken);
+    } catch (error) {
+      // Check if it's a 401 Unauthorized error
+      if (error.message.includes('HTTP 401') || error.message.includes('401')) {
+        console.warn('🔒 Session expired - logging out user');
+        // Trigger logout and redirect to login
+        logout();
+        window.location.href = '/login';
+        throw new Error('Session expired. Please log in again.');
+      }
+      throw error;
+    }
   };
 
   const get = url => authenticatedApiCall(url, { method: 'GET' });
