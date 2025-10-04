@@ -464,7 +464,7 @@ const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
       } else if (templateType === 'shopify') {
         // Fetch Shopify stores
         try {
-          const storesData = await api.get('/shopify/stores');
+          const storesData = await api.get('/api/shopify/stores');
           setShopifyStores(storesData.stores || []);
 
           // Auto-select first store if available
@@ -487,10 +487,10 @@ const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
         setLoadingMetadata(true);
         try {
           const [typesData, vendorsData, themesData, countriesData] = await Promise.all([
-            api.get(`/shopify/metadata/product-types?store_id=${selectedStore}`),
-            api.get(`/shopify/metadata/vendors?store_id=${selectedStore}`),
-            api.get(`/shopify/metadata/themes?store_id=${selectedStore}`),
-            api.get(`/shopify/metadata/countries-hs-codes?store_id=${selectedStore}`),
+            api.get(`/api/shopify/metadata/product-types?store_id=${selectedStore}`),
+            api.get(`/api/shopify/metadata/vendors?store_id=${selectedStore}`),
+            api.get(`/api/shopify/metadata/themes?store_id=${selectedStore}`),
+            api.get(`/api/shopify/metadata/countries-hs-codes?store_id=${selectedStore}`),
           ]);
 
           setProductTypes(typesData.product_types || []);
@@ -514,7 +514,7 @@ const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
       if (templateType === 'shopify' && selectedStore && formData.theme_id) {
         try {
           const templatesData = await api.get(
-            `/shopify/metadata/theme-templates?store_id=${selectedStore}&theme_id=${formData.theme_id}`
+            `/api/shopify/metadata/theme-templates?store_id=${selectedStore}&theme_id=${formData.theme_id}`
           );
           setThemeTemplates(templatesData.templates || []);
         } catch (err) {

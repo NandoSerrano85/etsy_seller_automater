@@ -71,7 +71,7 @@ class ShopifyClient:
         Retrieve store information from database.
 
         Args:
-            store_id: UUID of the store
+            store_id: UUID of the store (as string)
 
         Returns:
             ShopifyStore object
@@ -79,8 +79,19 @@ class ShopifyClient:
         Raises:
             ShopifyNotFoundError: If store not found or inactive
         """
+        from uuid import UUID
+
+        # Convert string to UUID if needed
+        try:
+            if isinstance(store_id, str):
+                store_uuid = UUID(store_id)
+            else:
+                store_uuid = store_id
+        except (ValueError, AttributeError) as e:
+            raise ShopifyNotFoundError(f"Invalid store ID format: {store_id}")
+
         store = self.db.query(ShopifyStore).filter(
-            ShopifyStore.id == store_id,
+            ShopifyStore.id == store_uuid,
             ShopifyStore.is_active == True
         ).first()
 
