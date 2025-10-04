@@ -453,3 +453,128 @@ class PrinterService:
                 {"name": "Large Format 36\"", "width": 36, "height": 48, "description": "Wide format printing"},
             ]
         )
+
+    @staticmethod
+    def add_template_to_printer(
+        db: Session,
+        printer_id: UUID,
+        template_id: UUID,
+        user_id: UUID
+    ) -> Optional[Printer]:
+        """Add a template to printer's supported templates"""
+        try:
+            printer = db.query(Printer).filter(
+                Printer.id == printer_id,
+                Printer.user_id == user_id
+            ).first()
+
+            if not printer:
+                return None
+
+            # Initialize array if None
+            if printer.supported_template_ids is None:
+                printer.supported_template_ids = []
+
+            # Add template if not already present
+            if template_id not in printer.supported_template_ids:
+                printer.supported_template_ids = printer.supported_template_ids + [template_id]
+
+                # Log event
+                event = Event.create_event(
+                    event_type=EventTypes.SYSTEM_INFO,
+                    org_id=getattr(printer, 'org_id', None),
+                    user_id=user_id,
+                    entity_type="Printer",
+                    entity_id=printer_id,
+                    payload={
+                        "action": "template_added",
+                        "template_id": str(template_id)
+                    }
+                )
+                db.add(event)
+
+                db.commit()
+                db.refresh(printer)
+                logger.info(f"Added template {template_id} to printer {printer_id}")
+
+            return printer
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error adding template to printer {printer_id}: {e}")
+            raise
+
+    @staticmethod
+    def remove_template_from_printer(
+        db: Session,
+        printer_id: UUID,
+        template_id: UUID,
+        user_id: UUID
+    ) -> Optional[Printer]:
+        """Remove a template from printer's supported templates"""
+        try:
+            printer = db.query(Printer).filter(
+                Printer.id == printer_id,
+                Printer.user_id == user_id
+            ).first()
+
+            if not printer:
+                return None
+
+            # Remove template if present
+            if printer.supported_template_ids and template_id in printer.supported_template_ids:
+                printer.supported_template_ids = [
+                    tid for tid in printer.supported_template_ids if tid != template_id
+                ]
+
+                # Log event
+                event = Event.create_event(
+                    event_type=EventTypes.SYSTEM_INFO,
+                    org_id=getattr(printer, 'org_id', None),
+                    user_id=user_id,
+                    entity_type="Printer",
+                    entity_id=printer_id,
+                    payload={
+                        "action": "template_removed",
+                        "template_id": str(template_id)
+                    }
+                )
+                db.add(event)
+
+                db.commit()
+                db.refresh(printer)
+                logger.info(f"Removed template {template_id} from printer {printer_id}")
+
+            return printer
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error removing template from printer {printer_id}: {e}")
+            raise
+
+    @staticmethod
+    def get_printer_templates(
+        db: Session,
+        printer_id: UUID,
+        user_id: UUID
+    ) -> List[EtsyProductTemplate]:
+        """Get all templates supported by a printer"""
+        try:
+            printer = db.query(Printer).filter(
+                Printer.id == printer_id,
+                Printer.user_id == user_id
+            ).first()
+
+            if not printer or not printer.supported_template_ids:
+                return []
+
+            # Fetch the actual template objects
+            templates = db.query(EtsyProductTemplate).filter(
+                EtsyProductTemplate.id.in_(printer.supported_template_ids)
+            ).all()
+
+            return templates
+
+        except Exception as e:
+            logger.error(f"Error getting templates for printer {printer_id}: {e}")
+            return []

@@ -3,11 +3,13 @@ import printerService from '../services/printerService';
 import usePrinterStore from '../stores/printerStore';
 import { useNotifications } from './NotificationSystem';
 import EditPrinterModal from './EditPrinterModal';
+import TemplateSelector from './TemplateSelector';
 
 const PrinterDetails = ({ printer, isDefault, onPrinterUpdate }) => {
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [settingDefault, setSettingDefault] = useState(false);
 
   const { addNotification } = useNotifications();
@@ -247,7 +249,18 @@ const PrinterDetails = ({ printer, isDefault, onPrinterUpdate }) => {
       {/* Supported Templates */}
       <div className="bg-white rounded-lg shadow-sm border border-sage-200">
         <div className="p-6 border-b border-sage-200">
-          <h3 className="text-xl font-semibold text-sage-900">Supported Templates</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="text-xl font-semibold text-sage-900">Supported Templates</h3>
+            <button
+              onClick={() => setShowTemplateSelector(true)}
+              className="px-4 py-2 bg-sage-600 hover:bg-sage-700 text-white rounded-lg font-medium transition-colors flex items-center space-x-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              <span>Manage Templates</span>
+            </button>
+          </div>
         </div>
 
         <div className="p-6">
@@ -270,14 +283,23 @@ const PrinterDetails = ({ printer, isDefault, onPrinterUpdate }) => {
                 </svg>
               </div>
               <h4 className="text-lg font-medium text-sage-900 mb-2">No Templates</h4>
-              <p className="text-sage-600">This printer doesn't have any supported templates configured yet.</p>
+              <p className="text-sage-600 mb-4">This printer doesn't have any supported templates configured yet.</p>
+              <button
+                onClick={() => setShowTemplateSelector(true)}
+                className="px-4 py-2 bg-sage-600 hover:bg-sage-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Add Templates
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {templates.map(template => (
-                <div key={template.id} className="border border-sage-200 rounded-lg p-4">
+                <div
+                  key={template.id}
+                  className="border border-sage-200 rounded-lg p-4 hover:border-sage-300 transition-colors"
+                >
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 bg-sage-100 rounded-lg flex items-center justify-center">
+                    <div className="w-12 h-12 bg-sage-100 rounded-lg flex items-center justify-center flex-shrink-0">
                       <svg className="w-6 h-6 text-sage-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
                           strokeLinecap="round"
@@ -287,11 +309,11 @@ const PrinterDetails = ({ printer, isDefault, onPrinterUpdate }) => {
                         />
                       </svg>
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-sage-900">{template.name}</h4>
-                      <p className="text-sm text-sage-500">
-                        {template.width}" × {template.height}" • {template.category}
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sage-900 truncate">{template.name}</h4>
+                      {template.template_title && (
+                        <p className="text-sm text-sage-500 truncate">{template.template_title}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -311,6 +333,19 @@ const PrinterDetails = ({ printer, isDefault, onPrinterUpdate }) => {
             setShowEditModal(false);
             onPrinterUpdate();
           }}
+        />
+      )}
+
+      {/* Template Selector Modal */}
+      {showTemplateSelector && (
+        <TemplateSelector
+          printerId={printer.id}
+          currentTemplateIds={printer.supported_template_ids || []}
+          onTemplatesUpdated={() => {
+            loadPrinterTemplates();
+            onPrinterUpdate();
+          }}
+          onClose={() => setShowTemplateSelector(false)}
         />
       )}
     </div>

@@ -226,19 +226,27 @@ const ResizingTab = () => {
                         key={config.id}
                         className="bg-white border rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow"
                       >
-                        <div className="flex justify-between items-start mb-4">
-                          <h4 className="text-lg font-semibold text-gray-900">{config.template_name}</h4>
-                          <span className="text-sm text-gray-500">#{config.id}</span>
+                        <div className="mb-4">
+                          <h4 className="text-lg font-semibold text-gray-900 mb-1">{config.name}</h4>
+                          <p className="text-sm text-gray-500">{config.template_name}</p>
                         </div>
 
                         <div className="space-y-2 mb-4">
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Width:</span>
-                            <span className="font-medium">{config.width_inches}"</span>
+                            <span className="text-gray-500">Canvas Size:</span>
+                            <span className="font-medium">
+                              {config.width_inches}" × {config.height_inches}"
+                            </span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Height:</span>
-                            <span className="font-medium">{config.height_inches}"</span>
+                            <span className="text-gray-500">Spacing:</span>
+                            <span className="font-medium">
+                              W: {config.spacing_width_inches || 0.125}", H: {config.spacing_height_inches || 0.125}"
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-500">DPI:</span>
+                            <span className="font-medium">{config.dpi || 300}</span>
                           </div>
                           {config.description && <div className="text-sm text-gray-600 mt-2">{config.description}</div>}
                         </div>
@@ -307,24 +315,20 @@ const ResizingTab = () => {
                         key={config.id}
                         className="bg-white border rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow"
                       >
-                        <div className="flex justify-between items-start mb-4">
-                          <h4 className="text-lg font-semibold text-gray-900">
-                            {config.template_name}
-                            {config.size_name && (
-                              <span className="text-sm text-gray-500 ml-2">({config.size_name})</span>
-                            )}
-                          </h4>
-                          <span className="text-sm text-gray-500">#{config.id}</span>
+                        <div className="mb-4">
+                          <h4 className="text-lg font-semibold text-gray-900 mb-1">{config.name}</h4>
+                          <div className="text-sm text-gray-500 space-y-0.5">
+                            <div>Canvas: {config.canvas_name || 'Unknown'}</div>
+                            <div>Template: {config.template_name || 'Unknown'}</div>
+                          </div>
                         </div>
 
                         <div className="space-y-2 mb-4">
                           <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Width:</span>
-                            <span className="font-medium">{config.width_inches}"</span>
-                          </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-500">Height:</span>
-                            <span className="font-medium">{config.height_inches}"</span>
+                            <span className="text-gray-500">Size:</span>
+                            <span className="font-medium">
+                              {config.width_inches}" × {config.height_inches}"
+                            </span>
                           </div>
                           {config.description && <div className="text-sm text-gray-600 mt-2">{config.description}</div>}
                         </div>
@@ -387,6 +391,9 @@ const CanvasConfigModal = ({ config, onSave, onClose }) => {
     name: config?.name || '',
     width_inches: config?.width_inches || 0,
     height_inches: config?.height_inches || 0,
+    spacing_width_inches: config?.spacing_width_inches || 0.125,
+    spacing_height_inches: config?.spacing_height_inches || 0.125,
+    dpi: config?.dpi || 300,
     description: config?.description || '',
     is_active: config?.is_active !== undefined ? config.is_active : true,
     is_stretch: config?.is_stretch !== undefined ? config.is_stretch : true,
@@ -459,9 +466,9 @@ const CanvasConfigModal = ({ config, onSave, onClose }) => {
                   <h4 className="text-lg font-semibold text-gray-900 mb-2">{template.name}</h4>
                   {template.template_title && <p className="text-sm text-gray-600 mb-2">{template.template_title}</p>}
                   <div className="text-xs text-gray-500 space-y-1">
-                    <div>Price: ${template.price || 0}</div>
-                    <div>Type: {template.type || 'N/A'}</div>
-                    <div>Quantity: {template.quantity || 0}</div>
+                    {template.price && <div>Price: ${template.price}</div>}
+                    {template.type && <div>Type: {template.type}</div>}
+                    {template.quantity !== undefined && <div>Quantity: {template.quantity}</div>}
                   </div>
                 </div>
               ))}
@@ -537,6 +544,55 @@ const CanvasConfigModal = ({ config, onSave, onClose }) => {
               placeholder="4.0"
               required
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Width Spacing (inches) *<span className="text-xs text-gray-500 ml-1">(Gang sheet)</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.spacing_width_inches}
+                onChange={e => handleInputChange('spacing_width_inches', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0.125"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Height Spacing (inches) *<span className="text-xs text-gray-500 ml-1">(Gang sheet)</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.spacing_height_inches}
+                onChange={e => handleInputChange('spacing_height_inches', parseFloat(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="0.125"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">DPI (Resolution) *</label>
+            <select
+              value={formData.dpi}
+              onChange={e => handleInputChange('dpi', parseInt(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value={150}>150 DPI</option>
+              <option value={200}>200 DPI</option>
+              <option value={300}>300 DPI (Standard)</option>
+              <option value={400}>400 DPI</option>
+              <option value={500}>500 DPI</option>
+              <option value={600}>600 DPI</option>
+            </select>
           </div>
 
           <div>
@@ -700,9 +756,9 @@ const SizeConfigModal = ({ config, onSave, onClose }) => {
                   <h4 className="text-lg font-semibold text-gray-900 mb-2">{template.name}</h4>
                   {template.template_title && <p className="text-sm text-gray-600 mb-2">{template.template_title}</p>}
                   <div className="text-xs text-gray-500 space-y-1">
-                    <div>Price: ${template.price || 0}</div>
-                    <div>Type: {template.type || 'N/A'}</div>
-                    <div>Quantity: {template.quantity || 0}</div>
+                    {template.price && <div>Price: ${template.price}</div>}
+                    {template.type && <div>Type: {template.type}</div>}
+                    {template.quantity !== undefined && <div>Quantity: {template.quantity}</div>}
                   </div>
                 </div>
               ))}

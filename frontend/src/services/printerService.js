@@ -159,13 +159,47 @@ class PrinterService {
       const response = await this.api.get(`/printers/${printerId}/templates`);
       return {
         success: true,
-        data: response.data,
+        data: response.data.templates || response.data,
       };
     } catch (error) {
       console.error('Failed to get printer templates:', error);
       return {
         success: false,
         error: error.response?.data?.detail || 'Failed to load printer templates',
+      };
+    }
+  }
+
+  // Add template to printer
+  async addTemplateToPrinter(printerId, templateId) {
+    try {
+      const response = await this.api.post(`/printers/${printerId}/templates/${templateId}`);
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      console.error('Failed to add template to printer:', error);
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to add template to printer',
+      };
+    }
+  }
+
+  // Remove template from printer
+  async removeTemplateFromPrinter(printerId, templateId) {
+    try {
+      const response = await this.api.delete(`/printers/${printerId}/templates/${templateId}`);
+      return {
+        success: true,
+        data: response.data,
+      };
+    } catch (error) {
+      console.error('Failed to remove template from printer:', error);
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Failed to remove template from printer',
       };
     }
   }
