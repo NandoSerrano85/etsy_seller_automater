@@ -196,6 +196,22 @@ def register_user_multi_tenant(register_user_request: RegisterUserRequest, db: S
 def get_current_user(token: Annotated[str, Depends(oath2_bearer)]) -> TokenData:
     return verify_token(token)
 
+def get_current_user_db(
+    token: Annotated[str, Depends(oath2_bearer)],
+    db: Session = Depends(get_db)
+) -> User:
+    """Get the current user from database (returns full User object)."""
+    token_data = verify_token(token)
+    user_id = token_data.get_uuid()
+    if not user_id:
+        raise AuthUserNotFound()
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise AuthUserNotFound()
+
+    return user
+
 def get_current_shop_info(
     current_user: Annotated[TokenData, Depends(get_current_user)],
     db: Session = Depends(get_db)
