@@ -70,6 +70,7 @@ class PrinterService {
   // Create new printer
   async createPrinter(printerData) {
     try {
+      console.log('Creating printer with data:', printerData);
       const response = await this.api.post('/printers/', printerData);
       return {
         success: true,
@@ -77,6 +78,7 @@ class PrinterService {
       };
     } catch (error) {
       console.error('Failed to create printer:', error);
+      console.error('Error response:', error.response?.data);
       return {
         success: false,
         error: error.response?.data?.detail || 'Failed to create printer',

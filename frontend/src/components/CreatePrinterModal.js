@@ -76,8 +76,7 @@ const CreatePrinterModal = ({ isOpen, onClose, onSubmit }) => {
         max_width_inches: parseFloat(formData.max_width_inches),
         max_height_inches: parseFloat(formData.max_height_inches),
         dpi: parseInt(formData.dpi),
-        is_active: formData.is_active,
-        notes: formData.notes.trim() || null,
+        description: formData.notes.trim() || null, // Backend expects 'description' not 'notes'
         supported_template_ids: [], // Start with empty array, can be configured later
       });
 
