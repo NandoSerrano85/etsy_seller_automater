@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import templateService from '../services/templateService';
+import { useApi } from '../hooks/useApi';
 import printerService from '../services/printerService';
 import { useNotifications } from './NotificationSystem';
 
@@ -9,28 +9,24 @@ const TemplateSelector = ({ printerId, currentTemplateIds = [], onTemplatesUpdat
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { addNotification } = useNotifications();
+  const api = useApi();
 
   useEffect(() => {
     loadTemplates();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const result = await templateService.getUserTemplates();
-      if (result.success) {
-        setAvailableTemplates(result.data || []);
-      } else {
-        addNotification({
-          type: 'error',
-          message: `Failed to load templates: ${result.error}`,
-        });
-      }
+      const response = await api.get('/settings/product-template');
+      setAvailableTemplates(response || []);
     } catch (error) {
+      console.error('Error fetching templates:', error);
       addNotification({
         type: 'error',
         message: 'Failed to load templates',
       });
+      setAvailableTemplates([]);
     } finally {
       setLoading(false);
     }
