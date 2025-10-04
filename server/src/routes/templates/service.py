@@ -282,7 +282,8 @@ def create_shopify_product_template(product_template: model.ShopifyProductTempla
             is_taxable=product_template.is_taxable,
             tax_code=product_template.tax_code,
             gift_card=product_template.gift_card,
-            template_suffix=product_template.template_suffix
+            template_suffix=product_template.template_suffix,
+            variant_configs=product_template.variant_configs
         )
 
         db.add(db_template)
@@ -366,6 +367,9 @@ def update_shopify_product_template(product_template: model.ShopifyProductTempla
                     setattr(db_template, field, ','.join(str(item) for item in value if item))
                 else:
                     setattr(db_template, field, str(value))
+            elif field == 'variant_configs':
+                # variant_configs is a JSON field, set it directly
+                setattr(db_template, field, value)
             else:
                 setattr(db_template, field, value)
 

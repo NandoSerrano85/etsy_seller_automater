@@ -81,6 +81,7 @@ class ShopifyProductTemplateCreate(BaseModel):
     tax_code: Optional[str] = None
     gift_card: Optional[bool] = False
     template_suffix: Optional[str] = None
+    variant_configs: Optional[List[dict]] = None  # JSON array of variant configurations
 
 class ShopifyProductTemplateUpdate(ShopifyProductTemplateCreate):
     pass

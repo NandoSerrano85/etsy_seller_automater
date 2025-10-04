@@ -133,7 +133,7 @@ class ShopifyEngine(ShopifyClient):
         store = self._get_store_info(store_id)
         url = f"https://{store.shop_domain}/admin/api/{self.API_VERSION}/themes.json"
 
-        headers = self._get_headers(store.access_token)
+        headers = self._get_headers(str(store.access_token))
 
         try:
             response = self._make_request_with_retry('GET', url, headers)
@@ -181,7 +181,7 @@ class ShopifyEngine(ShopifyClient):
             store = self._get_store_info(store_id)
             url = f"https://{store.shop_domain}/admin/api/{self.API_VERSION}/themes/{theme_id}/assets.json"
 
-            headers = self._get_headers(store.access_token)
+            headers = self._get_headers(str(store.access_token))
 
             response = self._make_request_with_retry('GET', url, headers)
             data = response.json()
@@ -374,7 +374,7 @@ class ShopifyEngine(ShopifyClient):
         store = self._get_store_info(store_id)
         url = f"https://{store.shop_domain}/admin/api/{self.API_VERSION}/products/{product_id}/metafields.json"
 
-        headers = self._get_headers(store.access_token)
+        headers = self._get_headers(str(store.access_token))
 
         try:
             response = self._make_request_with_retry('GET', url, headers)

@@ -105,6 +105,7 @@ const TemplatesTab = () => {
         tax_code: '',
         gift_card: false,
         template_suffix: '',
+        variant_configs: [],
       });
     }
     setShowEditModal(true);
@@ -125,6 +126,7 @@ const TemplatesTab = () => {
         option1_values: template.option1_values ? template.option1_values.split(',') : [],
         option2_values: template.option2_values ? template.option2_values.split(',') : [],
         option3_values: template.option3_values ? template.option3_values.split(',') : [],
+        variant_configs: template.variant_configs || [],
       });
     }
     setShowEditModal(true);
