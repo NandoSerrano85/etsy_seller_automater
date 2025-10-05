@@ -639,7 +639,7 @@ const TemplateEditModal = ({ template, templateType, onSave, onReauthorize, onCl
               hsCodes={hsCodes}
               loadingMetadata={loadingMetadata}
               themePermissionWarning={themePermissionWarning}
-              onReauthorize={handleReauthorizeShopify}
+              onReauthorize={onReauthorize}
             />
           )}
 
