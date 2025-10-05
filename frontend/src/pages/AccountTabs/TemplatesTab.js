@@ -378,6 +378,7 @@ const TemplatesTab = () => {
           template={editingTemplate}
           templateType={selectedTemplateType}
           onSave={handleSaveTemplate}
+          onReauthorize={handleReauthorizeShopify}
           onClose={() => {
             setShowEditModal(false);
             setEditingTemplate(null);
@@ -441,7 +442,7 @@ const TemplateTypeSelectionModal = ({ onSelect, onClose }) => {
 };
 
 // Template Edit Modal Component
-const TemplateEditModal = ({ template, templateType, onSave, onClose }) => {
+const TemplateEditModal = ({ template, templateType, onSave, onReauthorize, onClose }) => {
   const [formData, setFormData] = useState(template);
   const [loading, setLoading] = useState(false);
   const [taxonomies, setTaxonomies] = useState([]);
