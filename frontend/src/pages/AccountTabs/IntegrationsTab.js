@@ -88,6 +88,21 @@ const IntegrationsTab = () => {
     }
   };
 
+  const handleShopifyReauthorize = async () => {
+    try {
+      setLoading(true);
+      const response = await api.post('/api/shopify/reauthorize');
+      if (response.authorization_url) {
+        window.location.href = response.authorization_url;
+      }
+    } catch (err) {
+      setError('Failed to initiate Shopify re-authorization');
+      console.error('Error initiating re-authorization:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Available integrations configuration
   const integrations = [
     {
@@ -116,6 +131,7 @@ const IntegrationsTab = () => {
       shopInfo: shopifyStore,
       isLoading: shopifyLoading,
       onDisconnect: handleShopifyDisconnect,
+      onReauthorize: isShopifyConnected ? handleShopifyReauthorize : null,
       customConnectComponent: !isShopifyConnected ? ConnectShopify : null,
       features: [
         { icon: '🛒', label: 'Product Sync' },

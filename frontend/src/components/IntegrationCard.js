@@ -11,6 +11,7 @@ const IntegrationCard = ({
   features,
   onConnect,
   onDisconnect,
+  onReauthorize,
   isLoading,
   customConnectComponent: CustomConnectComponent,
   isComingSoon,
@@ -97,6 +98,15 @@ const IntegrationCard = ({
                     <span className="mr-2">🚀</span>
                     Go to Dashboard
                   </button>
+                  {onReauthorize && (
+                    <button
+                      onClick={onReauthorize}
+                      className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-amber-100 to-amber-200 text-amber-700 rounded-lg hover:from-amber-200 hover:to-amber-300 transition-all duration-200"
+                    >
+                      <span className="mr-2">🔑</span>
+                      Grant Permissions
+                    </button>
+                  )}
                   <button
                     onClick={onDisconnect}
                     className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-rose-100 to-rose-200 text-rose-700 rounded-lg hover:from-rose-200 hover:to-rose-300 transition-all duration-200"
