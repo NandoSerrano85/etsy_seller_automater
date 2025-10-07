@@ -228,9 +228,9 @@ class ShopifyClient:
 
         except ShopifyAPIError as e:
             logger.error(f"❌ Shopify API error fetching orders from {store.shop_name}: {e}")
-            # If it's a 400 error about ID, it might be an empty store - return empty list
-            if "expected String to be a id" in str(e):
-                logger.warning(f"⚠️  Store {store.shop_name} may be new/empty - returning empty orders list")
+            # If it's a 400 error about ID, it might be an empty store or API incompatibility - return empty list
+            if "expected String to be a id" in str(e) or ("400" in str(e) and "id" in str(e).lower()):
+                logger.warning(f"⚠️  Store {store.shop_name} has ID validation issue - returning empty orders list")
                 return []
             raise
         except Exception as e:
