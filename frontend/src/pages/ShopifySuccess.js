@@ -20,7 +20,10 @@ const ShopifySuccess = () => {
     if (error) {
       setStatus('error');
       setErrorMessage(errorDescription || error);
-      addNotification(`Shopify connection failed: ${errorDescription || error}`, 'error');
+      addNotification({
+        type: 'error',
+        message: `Shopify connection failed: ${errorDescription || error}`,
+      });
 
       // Redirect to connect page after 3 seconds
       setTimeout(() => {
@@ -34,7 +37,10 @@ const ShopifySuccess = () => {
       try {
         await loadStore();
         setStatus('success');
-        addNotification('Shopify store connected successfully!', 'success');
+        addNotification({
+          type: 'success',
+          message: 'Shopify store connected successfully!',
+        });
 
         // Redirect to dashboard after 2 seconds
         setTimeout(() => {
@@ -44,7 +50,10 @@ const ShopifySuccess = () => {
         console.error('Error loading store:', err);
         setStatus('error');
         setErrorMessage('Failed to load store information. Please try again.');
-        addNotification('Failed to load store information', 'error');
+        addNotification({
+          type: 'error',
+          message: 'Failed to load store information',
+        });
 
         // Redirect to connect page after 3 seconds
         setTimeout(() => {
