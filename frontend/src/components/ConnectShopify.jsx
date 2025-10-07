@@ -29,7 +29,7 @@ const ConnectShopify = () => {
     setError(null);
 
     try {
-      const response = await api.post('/shopify/connect', {
+      const response = await api.post('/api/shopify/connect', {
         shop_domain: `${cleanDomain}.myshopify.com`,
       });
 
