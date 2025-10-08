@@ -3,7 +3,6 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile"
-    // "watchPatterns": ["src/**", "requirements.txt", "Dockerfile" ""]
   },
   "deploy": {
     "startCommand": "python src/main.py",
