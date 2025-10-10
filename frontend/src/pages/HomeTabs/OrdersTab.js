@@ -58,28 +58,13 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
 
       console.log('Fetching packing slips from:', `${api.baseUrl}/api/packing-slip/bulk/etsy-orders`);
 
-      // Fetch the PDF from the API
-      const response = await fetch(`${api.baseUrl}/api/packing-slip/bulk/etsy-orders`, {
+      // Fetch the PDF from the API using authenticated fetchFile
+      const response = await api.fetchFile('/api/packing-slip/bulk/etsy-orders', {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
       });
 
       console.log('Response status:', response.status);
       console.log('Response content-type:', response.headers.get('content-type'));
-
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'Failed to generate packing slips');
-        } else {
-          const errorText = await response.text();
-          console.error('Server error response:', errorText);
-          throw new Error(`Server error: ${response.status} - ${errorText.substring(0, 200)}`);
-        }
-      }
 
       // Get the PDF blob
       const blob = await response.blob();

@@ -173,6 +173,37 @@ export const useApi = () => {
     });
   const del = url => authenticatedApiCall(url, { method: 'DELETE' });
 
+  // Raw fetch for downloading files (returns response, not JSON)
+  const fetchFile = async (url, options = {}) => {
+    const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
+
+    const headers = {
+      ...options.headers,
+    };
+
+    if (userToken) {
+      headers['Authorization'] = `Bearer ${userToken}`;
+    }
+
+    const response = await fetch(fullUrl, {
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      } else {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText.substring(0, 200)}`);
+      }
+    }
+
+    return response;
+  };
+
   return {
     get,
     post,
@@ -181,6 +212,7 @@ export const useApi = () => {
     put,
     putFormData,
     delete: del,
+    fetchFile,
     baseUrl: API_BASE_URL,
   };
 };
