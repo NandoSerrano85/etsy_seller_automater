@@ -33,7 +33,7 @@ class PackingSlipGenerator:
         self.margin = 0.5 * inch
         self.content_width = self.page_width - (2 * self.margin)
         self.content_height = self.page_height - (2 * self.margin)
-        self.thumbnail_spacing = 1 * inch
+        self.thumbnail_spacing = 0.5 * inch  # Reduced spacing to make images bigger
         self.styles = getSampleStyleSheet()
         self._create_custom_styles()
 
