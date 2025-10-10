@@ -410,20 +410,33 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
             mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
             logger.info(f"Found image from transaction data: {mockup_url}")
         elif listing_id and etsy_api:
-            # Fetch listing details to get images
+            # Fetch listing images directly from Etsy API
             try:
-                logger.info(f"Fetching listing {listing_id} to get images")
-                listing_data = etsy_api.get_listing_by_id(listing_id)
+                logger.info(f"Fetching images for listing {listing_id}")
 
-                if listing_data and listing_data.get('images'):
+                # Use Etsy API to get listing images
+                headers = {
+                    'x-api-key': etsy_api.client_id,
+                    'Authorization': f'Bearer {etsy_api.oauth_token}',
+                }
+
+                # Fetch listing with images included
+                listing_url = f"{etsy_api.base_url}/application/listings/{listing_id}"
+                params = {'includes': 'Images'}
+
+                response = etsy_api.session.get(listing_url, headers=headers, params=params)
+
+                if response.ok:
+                    listing_data = response.json()
                     images = listing_data.get('images', [])
+
                     if images and len(images) > 0:
                         mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
                         logger.info(f"Found image from API call: {mockup_url}")
                     else:
                         logger.warning(f"No images in listing data for listing {listing_id}")
                 else:
-                    logger.warning(f"Could not fetch listing data for listing {listing_id}")
+                    logger.error(f"Failed to fetch listing {listing_id}: {response.status_code} {response.text}")
             except Exception as e:
                 logger.error(f"Error fetching listing {listing_id}: {e}")
         else:
