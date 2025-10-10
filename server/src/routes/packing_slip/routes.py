@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
-from server.src.middleware.auth import get_current_user
+from server.src.routes.auth.service import get_current_user
 from server.src.services.packing_slip_generator import PackingSlipGenerator
 from PyPDF2 import PdfMerger
 import io
