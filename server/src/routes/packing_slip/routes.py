@@ -281,7 +281,8 @@ async def generate_bulk_etsy_packing_slips(
             'offset': 0,
             'was_paid': 'true',
             'was_shipped': 'false',
-            'was_canceled': 'false'
+            'was_canceled': 'false',
+            'includes': 'Transactions,Transactions/Listing,Transactions/Listing/Images'
         }
 
         response = etsy_api.session.get(receipts_url, headers=headers, params=params)
@@ -401,8 +402,16 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
         # Try to get mockup image from listing
         mockup_url = None
         images = listing.get('images', [])
+
+        logger.info(f"Processing transaction: {transaction.get('transaction_id')}")
+        logger.info(f"Listing data present: {bool(listing)}")
+        logger.info(f"Images count: {len(images)}")
+
         if images and len(images) > 0:
             mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
+            logger.info(f"Found image URL: {mockup_url}")
+        else:
+            logger.warning(f"No images found for listing {listing.get('listing_id')}")
 
         items.append({
             "name": transaction.get('title', 'Product'),
