@@ -44,6 +44,8 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
 
   // Add packing slip generation function
   const handleGeneratePackingSlips = async () => {
+    console.log('🔵 Packing slip button clicked!', { ordersLength: orders.length });
+
     if (orders.length === 0) {
       setPrintError('No orders available to generate packing slips');
       return;
