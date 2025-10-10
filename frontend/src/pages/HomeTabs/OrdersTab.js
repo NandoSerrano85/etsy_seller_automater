@@ -70,15 +70,9 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       // Get the PDF blob
       const blob = await response.blob();
 
-      // Create download link
+      // Open PDF in new tab for viewing/printing
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `packing_slips_${new Date().getTime()}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      window.open(url, '_blank');
 
       setPrintMsg(`Successfully generated packing slips for ${orders.length} orders`);
     } catch (error) {

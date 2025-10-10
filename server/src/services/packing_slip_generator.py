@@ -95,39 +95,52 @@ class PackingSlipGenerator:
         Returns:
             bytes: PDF file content
         """
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=letter,
-            rightMargin=self.margin,
-            leftMargin=self.margin,
-            topMargin=self.margin,
-            bottomMargin=self.margin
-        )
+        try:
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buffer,
+                pagesize=letter,
+                rightMargin=self.margin,
+                leftMargin=self.margin,
+                topMargin=self.margin,
+                bottomMargin=self.margin
+            )
 
-        # Build story (content elements)
-        story = []
+            # Build story (content elements)
+            story = []
 
-        # Add header
-        story.extend(self._create_header(order_data))
+            # Add header
+            story.extend(self._create_header(order_data))
 
-        # Add customer information
-        story.extend(self._create_customer_info(order_data.get('customer', {})))
+            # Add customer information
+            story.extend(self._create_customer_info(order_data.get('customer', {})))
 
-        story.append(Spacer(1, 0.3 * inch))
+            story.append(Spacer(1, 0.3 * inch))
 
-        # Add product grid
-        story.extend(self._create_product_grid(order_data.get('items', [])))
+            # Add product grid
+            product_grid = self._create_product_grid(order_data.get('items', []))
+            if product_grid:
+                story.extend(product_grid)
 
-        story.append(Spacer(1, 0.5 * inch))
+            story.append(Spacer(1, 0.5 * inch))
 
-        # Add order summary table
-        story.extend(self._create_order_summary(order_data))
+            # Add order summary table
+            story.extend(self._create_order_summary(order_data))
 
-        # Build PDF
-        doc.build(story)
-        buffer.seek(0)
-        return buffer.getvalue()
+            # Build PDF with error handling
+            doc.build(story)
+            buffer.seek(0)
+            pdf_bytes = buffer.getvalue()
+
+            # Validate PDF was created
+            if len(pdf_bytes) == 0:
+                raise ValueError("Generated PDF is empty")
+
+            return pdf_bytes
+
+        except Exception as e:
+            logger.error(f"Error generating packing slip PDF: {e}", exc_info=True)
+            raise ValueError(f"Failed to generate packing slip: {str(e)}")
 
     def _create_header(self, order_data: Dict[str, Any]) -> List:
         """Create the header with shop name and order info."""
@@ -204,11 +217,15 @@ class PackingSlipGenerator:
         if not items:
             return elements
 
-        # Calculate grid dimensions
-        thumbnail_size = 2.5 * inch  # Image size
-        cell_width = thumbnail_size + (self.thumbnail_spacing / 2)
-        columns = int(self.content_width / cell_width)
-        columns = max(1, min(columns, 3))  # 1-3 columns
+        # Calculate grid dimensions - force 3 columns
+        columns = 3
+        # Calculate thumbnail size to fit 3 per row with spacing
+        # content_width = (thumbnail_size * 3) + (spacing * 2)
+        # 7.5" = (size * 3) + (1" * 2)
+        # 7.5" - 2" = size * 3
+        # 5.5" / 3 = size
+        thumbnail_size = (self.content_width - (self.thumbnail_spacing * 2)) / 3
+        cell_width = thumbnail_size + (self.thumbnail_spacing * 2 / 3)
 
         # Organize items into grid rows
         rows = []
@@ -251,48 +268,92 @@ class PackingSlipGenerator:
         return elements
 
     def _create_product_cell(self, mockup_url: Optional[str], quantity: int,
-                            product_name: str, size: float) -> List:
+                            product_name: str, size: float):
         """Create a cell with product image and quantity."""
-        cell_elements = []
 
-        # Add product image
+        # Create a nested table with image/placeholder and quantity
+        inner_elements = []
+
+        # Add product image or placeholder box
         if mockup_url:
             try:
                 img = self._get_image_from_url(mockup_url, size, size)
                 if img:
-                    cell_elements.append(img)
+                    inner_elements.append([img])
+                else:
+                    # Add placeholder if image fails
+                    inner_elements.append([self._create_placeholder_box(product_name, size)])
             except Exception as e:
                 logger.error(f"Failed to load image from {mockup_url}: {e}")
                 # Add placeholder
-                cell_elements.append(Paragraph(
-                    f"<i>{product_name[:30]}...</i>",
-                    self.styles['Normal']
-                ))
+                inner_elements.append([self._create_placeholder_box(product_name, size)])
         else:
-            # Placeholder text
-            cell_elements.append(Paragraph(
-                f"<i>{product_name[:30]}...</i>",
-                self.styles['Normal']
-            ))
-
-        # Add spacing
-        cell_elements.append(Spacer(1, 0.1 * inch))
+            # Placeholder
+            inner_elements.append([self._create_placeholder_box(product_name, size)])
 
         # Add quantity
         qty_text = f"<b>Qty: {quantity}</b>"
-        cell_elements.append(Paragraph(qty_text, self.styles['Quantity']))
+        inner_elements.append([Paragraph(qty_text, self.styles['Quantity'])])
 
-        return cell_elements
+        # Create inner table
+        inner_table = Table(inner_elements, colWidths=[size])
+        inner_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),  # Space after image
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 0),
+        ]))
+
+        return inner_table
+
+    def _create_placeholder_box(self, product_name: str, size: float):
+        """Create a placeholder box when image is not available."""
+        # Create a simple colored box as placeholder
+        placeholder_text = Paragraph(
+            f"<b>{product_name[:20]}</b>",
+            self.styles['Normal']
+        )
+        placeholder_table = Table([[placeholder_text]], colWidths=[size], rowHeights=[size])
+        placeholder_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0F0F0')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CCCCCC')),
+        ]))
+        return placeholder_table
 
     def _get_image_from_url(self, url: str, width: float, height: float) -> Optional[Image]:
         """Download and create an Image object from URL."""
         try:
-            response = requests.get(url, timeout=10)
+            # Validate URL
+            if not url or not url.startswith(('http://', 'https://')):
+                logger.warning(f"Invalid image URL: {url}")
+                return None
+
+            response = requests.get(url, timeout=10, allow_redirects=True)
             response.raise_for_status()
 
+            # Check if response has content
+            if not response.content:
+                logger.warning(f"Empty image response from {url}")
+                return None
+
+            # Validate content type
+            content_type = response.headers.get('content-type', '')
+            if not any(ct in content_type.lower() for ct in ['image/', 'octet-stream']):
+                logger.warning(f"Invalid content type {content_type} from {url}")
+                return None
+
             img_buffer = io.BytesIO(response.content)
-            img = Image(img_buffer, width=width, height=height)
+            img = Image(img_buffer, width=width, height=height, kind='proportional')
             return img
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout loading image from {url}")
+            return None
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request error loading image from {url}: {e}")
+            return None
         except Exception as e:
             logger.error(f"Error loading image from {url}: {e}")
             return None
