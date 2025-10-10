@@ -33,7 +33,7 @@ class PackingSlipGenerator:
         self.margin = 0.5 * inch
         self.content_width = self.page_width - (2 * self.margin)
         self.content_height = self.page_height - (2 * self.margin)
-        self.thumbnail_spacing = 0.5 * inch  # Reduced spacing to make images bigger
+        self.thumbnail_spacing = 0.3 * inch  # Reduced spacing to make images bigger
         self.styles = getSampleStyleSheet()
         self._create_custom_styles()
 
@@ -191,19 +191,45 @@ class PackingSlipGenerator:
         # Format address
         address_lines = []
         if isinstance(address, dict):
-            address_lines.append(address.get('line1', ''))
+            # Add line1 (street address)
+            if address.get('line1'):
+                address_lines.append(address.get('line1', ''))
+            # Add line2 (apt, suite, etc.)
             if address.get('line2'):
                 address_lines.append(address.get('line2', ''))
-            city_state_zip = f"{address.get('city', '')}, {address.get('state', '')} {address.get('zip', '')}"
-            address_lines.append(city_state_zip.strip())
-            if address.get('country'):
-                address_lines.append(address.get('country', ''))
+            # Add city, state, zip
+            city = address.get('city', '').strip()
+            state = address.get('state', '').strip()
+            zip_code = address.get('zip', '').strip()
+
+            city_state_zip_parts = []
+            if city:
+                city_state_zip_parts.append(city)
+            if state:
+                city_state_zip_parts.append(state)
+            if zip_code:
+                city_state_zip_parts.append(zip_code)
+
+            if city_state_zip_parts:
+                # Format as "City, State Zip"
+                if len(city_state_zip_parts) >= 2:
+                    city_state_zip = f"{city_state_zip_parts[0]}, {' '.join(city_state_zip_parts[1:])}"
+                else:
+                    city_state_zip = ' '.join(city_state_zip_parts)
+                address_lines.append(city_state_zip)
+
+            # Add country
+            country = address.get('country', '').strip()
+            if country and country != 'US':  # Only show if not US
+                address_lines.append(country)
         elif isinstance(address, str):
             address_lines = [address]
 
+        # Build customer text with name, email, and address
         customer_text = f"<b>{customer_name}</b><br/>"
         if email:
-            customer_text += f"{email}<br/>"
+            customer_text += f"<b>Email:</b> {email}<br/>"
+        customer_text += "<br/>"  # Add blank line before address
         customer_text += "<br/>".join(filter(None, address_lines))
 
         elements.append(Paragraph(customer_text, self.styles['CustomerInfo']))
@@ -364,6 +390,7 @@ class PackingSlipGenerator:
 
         items = order_data.get('items', [])
         subtotal = order_data.get('subtotal', 0.0)
+        discount = order_data.get('discount_amount', 0.0)
         shipping = order_data.get('shipping_cost', 0.0)
         total = order_data.get('total', 0.0)
 
@@ -401,18 +428,35 @@ class PackingSlipGenerator:
                 Paragraph(f"${item_total:.2f}", self.styles['Normal'])
             ])
 
-        # Add subtotal, shipping, total
-        table_data.extend([
+        # Add subtotal, discount, shipping, total
+        summary_rows = [
             ['', '', Paragraph('<b>Subtotal:</b>', self.styles['Normal']),
-             Paragraph(f"<b>${subtotal:.2f}</b>", self.styles['Normal'])],
+             Paragraph(f"<b>${subtotal:.2f}</b>", self.styles['Normal'])]
+        ]
+
+        # Only add discount row if there's a discount
+        if discount > 0:
+            summary_rows.append([
+                '', '', Paragraph('<b>Discount:</b>', self.styles['Normal']),
+                Paragraph(f"<b>-${discount:.2f}</b>", self.styles['Normal'])
+            ])
+
+        summary_rows.extend([
             ['', '', Paragraph('<b>Shipping:</b>', self.styles['Normal']),
              Paragraph(f"<b>${shipping:.2f}</b>", self.styles['Normal'])],
             ['', '', Paragraph('<b>Total:</b>', self.styles['Normal']),
              Paragraph(f"<b>${total:.2f}</b>", self.styles['Normal'])]
         ])
 
+        table_data.extend(summary_rows)
+
         # Create table
         table = Table(table_data, colWidths=[3.5*inch, 1*inch, 1.5*inch, 1.5*inch])
+
+        # Calculate number of summary rows (3 or 4 depending on discount)
+        num_summary_rows = len(summary_rows)
+        num_item_rows = len(items)
+
         table.setStyle(TableStyle([
             # Header row styling
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495E')),
@@ -422,16 +466,16 @@ class PackingSlipGenerator:
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('TOPPADDING', (0, 0), (-1, 0), 12),
 
-            # Data rows
-            ('FONTNAME', (0, 1), (-1, -4), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -4), 9),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -4), [colors.white, colors.HexColor('#F8F9FA')]),
-            ('GRID', (0, 0), (-1, -4), 0.5, colors.HexColor('#BDC3C7')),
+            # Data rows (items only, exclude summary rows)
+            ('FONTNAME', (0, 1), (-1, -(num_summary_rows + 1)), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -(num_summary_rows + 1)), 9),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -(num_summary_rows + 1)), [colors.white, colors.HexColor('#F8F9FA')]),
+            ('GRID', (0, 0), (-1, -(num_summary_rows + 1)), 0.5, colors.HexColor('#BDC3C7')),
 
-            # Summary rows (last 3)
-            ('LINEABOVE', (2, -3), (-1, -3), 2, colors.HexColor('#34495E')),
+            # Summary rows
+            ('LINEABOVE', (2, -num_summary_rows), (-1, -num_summary_rows), 2, colors.HexColor('#34495E')),
             ('LINEABOVE', (2, -1), (-1, -1), 2, colors.HexColor('#34495E')),
-            ('FONTSIZE', (0, -3), (-1, -1), 11),
+            ('FONTSIZE', (0, -num_summary_rows), (-1, -1), 11),
 
             # Alignment
             ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),

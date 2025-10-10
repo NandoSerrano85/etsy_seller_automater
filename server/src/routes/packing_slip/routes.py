@@ -451,6 +451,7 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
 
     # Calculate totals
     subtotal = float(receipt.get('subtotal', {}).get('amount', 0) / receipt.get('subtotal', {}).get('divisor', 100))
+    discount_amount = float(receipt.get('discount_amt', {}).get('amount', 0) / receipt.get('discount_amt', {}).get('divisor', 100))
     shipping_cost = float(receipt.get('total_shipping_cost', {}).get('amount', 0) / receipt.get('total_shipping_cost', {}).get('divisor', 100))
     total = float(receipt.get('grandtotal', {}).get('amount', 0) / receipt.get('grandtotal', {}).get('divisor', 100))
 
@@ -474,6 +475,7 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
         },
         "items": items,
         "subtotal": subtotal,
+        "discount_amount": discount_amount,
         "shipping_cost": shipping_cost,
         "total": total
     }
