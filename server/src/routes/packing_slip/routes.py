@@ -314,7 +314,7 @@ async def generate_bulk_etsy_packing_slips(
             try:
                 # Convert Etsy receipt to packing slip format
                 shop_name_str = user.shop_name if user.shop_name else "Shop"
-                order_data = _convert_etsy_receipt_to_packing_slip(receipt, shop_name_str)
+                order_data = _convert_etsy_receipt_to_packing_slip(receipt, shop_name_str, etsy_api)
 
                 # Generate packing slip
                 pdf_bytes = generator.generate_packing_slip(order_data)
@@ -364,13 +364,14 @@ async def generate_bulk_etsy_packing_slips(
         )
 
 
-def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: str) -> Dict[str, Any]:
+def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: str, etsy_api=None) -> Dict[str, Any]:
     """
     Convert an Etsy receipt to packing slip format.
 
     Args:
         receipt: Etsy receipt data
         shop_name: Shop name from Etsy store
+        etsy_api: EtsyAPI instance for fetching listing images
 
     Returns:
         Dict formatted for packing slip generator
@@ -396,22 +397,37 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
     transactions = receipt.get('transactions', [])
 
     for transaction in transactions:
-        # Get listing information
-        listing = transaction.get('listing', {})
+        listing_id = transaction.get('listing_id')
 
         # Try to get mockup image from listing
         mockup_url = None
-        images = listing.get('images', [])
 
-        logger.info(f"Processing transaction: {transaction.get('transaction_id')}")
-        logger.info(f"Listing data present: {bool(listing)}")
-        logger.info(f"Images count: {len(images)}")
+        # First try to get from transaction listing data (if included)
+        listing = transaction.get('listing', {})
+        images = listing.get('images', [])
 
         if images and len(images) > 0:
             mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
-            logger.info(f"Found image URL: {mockup_url}")
+            logger.info(f"Found image from transaction data: {mockup_url}")
+        elif listing_id and etsy_api:
+            # Fetch listing details to get images
+            try:
+                logger.info(f"Fetching listing {listing_id} to get images")
+                listing_data = etsy_api.get_listing_by_id(listing_id)
+
+                if listing_data and listing_data.get('images'):
+                    images = listing_data.get('images', [])
+                    if images and len(images) > 0:
+                        mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
+                        logger.info(f"Found image from API call: {mockup_url}")
+                    else:
+                        logger.warning(f"No images in listing data for listing {listing_id}")
+                else:
+                    logger.warning(f"Could not fetch listing data for listing {listing_id}")
+            except Exception as e:
+                logger.error(f"Error fetching listing {listing_id}: {e}")
         else:
-            logger.warning(f"No images found for listing {listing.get('listing_id')}")
+            logger.warning(f"No listing_id or etsy_api provided for transaction {transaction.get('transaction_id')}")
 
         items.append({
             "name": transaction.get('title', 'Product'),
