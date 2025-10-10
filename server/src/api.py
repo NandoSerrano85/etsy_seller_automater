@@ -17,6 +17,7 @@ from server.src.routes.platform_connections.controller import router as platform
 from server.src.routes.admin.nas_migration import router as admin_router
 from server.src.routes.cache.controller import router as cache_router
 from server.src.routes.oauth_tokens import router as oauth_tokens_router
+from server.src.routes.packing_slip.routes import router as packing_slip_router
 
 # Multi-tenant routes - conditionally imported if multi-tenant is enabled
 def get_multi_tenant_routers():
@@ -153,6 +154,7 @@ def register_routes(app: FastAPI):
     app.include_router(admin_router)
     app.include_router(cache_router, prefix="/api")
     app.include_router(oauth_tokens_router)
+    app.include_router(packing_slip_router, prefix="/api")
 
     # Multi-tenant routes - only enabled if multi-tenant is enabled
     multi_tenant_routers = get_multi_tenant_routers()

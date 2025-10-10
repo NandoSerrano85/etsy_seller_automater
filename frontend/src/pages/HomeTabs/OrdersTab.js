@@ -10,6 +10,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [printLoading, setPrintLoading] = useState(false);
   const [printError, setPrintError] = useState(null);
   const [printMsg, setPrintMsg] = useState(null);
+  const [packingSlipLoading, setPackingSlipLoading] = useState(false);
   const api = useApi();
 
   // Add send to print function
@@ -41,6 +42,53 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     }
   };
 
+  // Add packing slip generation function
+  const handleGeneratePackingSlips = async () => {
+    if (orders.length === 0) {
+      setPrintError('No orders available to generate packing slips');
+      return;
+    }
+
+    try {
+      setPackingSlipLoading(true);
+      setPrintError(null);
+      setPrintMsg(null);
+
+      // Fetch the PDF from the API
+      const response = await fetch(`${api.baseUrl}/api/packing-slip/bulk/etsy-orders`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to generate packing slips');
+      }
+
+      // Get the PDF blob
+      const blob = await response.blob();
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `packing_slips_${new Date().getTime()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setPrintMsg(`Successfully generated packing slips for ${orders.length} orders`);
+    } catch (error) {
+      setPrintError(error.message || 'Error generating packing slips');
+      console.error('Packing slip error:', error);
+    } finally {
+      setPackingSlipLoading(false);
+    }
+  };
+
   // Add order selection handler
   // const handleOrderSelect = orderId => {
   //   setSelectedOrders(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
@@ -53,27 +101,50 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-lg font-semibold">Selected Orders for Print</h3>
-            <button
-              onClick={handleSendToPrint}
-              disabled={orders.length === 0 || printLoading}
-              className={`
-                px-4 py-2 rounded-lg font-medium flex items-center space-x-2
-                ${
-                  orders.length === 0 || printLoading
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-lavender-500 text-white hover:bg-lavender-600'
-                }
-              `}
-            >
-              {printLoading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-              ) : (
-                <>
-                  <span>🖨️</span>
-                  <span>Send to Print ({orders.length})</span>
-                </>
-              )}
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={handleGeneratePackingSlips}
+                disabled={orders.length === 0 || packingSlipLoading}
+                className={`
+                  px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                  ${
+                    orders.length === 0 || packingSlipLoading
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-500 text-white hover:bg-blue-600'
+                  }
+                `}
+              >
+                {packingSlipLoading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <span>📄</span>
+                    <span>Packing Slips ({orders.length})</span>
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleSendToPrint}
+                disabled={orders.length === 0 || printLoading}
+                className={`
+                  px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                  ${
+                    orders.length === 0 || printLoading
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-lavender-500 text-white hover:bg-lavender-600'
+                  }
+                `}
+              >
+                {printLoading ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                ) : (
+                  <>
+                    <span>🖨️</span>
+                    <span>Send to Print ({orders.length})</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {printError && (
