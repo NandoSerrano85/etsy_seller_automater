@@ -33,6 +33,21 @@ class EtsyTokenRefresher:
         # Get connections whose tokens expire within the next 10 minutes or are already expired
         expiry_threshold = datetime.now(timezone.utc) + timedelta(minutes=10)
 
+        # First, check all Etsy connections for debugging
+        all_etsy_connections = db.query(PlatformConnection).filter(
+            PlatformConnection.platform == PlatformType.ETSY,
+            PlatformConnection.is_active == True
+        ).all()
+
+        logger.info(f"Found {len(all_etsy_connections)} total active Etsy connections")
+
+        for conn in all_etsy_connections:
+            if conn.token_expires_at:
+                time_until_expiry = conn.token_expires_at - datetime.now(timezone.utc)
+                logger.info(f"  Connection {conn.id}: expires in {time_until_expiry}")
+            else:
+                logger.info(f"  Connection {conn.id}: no expiration set")
+
         connections = db.query(PlatformConnection).filter(
             PlatformConnection.platform == PlatformType.ETSY,
             PlatformConnection.is_active == True,
@@ -40,7 +55,7 @@ class EtsyTokenRefresher:
         ).all()
 
         if not connections:
-            logger.info("No Etsy tokens need refreshing")
+            logger.info("No Etsy tokens need refreshing (all tokens valid for >10 minutes)")
             return {"total": 0, "refreshed": 0, "failed": 0, "errors": []}
 
         logger.info(f"Found {len(connections)} Etsy connections with expiring/expired tokens")
