@@ -61,7 +61,7 @@ class PackingSlipRequest(BaseModel):
 @router.post("/generate")
 async def generate_packing_slip(
     request: PackingSlipRequest,
-    current_user: Dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -109,7 +109,7 @@ async def generate_packing_slip(
 @router.post("/preview")
 async def preview_packing_slip(
     request: PackingSlipRequest,
-    current_user: Dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -233,7 +233,7 @@ async def generate_sample_packing_slip():
 
 @router.get("/bulk/etsy-orders")
 async def generate_bulk_etsy_packing_slips(
-    current_user: Dict = Depends(get_current_user),
+    current_user = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -243,7 +243,7 @@ async def generate_bulk_etsy_packing_slips(
         StreamingResponse: Combined PDF with all packing slips
     """
     try:
-        logger.info(f"Generating bulk packing slips for Etsy orders - User: {current_user.get('user_id')}")
+        logger.info(f"Generating bulk packing slips for Etsy orders - User: {current_user.user_id}")
 
         # Import Etsy client
         from server.src.utils.etsy_client import EtsyClient
@@ -251,7 +251,7 @@ async def generate_bulk_etsy_packing_slips(
         from datetime import datetime
 
         # Get user's Etsy store
-        user_id = current_user.get('uuid') or current_user.get('user_id')
+        user_id = current_user.get_uuid()
         etsy_store = db.query(EtsyStore).filter(
             EtsyStore.user_id == user_id,
             EtsyStore.is_active == True

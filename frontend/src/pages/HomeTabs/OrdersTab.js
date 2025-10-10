@@ -54,6 +54,8 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       setPrintError(null);
       setPrintMsg(null);
 
+      console.log('Fetching packing slips from:', `${api.baseUrl}/api/packing-slip/bulk/etsy-orders`);
+
       // Fetch the PDF from the API
       const response = await fetch(`${api.baseUrl}/api/packing-slip/bulk/etsy-orders`, {
         method: 'GET',
@@ -62,13 +64,32 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
         },
       });
 
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to generate packing slips');
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to generate packing slips');
+        } else {
+          const errorText = await response.text();
+          throw new Error(`Server error: ${response.status} - ${errorText}`);
+        }
       }
 
       // Get the PDF blob
       const blob = await response.blob();
+      console.log('Blob size:', blob.size, 'Blob type:', blob.type);
+
+      // Verify we got a PDF
+      if (blob.type !== 'application/pdf' && blob.type !== '') {
+        throw new Error(`Expected PDF but got ${blob.type}`);
+      }
+
+      if (blob.size === 0) {
+        throw new Error('Received empty PDF file');
+      }
 
       // Open PDF in new tab for viewing/printing
       const url = window.URL.createObjectURL(blob);
