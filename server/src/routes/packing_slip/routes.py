@@ -285,11 +285,13 @@ async def generate_bulk_etsy_packing_slips(
         # Generate packing slip for each order
         generator = PackingSlipGenerator()
         pdf_merger = PdfMerger()
+        successful_count = 0
 
         for receipt in receipts:
             try:
                 # Convert Etsy receipt to packing slip format
-                order_data = _convert_etsy_receipt_to_packing_slip(receipt, etsy_store.shop_name)
+                shop_name_str = str(etsy_store.shop_name) if etsy_store.shop_name else "Shop"
+                order_data = _convert_etsy_receipt_to_packing_slip(receipt, shop_name_str)
 
                 # Generate packing slip
                 pdf_bytes = generator.generate_packing_slip(order_data)
@@ -297,11 +299,19 @@ async def generate_bulk_etsy_packing_slips(
                 # Add to merger
                 pdf_buffer = io.BytesIO(pdf_bytes)
                 pdf_merger.append(pdf_buffer)
+                successful_count += 1
 
             except Exception as e:
-                logger.error(f"Error generating packing slip for receipt {receipt.get('receipt_id')}: {e}")
+                logger.error(f"Error generating packing slip for receipt {receipt.get('receipt_id')}: {e}", exc_info=True)
                 # Continue with other orders
                 continue
+
+        # Check if any PDFs were successfully generated
+        if successful_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate any packing slips. Check server logs for details."
+            )
 
         # Merge all PDFs
         output_buffer = io.BytesIO()
@@ -311,7 +321,7 @@ async def generate_bulk_etsy_packing_slips(
 
         filename = f"packing_slips_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
 
-        logger.info(f"Successfully generated {len(receipts)} packing slips")
+        logger.info(f"Successfully generated {successful_count} packing slips out of {len(receipts)} orders")
 
         return StreamingResponse(
             output_buffer,
