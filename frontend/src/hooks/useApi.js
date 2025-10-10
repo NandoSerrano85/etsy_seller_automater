@@ -181,5 +181,6 @@ export const useApi = () => {
     put,
     putFormData,
     delete: del,
+    baseUrl: API_BASE_URL,
   };
 };
