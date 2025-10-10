@@ -245,34 +245,56 @@ async def generate_bulk_etsy_packing_slips(
     try:
         logger.info(f"Generating bulk packing slips for Etsy orders - User: {current_user.user_id}")
 
-        # Import Etsy client
-        from server.src.utils.etsy_client import EtsyClient
-        from server.src.entities.etsy_store import EtsyStore
+        # Import Etsy API and User
+        from server.src.utils.etsy_api_engine import EtsyAPI
+        from server.src.entities.user import User
         from datetime import datetime
 
-        # Get user's Etsy store
+        # Get user from database
         user_id = current_user.get_uuid()
-        etsy_store = db.query(EtsyStore).filter(
-            EtsyStore.user_id == user_id,
-            EtsyStore.is_active == True
-        ).first()
+        user = db.query(User).filter(User.id == user_id).first()
 
-        if not etsy_store:
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active Etsy store found for this user"
+                detail="User not found"
             )
 
-        # Fetch active orders from Etsy
-        etsy_client = EtsyClient(db)
+        # Initialize Etsy API
+        etsy_api = EtsyAPI(user_id=user_id, db=db)
 
-        # Get receipts (orders) that need to be fulfilled
-        # Status: open, unshipped, or awaiting_shipment
-        receipts = etsy_client.get_shop_receipts(
-            shop_id=etsy_store.etsy_shop_id,
-            was_shipped=False,
-            limit=100
-        )
+        if not etsy_api.shop_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Etsy shop found for this user"
+            )
+
+        # Fetch active orders from Etsy (raw receipts with full details)
+        headers = {
+            'x-api-key': etsy_api.client_id,
+            'Authorization': f'Bearer {etsy_api.oauth_token}',
+        }
+
+        receipts_url = f"{etsy_api.base_url}/application/shops/{etsy_api.shop_id}/receipts"
+        params = {
+            'limit': 100,
+            'offset': 0,
+            'was_paid': 'true',
+            'was_shipped': 'false',
+            'was_canceled': 'false'
+        }
+
+        response = etsy_api.session.get(receipts_url, headers=headers, params=params)
+
+        if not response.ok:
+            logger.error(f"Failed to fetch orders: {response.status_code} {response.text}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch orders from Etsy: {response.text}"
+            )
+
+        receipts_data = response.json()
+        receipts = receipts_data.get('results', [])
 
         if not receipts or len(receipts) == 0:
             raise HTTPException(
@@ -290,7 +312,7 @@ async def generate_bulk_etsy_packing_slips(
         for receipt in receipts:
             try:
                 # Convert Etsy receipt to packing slip format
-                shop_name_str = str(etsy_store.shop_name) if etsy_store.shop_name else "Shop"
+                shop_name_str = user.shop_name if user.shop_name else "Shop"
                 order_data = _convert_etsy_receipt_to_packing_slip(receipt, shop_name_str)
 
                 # Generate packing slip
