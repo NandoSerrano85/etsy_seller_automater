@@ -65,7 +65,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       });
 
       console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
+      console.log('Response content-type:', response.headers.get('content-type'));
 
       if (!response.ok) {
         const contentType = response.headers.get('content-type');
@@ -74,7 +74,8 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
           throw new Error(errorData.detail || 'Failed to generate packing slips');
         } else {
           const errorText = await response.text();
-          throw new Error(`Server error: ${response.status} - ${errorText}`);
+          console.error('Server error response:', errorText);
+          throw new Error(`Server error: ${response.status} - ${errorText.substring(0, 200)}`);
         }
       }
 
@@ -84,7 +85,10 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
 
       // Verify we got a PDF
       if (blob.type !== 'application/pdf' && blob.type !== '') {
-        throw new Error(`Expected PDF but got ${blob.type}`);
+        // If we got HTML, read it to see the error
+        const text = await blob.text();
+        console.error('Received non-PDF response:', text.substring(0, 500));
+        throw new Error(`Expected PDF but got ${blob.type}. Check console for details.`);
       }
 
       if (blob.size === 0) {
