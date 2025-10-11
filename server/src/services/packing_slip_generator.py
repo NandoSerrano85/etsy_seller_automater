@@ -192,15 +192,17 @@ class PackingSlipGenerator:
         address_lines = []
         if isinstance(address, dict):
             # Add line1 (street address)
-            if address.get('line1'):
-                address_lines.append(address.get('line1', ''))
+            line1 = address.get('line1') or ''
+            if line1:
+                address_lines.append(line1)
             # Add line2 (apt, suite, etc.)
-            if address.get('line2'):
-                address_lines.append(address.get('line2', ''))
+            line2 = address.get('line2') or ''
+            if line2:
+                address_lines.append(line2)
             # Add city, state, zip
-            city = address.get('city', '').strip()
-            state = address.get('state', '').strip()
-            zip_code = address.get('zip', '').strip()
+            city = (address.get('city') or '').strip()
+            state = (address.get('state') or '').strip()
+            zip_code = (address.get('zip') or '').strip()
 
             city_state_zip_parts = []
             if city:
@@ -219,7 +221,7 @@ class PackingSlipGenerator:
                 address_lines.append(city_state_zip)
 
             # Add country
-            country = address.get('country', '').strip()
+            country = (address.get('country') or '').strip()
             if country and country != 'US':  # Only show if not US
                 address_lines.append(country)
         elif isinstance(address, str):
