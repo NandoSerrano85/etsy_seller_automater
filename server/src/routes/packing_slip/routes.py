@@ -311,6 +311,9 @@ async def generate_bulk_etsy_packing_slips(
             logger.info(f"Sample receipt data - ID: {first_receipt.get('receipt_id')}")
             logger.info(f"Receipt fields: {list(first_receipt.keys())}")
             logger.info(f"Address fields present: first_line={first_receipt.get('first_line')}, city={first_receipt.get('city')}, formatted_address={first_receipt.get('formatted_address')}")
+            # Log full receipt to see structure
+            import json
+            logger.info(f"Full receipt sample: {json.dumps(first_receipt, indent=2, default=str)}")
 
         # Generate packing slip for each order
         generator = PackingSlipGenerator()
