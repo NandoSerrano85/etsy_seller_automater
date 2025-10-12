@@ -305,6 +305,13 @@ async def generate_bulk_etsy_packing_slips(
 
         logger.info(f"Found {len(receipts)} active Etsy orders")
 
+        # Debug: Log first receipt to see what data we're getting
+        if receipts:
+            first_receipt = receipts[0]
+            logger.info(f"Sample receipt data - ID: {first_receipt.get('receipt_id')}")
+            logger.info(f"Receipt fields: {list(first_receipt.keys())}")
+            logger.info(f"Address fields present: first_line={first_receipt.get('first_line')}, city={first_receipt.get('city')}, formatted_address={first_receipt.get('formatted_address')}")
+
         # Generate packing slip for each order
         generator = PackingSlipGenerator()
         pdf_merger = PdfMerger()
