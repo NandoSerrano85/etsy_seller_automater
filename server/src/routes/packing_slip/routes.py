@@ -382,15 +382,57 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
     buyer_name = f"{receipt.get('name', 'Customer')}"
     buyer_email = receipt.get('buyer_email', '')
 
-    # Format shipping address
-    shipping_address = {
-        "line1": receipt.get('first_line', ''),
-        "line2": receipt.get('second_line', ''),
-        "city": receipt.get('city', ''),
-        "state": receipt.get('state', ''),
-        "zip": receipt.get('zip', ''),
-        "country": receipt.get('country_iso', 'US')
-    }
+    # Debug: Log receipt keys to see what data is available
+    logger.info(f"Receipt keys: {list(receipt.keys())}")
+    logger.info(f"Receipt has first_line: {bool(receipt.get('first_line'))}")
+    logger.info(f"Receipt has shipments: {bool(receipt.get('shipments'))}")
+    logger.info(f"Receipt has formatted_address: {bool(receipt.get('formatted_address'))}")
+
+    # Format shipping address - try multiple locations
+    shipping_address = {}
+
+    # First try: Top-level fields (most common)
+    if receipt.get('first_line'):
+        shipping_address = {
+            "line1": receipt.get('first_line', ''),
+            "line2": receipt.get('second_line', ''),
+            "city": receipt.get('city', ''),
+            "state": receipt.get('state', ''),
+            "zip": receipt.get('zip', ''),
+            "country": receipt.get('country_iso', 'US')
+        }
+    # Second try: Shipments array (if exists)
+    elif receipt.get('shipments') and len(receipt.get('shipments', [])) > 0:
+        shipment = receipt['shipments'][0]
+        shipping_address = {
+            "line1": shipment.get('first_line', ''),
+            "line2": shipment.get('second_line', ''),
+            "city": shipment.get('city', ''),
+            "state": shipment.get('state', ''),
+            "zip": shipment.get('zip', ''),
+            "country": shipment.get('country_iso', 'US')
+        }
+    # Third try: Formatted address string
+    elif receipt.get('formatted_address'):
+        shipping_address = {
+            "line1": receipt.get('formatted_address', ''),
+            "line2": '',
+            "city": '',
+            "state": '',
+            "zip": '',
+            "country": receipt.get('country_iso', 'US')
+        }
+    else:
+        # Fallback: Empty address
+        shipping_address = {
+            "line1": 'Address not available',
+            "line2": '',
+            "city": '',
+            "state": '',
+            "zip": '',
+            "country": ''
+        }
+        logger.warning(f"No shipping address found for receipt {receipt.get('receipt_id')}")
 
     # Extract order items
     items = []
