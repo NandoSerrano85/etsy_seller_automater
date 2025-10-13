@@ -397,6 +397,19 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
     buyer_email = receipt.get('buyer_email', '')
     receipt_id = receipt.get('receipt_id')
 
+    # Debug: Log available receipt fields to understand what data we have
+    address_related_fields = {
+        'first_line': receipt.get('first_line'),
+        'second_line': receipt.get('second_line'),
+        'city': receipt.get('city'),
+        'state': receipt.get('state'),
+        'zip': receipt.get('zip'),
+        'country_iso': receipt.get('country_iso'),
+        'formatted_address': receipt.get('formatted_address'),
+        'has_shipments': bool(receipt.get('shipments'))
+    }
+    logger.info(f"Receipt {receipt_id} address fields: {address_related_fields}")
+
     # Try to fetch shipping address from shipment endpoint
     shipping_address = {}
     if etsy_api and receipt_id:
