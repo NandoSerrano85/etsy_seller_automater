@@ -269,6 +269,66 @@ class EtsyAPI:
             print(f"Error during OAuth flow: {e}")
             raise Exception("OAuth authentication failed")
 
+    def get_shop_details(self) -> Optional[dict]:
+        """
+        Get shop details including icon URL
+
+        Returns:
+            dict: Shop details including icon_url_fullxfull
+        """
+        if not self.shop_id:
+            logging.error("No shop ID available")
+            return None
+
+        self.ensure_valid_token()
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        url = f"{self.base_url}/application/shops/{self.shop_id}"
+
+        try:
+            response = self.session.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logging.error(f"Failed to fetch shop details: {e}")
+            return None
+
+    def get_receipt_shipment(self, receipt_id: int) -> Optional[dict]:
+        """
+        Get shipment details for a receipt including shipping address
+
+        Args:
+            receipt_id: The receipt ID
+
+        Returns:
+            dict: Shipment details with shipping address
+        """
+        if not self.shop_id:
+            logging.error("No shop ID available")
+            return None
+
+        self.ensure_valid_token()
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        url = f"{self.base_url}/application/shops/{self.shop_id}/receipts/{receipt_id}/shipments"
+
+        try:
+            response = self.session.get(url, headers=headers)
+            response.raise_for_status()
+            shipments = response.json().get('results', [])
+            if shipments:
+                return shipments[0]  # Return first shipment
+            return None
+        except Exception as e:
+            logging.error(f"Failed to fetch shipment for receipt {receipt_id}: {e}")
+            return None
+
     def fetch_user_shop_id(self) -> Optional[int]:
         headers = {
             'x-api-key': self.client_id,

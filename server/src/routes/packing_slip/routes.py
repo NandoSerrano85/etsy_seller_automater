@@ -305,15 +305,14 @@ async def generate_bulk_etsy_packing_slips(
 
         logger.info(f"Found {len(receipts)} active Etsy orders")
 
-        # Debug: Log first receipt to see what data we're getting
-        if receipts:
-            first_receipt = receipts[0]
-            logger.info(f"Sample receipt data - ID: {first_receipt.get('receipt_id')}")
-            logger.info(f"Receipt fields: {list(first_receipt.keys())}")
-            logger.info(f"Address fields present: first_line={first_receipt.get('first_line')}, city={first_receipt.get('city')}, formatted_address={first_receipt.get('formatted_address')}")
-            # Log full receipt to see structure
-            import json
-            logger.info(f"Full receipt sample: {json.dumps(first_receipt, indent=2, default=str)}")
+        # Fetch shop details to get logo
+        shop_details = etsy_api.get_shop_details()
+        shop_logo_url = None
+        if shop_details:
+            shop_logo_url = shop_details.get('icon_url_fullxfull')
+            logger.info(f"Found shop logo: {shop_logo_url}")
+
+        shop_name_str = user.shop_name if user.shop_name else "Shop"
 
         # Generate packing slip for each order
         generator = PackingSlipGenerator()
@@ -323,8 +322,12 @@ async def generate_bulk_etsy_packing_slips(
         for receipt in receipts:
             try:
                 # Convert Etsy receipt to packing slip format
-                shop_name_str = user.shop_name if user.shop_name else "Shop"
-                order_data = _convert_etsy_receipt_to_packing_slip(receipt, shop_name_str, etsy_api)
+                order_data = _convert_etsy_receipt_to_packing_slip(
+                    receipt,
+                    shop_name_str,
+                    etsy_api,
+                    shop_logo_url
+                )
 
                 # Generate packing slip
                 pdf_bytes = generator.generate_packing_slip(order_data)
@@ -374,14 +377,15 @@ async def generate_bulk_etsy_packing_slips(
         )
 
 
-def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: str, etsy_api=None) -> Dict[str, Any]:
+def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: str, etsy_api=None, shop_logo_url: str = None) -> Dict[str, Any]:
     """
     Convert an Etsy receipt to packing slip format.
 
     Args:
         receipt: Etsy receipt data
         shop_name: Shop name from Etsy store
-        etsy_api: EtsyAPI instance for fetching listing images
+        etsy_api: EtsyAPI instance for fetching listing images and shipment data
+        shop_logo_url: URL to shop logo image
 
     Returns:
         Dict formatted for packing slip generator
@@ -391,22 +395,35 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
     # Extract customer information
     buyer_name = f"{receipt.get('name', 'Customer')}"
     buyer_email = receipt.get('buyer_email', '')
+    receipt_id = receipt.get('receipt_id')
 
-    # Debug: Log receipt keys to see what data is available
-    logger.info(f"Receipt keys: {list(receipt.keys())}")
-    logger.info(f"Receipt has first_line: {bool(receipt.get('first_line'))}")
-    logger.info(f"Receipt has shipments: {bool(receipt.get('shipments'))}")
-    logger.info(f"Receipt has formatted_address: {bool(receipt.get('formatted_address'))}")
-
-    # Format shipping address - try multiple locations
+    # Try to fetch shipping address from shipment endpoint
     shipping_address = {}
+    if etsy_api and receipt_id:
+        try:
+            shipment = etsy_api.get_receipt_shipment(receipt_id)
+            if shipment:
+                logger.info(f"Found shipment data for receipt {receipt_id}")
+                shipping_address = {
+                    "line1": shipment.get('to_name', buyer_name),
+                    "line2": shipment.get('to_address_line_1', ''),
+                    "city": shipment.get('to_city', ''),
+                    "state": shipment.get('to_state', ''),
+                    "zip": shipment.get('to_zip', ''),
+                    "country": shipment.get('to_country_iso', 'US')
+                }
+            else:
+                logger.warning(f"No shipment data found for receipt {receipt_id}")
+        except Exception as e:
+            logger.error(f"Error fetching shipment for receipt {receipt_id}: {e}")
 
-    # First try: Top-level fields (most common)
-    if receipt.get('first_line'):
-        shipping_address = {
-            "line1": receipt.get('first_line', ''),
-            "line2": receipt.get('second_line', ''),
-            "city": receipt.get('city', ''),
+    # Fallback: Try top-level fields if shipment didn't work
+    if not shipping_address.get('line2'):  # If we didn't get proper address from shipment
+        if receipt.get('first_line'):
+            shipping_address = {
+                "line1": receipt.get('first_line', ''),
+                "line2": receipt.get('second_line', ''),
+                "city": receipt.get('city', ''),
             "state": receipt.get('state', ''),
             "zip": receipt.get('zip', ''),
             "country": receipt.get('country_iso', 'US')
@@ -518,6 +535,7 @@ def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: st
 
     return {
         "shop_name": shop_name,
+        "shop_logo_url": shop_logo_url,
         "order_number": str(receipt.get('receipt_id', '')),
         "order_date": order_date,
         "customer": {

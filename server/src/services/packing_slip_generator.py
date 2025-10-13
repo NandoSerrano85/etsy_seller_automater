@@ -143,12 +143,30 @@ class PackingSlipGenerator:
             raise ValueError(f"Failed to generate packing slip: {str(e)}")
 
     def _create_header(self, order_data: Dict[str, Any]) -> List:
-        """Create the header with shop name and order info."""
+        """Create the header with shop logo or name and order info."""
         elements = []
 
-        # Shop name
+        # Shop logo or name
+        shop_logo_url = order_data.get('shop_logo_url')
         shop_name = order_data.get('shop_name', 'Your Shop')
-        elements.append(Paragraph(shop_name, self.styles['ShopName']))
+
+        if shop_logo_url:
+            # Try to load shop logo
+            try:
+                logo_img = self._get_image_from_url(shop_logo_url, 2*inch, 2*inch)
+                if logo_img:
+                    elements.append(logo_img)
+                    elements.append(Spacer(1, 0.2*inch))
+                else:
+                    # Fallback to shop name if logo fails
+                    elements.append(Paragraph(shop_name, self.styles['ShopName']))
+            except Exception as e:
+                logger.error(f"Error loading shop logo: {e}")
+                # Fallback to shop name
+                elements.append(Paragraph(shop_name, self.styles['ShopName']))
+        else:
+            # No logo, use shop name
+            elements.append(Paragraph(shop_name, self.styles['ShopName']))
 
         # Order info
         order_info_text = "PACKING SLIP"
