@@ -476,8 +476,10 @@ class PackingSlipGenerator:
         # Calculate number of summary rows (3 or 4 depending on discount)
         num_summary_rows = len(summary_rows)
         num_item_rows = len(items)
+        total_rows = len(table_data)
 
-        table.setStyle(TableStyle([
+        # Only apply item styling if there are items
+        styles = [
             # Header row styling
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495E')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
@@ -485,14 +487,20 @@ class PackingSlipGenerator:
             ('FONTSIZE', (0, 0), (-1, 0), 10),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ]
 
-            # Data rows (items only, exclude summary rows)
-            ('FONTNAME', (0, 1), (-1, -(num_summary_rows + 1)), 'Helvetica'),
-            ('FONTSIZE', (0, 1), (-1, -(num_summary_rows + 1)), 9),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -(num_summary_rows + 1)), [colors.white, colors.HexColor('#F8F9FA')]),
-            ('GRID', (0, 0), (-1, -(num_summary_rows + 1)), 0.5, colors.HexColor('#BDC3C7')),
+        # Add item row styling only if there are items
+        if num_item_rows > 0:
+            last_item_row = num_item_rows  # Header is row 0, items start at row 1
+            styles.extend([
+                ('FONTNAME', (0, 1), (-1, last_item_row), 'Helvetica'),
+                ('FONTSIZE', (0, 1), (-1, last_item_row), 9),
+                ('ROWBACKGROUNDS', (0, 1), (-1, last_item_row), [colors.white, colors.HexColor('#F8F9FA')]),
+                ('GRID', (0, 0), (-1, last_item_row), 0.5, colors.HexColor('#BDC3C7')),
+            ])
 
-            # Summary rows
+        # Summary row styling
+        styles.extend([
             ('LINEABOVE', (2, -num_summary_rows), (-1, -num_summary_rows), 2, colors.HexColor('#34495E')),
             ('LINEABOVE', (2, -1), (-1, -1), 2, colors.HexColor('#34495E')),
             ('FONTSIZE', (0, -num_summary_rows), (-1, -1), 11),
@@ -506,7 +514,9 @@ class PackingSlipGenerator:
             ('RIGHTPADDING', (0, 0), (-1, -1), 8),
             ('TOPPADDING', (0, 1), (-1, -1), 6),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
-        ]))
+        ])
+
+        table.setStyle(TableStyle(styles))
 
         elements.append(table)
 
