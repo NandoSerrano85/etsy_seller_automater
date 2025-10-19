@@ -376,13 +376,14 @@ class NASStorage:
             logging.error(f"Error checking file existence on NAS: {e}")
             return False
     
-    def list_files(self, shop_name: str, relative_path: str = "") -> list:
+    def list_files(self, shop_name: str, relative_path: str = "", max_retries: int = 2) -> list:
         """
         List files in a directory on the NAS with metadata
 
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
+            max_retries: Number of times to retry on connection error
 
         Returns:
             list: List of file info dicts with filename, size, modified, empty list if error
@@ -390,23 +391,35 @@ class NASStorage:
         if not self.enabled:
             return []
 
-        try:
-            with self.get_sftp_connection() as sftp:
-                remote_dir = f"{self.base_path}/{shop_name}/{relative_path}" if relative_path else f"{self.base_path}/{shop_name}"
-                files = []
+        last_exception = None
+        for attempt in range(max_retries + 1):
+            try:
+                with self.get_sftp_connection() as sftp:
+                    remote_dir = f"{self.base_path}/{shop_name}/{relative_path}" if relative_path else f"{self.base_path}/{shop_name}"
+                    files = []
 
-                # List files with attributes
-                for attr in sftp.listdir_attr(remote_dir):
-                    if not stat.S_ISDIR(attr.st_mode):  # Only files, not directories
-                        files.append({
-                            'filename': attr.filename,
-                            'size': attr.st_size,
-                            'modified': datetime.fromtimestamp(attr.st_mtime) if attr.st_mtime else None
-                        })
-                return files
-        except Exception as e:
-            logging.error(f"Failed to list files in {relative_path} on NAS: {e}")
-            return []
+                    # List files with attributes
+                    for attr in sftp.listdir_attr(remote_dir):
+                        if not stat.S_ISDIR(attr.st_mode):  # Only files, not directories
+                            files.append({
+                                'filename': attr.filename,
+                                'size': attr.st_size,
+                                'modified': datetime.fromtimestamp(attr.st_mtime) if attr.st_mtime else None
+                            })
+                    return files
+            except FileNotFoundError:
+                # Directory doesn't exist - don't retry for this
+                logging.warning(f"Directory not found on NAS: {shop_name}/{relative_path}")
+                return []
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries:
+                    logging.warning(f"NAS connection error (attempt {attempt + 1}/{max_retries + 1}), retrying: {e}")
+                    import time
+                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                else:
+                    logging.error(f"Failed to list files in {relative_path} on NAS after {max_retries + 1} attempts: {e}")
+        return []
 
     def download_file_to_memory(self, shop_name: str, relative_path: str) -> bytes:
         """

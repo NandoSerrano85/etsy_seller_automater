@@ -793,13 +793,17 @@ class EtsyAPI:
             logging.warning("NAS storage not enabled, cannot search for images")
             return None
 
-        parts = search_name.split(" ")
+        # Normalize whitespace - replace multiple spaces with single space and trim
+        import re as regex_module
+        normalized_search = regex_module.sub(r'\s+', ' ', search_name.strip())
+
+        parts = normalized_search.split(" ")
         search_name = " ".join(parts[:2])
 
         # Create multiple patterns to try different matching approaches
         patterns = []
 
-        logging.info(f"Creating search patterns for: '{search_name}' (parts: {parts})")
+        logging.info(f"Creating search patterns for: '{search_name}' (normalized from: '{normalized_search}', parts: {parts})")
 
         # Pattern 1: Exact match
         patterns.append(re.compile(re.escape(search_name), re.IGNORECASE))
@@ -832,7 +836,12 @@ class EtsyAPI:
         flexible_pattern = search_name.replace(" ", r"[\s_-]*")
         patterns.append(re.compile(flexible_pattern, re.IGNORECASE))
 
-        logging.info(f"Created {len(patterns)} search patterns")
+        # Pattern 7: Strip all whitespace and match at start of filename (without extension)
+        # This handles cases where filename is "UV 632.png" and we're searching for "UV 632"
+        stripped_search = search_name.replace(" ", r"\s*")
+        patterns.append(re.compile(f"^{stripped_search}(?:\\.|\s|$)", re.IGNORECASE))
+
+        logging.info(f"Created {len(patterns)} search patterns for '{search_name}'")
 
         # List files in the template directory on NAS
         template_relative_path = template_name  # Remove trailing slash - might cause issues
@@ -853,11 +862,12 @@ class EtsyAPI:
                     # Try each pattern until we find a match
                     for i, pattern in enumerate(patterns):
                         if pattern.search(filename):
-                            logging.info(f"NAS Search: Found match - {filename} using pattern {i}: {pattern.pattern}")
+                            logging.info(f"NAS Search: Found match - '{filename}' using pattern {i}: {pattern.pattern}")
                             # Return the relative path that can be used for NAS operations
                             return f"{template_name}/{filename}"
-                    # Log why this file didn't match
-                    logging.debug(f"NAS Search: File '{filename}' didn't match any patterns for '{search_name}'")
+                    # Log why this file didn't match - show pattern details
+                    logging.warning(f"NAS Search: File '{filename}' (len={len(filename)}) didn't match any patterns for '{search_name}'")
+                    logging.warning(f"  Patterns tested: {[p.pattern for p in patterns]}")
 
             logging.warning(f"NAS Search: No file found matching pattern '{search_name}' in {shop_name}/{template_relative_path}")
         except Exception as e:

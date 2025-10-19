@@ -315,14 +315,18 @@ def create_gang_sheets(
        if len(titles) != len(sizes):
            logging.error("Title and Size lists must have the same length")
            return None
-       
+
        for title, size in zip(titles, sizes):
            if title is None or size is None:
                logging.warning(f"Skipping None values: title={title}, size={size}")
                continue
+           # Skip placeholder files that don't actually exist
+           if "MISSING_" in str(title):
+               logging.warning(f"Skipping placeholder file in visited dictionary: {title}")
+               continue
            key = f"{title} {size}"
            visited[key] = visited.get(key, 0) + 1
-       
+
        if not visited:
            logging.error("No valid title/size pairs found")
            return None
