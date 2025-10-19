@@ -191,7 +191,12 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
 
                 if nas_storage.enabled and processed_item_data.get('Title'):
                     # Download design files from NAS to temp directory and update paths
+                    import time
+                    download_start = time.time()
+                    logging.info(f"Starting download of {len(processed_item_data['Title'])} design files from NAS")
+
                     updated_titles = []
+                    download_count = 0
                     for design_file_path in processed_item_data['Title']:
                         if design_file_path:  # Skip empty paths
                             # Skip placeholder files that don't actually exist
@@ -213,7 +218,8 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
 
                             if success:
                                 updated_titles.append(local_file_path)
-                                logging.info(f"Downloaded design file from NAS: {design_file_path} -> {local_file_path}")
+                                download_count += 1
+                                logging.debug(f"Downloaded design file from NAS: {design_file_path} -> {local_file_path}")
                             else:
                                 logging.error(f"Failed to download design file from NAS: {design_file_path}")
                                 # Keep original path as fallback (though it might fail)
@@ -221,10 +227,14 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
                         else:
                             updated_titles.append(design_file_path)
 
+                    download_duration = time.time() - download_start
+                    logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s")
+
                     # Update the processed data with local file paths
                     processed_item_data = processed_item_data.copy()
                     processed_item_data['Title'] = updated_titles
 
+                logging.info("Starting gangsheet creation (all NAS connections now closed)")
                 result = create_gang_sheets(
                     processed_item_data,
                     template_name,

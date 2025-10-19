@@ -34,7 +34,7 @@ class SFTPConnectionPool:
         self.lock = threading.Lock()
 
     def _create_connection(self):
-        """Create a new SFTP connection"""
+        """Create a new SFTP connection with keepalive settings"""
         if not PARAMIKO_AVAILABLE:
             raise Exception("paramiko not available")
 
@@ -47,7 +47,16 @@ class SFTPConnectionPool:
             password=self.password,
             timeout=30
         )
+
+        # Enable TCP keepalive to prevent connection timeouts during long operations
+        transport = ssh.get_transport()
+        if transport:
+            transport.set_keepalive(30)  # Send keepalive packet every 30 seconds
+
         sftp = ssh.open_sftp()
+        # Set a longer timeout for SFTP operations
+        sftp.get_channel().settimeout(300)  # 5 minute timeout for operations
+
         return ssh, sftp
 
     @contextmanager
