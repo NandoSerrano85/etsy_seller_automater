@@ -865,20 +865,86 @@ class EtsyAPI:
                             logging.info(f"NAS Search: Found match - '{filename}' using pattern {i}: {pattern.pattern}")
                             # Return the relative path that can be used for NAS operations
                             return f"{template_name}/{filename}"
-                    # Log why this file didn't match - show pattern details
-                    logging.warning(f"NAS Search: File '{filename}' (len={len(filename)}) didn't match any patterns for '{search_name}'")
-                    logging.warning(f"  Patterns tested: {[p.pattern for p in patterns]}")
 
-            logging.warning(f"NAS Search: No file found matching pattern '{search_name}' in {shop_name}/{template_relative_path}")
+            # Only log if no match was found at all
+            logging.warning(f"NAS Search: No file found matching '{search_name}' in {shop_name}/{template_relative_path} ({len(files)} files searched)")
         except Exception as e:
             logging.error(f"Error searching NAS for images: {e}")
 
         return None
 
+    def find_design_in_db(self, search_name, user_id, template_name=None):
+        """
+        Search for design file in database using fuzzy matching.
+        Returns file_path if found, None otherwise.
+
+        Args:
+            search_name: Name to search for (e.g., "UV 632")
+            user_id: User ID to filter designs
+            template_name: Optional template name to filter by
+
+        Returns:
+            str: File path from database if found, None otherwise
+        """
+        if not self.db:
+            logging.warning("No database session available for design lookup")
+            return None
+
+        # Normalize whitespace in search name
+        import re as regex_module
+        normalized_search = regex_module.sub(r'\s+', ' ', search_name.strip())
+
+        from server.src.entities.designs import DesignImages
+
+        try:
+            # Query all designs for this user
+            query = self.db.query(DesignImages).filter(
+                DesignImages.user_id == user_id,
+                DesignImages.is_active == True
+            )
+
+            # Optionally filter by template
+            if template_name:
+                from server.src.entities.template import EtsyProductTemplate
+                query = query.join(DesignImages.product_templates).filter(
+                    EtsyProductTemplate.name == template_name
+                )
+
+            designs = query.all()
+
+            # Try different matching strategies
+            for design in designs:
+                filename = os.path.basename(design.filename) if design.filename else ""
+
+                # Strategy 1: Exact match in filename
+                if normalized_search.lower() in filename.lower():
+                    logging.info(f"DB Search: Found exact match - '{filename}' for '{normalized_search}'")
+                    return design.file_path
+
+                # Strategy 2: Match without spaces
+                no_space_search = normalized_search.replace(" ", "")
+                if no_space_search.lower() in filename.lower():
+                    logging.info(f"DB Search: Found no-space match - '{filename}' for '{normalized_search}'")
+                    return design.file_path
+
+                # Strategy 3: Just the number part (for "UV 632" -> "632")
+                parts = normalized_search.split(" ")
+                if len(parts) > 1 and parts[1].isdigit():
+                    if parts[1] in filename:
+                        logging.info(f"DB Search: Found number match - '{filename}' for '{normalized_search}'")
+                        return design.file_path
+
+            logging.debug(f"DB Search: No match found in {len(designs)} designs for '{normalized_search}'")
+            return None
+
+        except Exception as e:
+            logging.error(f"Error searching database for design: {e}")
+            return None
+
     def fetch_open_orders_items_nas(self, shop_name, template_name):
         """
-        NAS-compatible version of fetch_open_orders_items that uses QNAP NAS storage
-        instead of local file system to find design files.
+        NAS-compatible version of fetch_open_orders_items that uses database lookup first,
+        then batch downloads from NAS. This is much more efficient than searching NAS for each item.
 
         Args:
             shop_name: Shop name for NAS path
@@ -894,7 +960,7 @@ class EtsyAPI:
             logging.error("NAS storage not enabled, cannot fetch orders with NAS support")
             return None
 
-        print(f"\n--- Fetching Open Orders Items (NAS Mode) for {shop_name}/{template_name} ---")
+        print(f"\n--- Fetching Open Orders Items (DB-First Mode) for {shop_name}/{template_name} ---")
 
         receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false&was_canceled=false"
         headers = {
@@ -925,9 +991,15 @@ class EtsyAPI:
             for t in transactions:
                 title = t.get('title', 'Unknown')
                 quantity = t.get('quantity', 0)
+                search_term = title.split(" | ")[0]
 
-                # Use NAS-compatible image search
-                design_file_path = self.find_images_by_name_nas(title.split(" | ")[0], shop_name, template_name)
+                # Try database lookup first (much faster)
+                design_file_path = self.find_design_in_db(search_term, self.user_id, template_name)
+
+                # Fallback to NAS search if not in database
+                if not design_file_path:
+                    logging.debug(f"Design not in DB, searching NAS for: {search_term}")
+                    design_file_path = self.find_images_by_name_nas(search_term, shop_name, template_name)
 
                 if design_file_path:
                     i = self._find_index(item_summary[template_name]['Title'], design_file_path)
@@ -939,9 +1011,9 @@ class EtsyAPI:
                         item_summary[template_name]['Total'].append(quantity)
                     item_summary["Total QTY"] += quantity
                 else:
-                    logging.warning(f"No design file found on NAS for order item: {title}")
+                    logging.warning(f"No design file found in DB or NAS for order item: {title}")
                     # Still add to item summary but with a placeholder path so gang sheets can be processed
-                    placeholder_path = f"{template_name}/MISSING_{title.split(' | ')[0].replace(' ', '_')}.png"
+                    placeholder_path = f"{template_name}/MISSING_{search_term.replace(' ', '_')}.png"
                     i = self._find_index(item_summary[template_name]['Title'], placeholder_path)
                     if i >= 0:
                         item_summary[template_name]['Total'][i] += quantity
@@ -951,7 +1023,7 @@ class EtsyAPI:
                         item_summary[template_name]['Total'].append(quantity)
                     item_summary["Total QTY"] += quantity
 
-        print("\nOpen Orders Item Summary (NAS):")
+        print("\nOpen Orders Item Summary (DB-First):")
         for k, v in item_summary[template_name].items():
             print(f"{k}: {v}")
 
