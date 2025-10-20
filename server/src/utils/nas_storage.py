@@ -355,31 +355,41 @@ class NASStorage:
     def download_file(self, shop_name: str, relative_path: str, local_file_path: str) -> bool:
         """
         Download a file from the NAS
-        
+
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
             local_file_path: Where to save the file locally
-        
+
         Returns:
             bool: True if download successful, False otherwise
         """
         if not self.enabled:
             logging.warning("NAS storage disabled, skipping download")
             return False
-        
+
+        # BUGFIX: Strip whitespace from paths to handle database entries with trailing spaces
+        original_path = relative_path
+        relative_path = relative_path.strip() if relative_path else relative_path
+
+        if original_path != relative_path:
+            logging.debug(f"Stripped whitespace from path: '{original_path}' -> '{relative_path}'")
+
+        remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
         try:
             with self.get_sftp_connection() as sftp:
-                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
-                
                 # Ensure local directory exists
                 os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                
+
                 # Download the file
                 sftp.get(remote_file_path, local_file_path)
                 logging.info(f"Successfully downloaded {remote_file_path} from NAS to {local_file_path}")
                 return True
-                
+
+        except FileNotFoundError as e:
+            logging.error(f"File not found on NAS: {remote_file_path}")
+            return False
         except Exception as e:
             logging.error(f"Failed to download {relative_path} from NAS: {e}")
             return False
@@ -387,17 +397,20 @@ class NASStorage:
     def file_exists(self, shop_name: str, relative_path: str) -> bool:
         """
         Check if a file exists on the NAS
-        
+
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
-        
+
         Returns:
             bool: True if file exists, False otherwise
         """
         if not self.enabled:
             return False
-        
+
+        # BUGFIX: Strip whitespace from paths
+        relative_path = relative_path.strip() if relative_path else relative_path
+
         try:
             with self.get_sftp_connection() as sftp:
                 remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
@@ -468,6 +481,9 @@ class NASStorage:
         if not self.enabled:
             logging.warning("NAS storage disabled, skipping download")
             return None
+
+        # BUGFIX: Strip whitespace from paths to handle database entries with trailing spaces
+        relative_path = relative_path.strip() if relative_path else relative_path
 
         try:
             with self.get_sftp_connection() as sftp:
