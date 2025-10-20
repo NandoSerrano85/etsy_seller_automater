@@ -456,7 +456,9 @@ def create_gang_sheets(
            if "MISSING_" in str(title):
                logging.warning(f"Skipping placeholder file in visited dictionary: {title}")
                continue
-           key = f"{title} {size}"
+           # BUGFIX: Strip whitespace from title to match how paths are processed
+           title_clean = str(title).strip()
+           key = f"{title_clean} {size}"
            visited[key] = visited.get(key, 0) + 1
 
        if not visited:
@@ -574,8 +576,10 @@ def create_gang_sheets(
                    img = get_processed_image(i)
                    if img is None:
                        continue
-                   
-                   key = f"{titles[i]} {sizes[i]}"
+
+                   # BUGFIX: Strip whitespace from title to match visited dictionary keys
+                   title_clean = str(titles[i]).strip()
+                   key = f"{title_clean} {sizes[i]}"
                    if key not in visited:
                        continue  # Skip if key was already processed
                    
@@ -663,7 +667,9 @@ def create_gang_sheets(
            if images_processed_in_part > 0:  # Only if we processed something
                # Check if the last image we were working on is complete
                if image_index < len(titles):
-                   current_key = f"{titles[image_index]} {sizes[image_index]}"
+                   # BUGFIX: Strip whitespace from title to match visited dictionary keys
+                   title_clean = str(titles[image_index]).strip()
+                   current_key = f"{title_clean} {sizes[image_index]}"
                    current_total = 1
                    if 'Total' in image_data and image_index < len(image_data['Total']):
                        current_total = image_data['Total'][image_index]
