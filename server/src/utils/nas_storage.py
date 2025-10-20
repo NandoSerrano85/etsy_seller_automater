@@ -375,7 +375,14 @@ class NASStorage:
         if original_path != relative_path:
             logging.debug(f"Stripped whitespace from path: '{original_path}' -> '{relative_path}'")
 
-        remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+        # BUGFIX: Handle both absolute and relative paths
+        # If path starts with base_path, it's already absolute - use as is
+        # Otherwise, construct the full path
+        if relative_path.startswith(self.base_path):
+            remote_file_path = relative_path
+            logging.debug(f"Using absolute path from database: {remote_file_path}")
+        else:
+            remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
 
         try:
             with self.get_sftp_connection() as sftp:
@@ -411,9 +418,14 @@ class NASStorage:
         # BUGFIX: Strip whitespace from paths
         relative_path = relative_path.strip() if relative_path else relative_path
 
+        # BUGFIX: Handle both absolute and relative paths
+        if relative_path.startswith(self.base_path):
+            remote_file_path = relative_path
+        else:
+            remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
         try:
             with self.get_sftp_connection() as sftp:
-                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
                 sftp.stat(remote_file_path)
                 return True
         except FileNotFoundError:
@@ -485,10 +497,14 @@ class NASStorage:
         # BUGFIX: Strip whitespace from paths to handle database entries with trailing spaces
         relative_path = relative_path.strip() if relative_path else relative_path
 
+        # BUGFIX: Handle both absolute and relative paths
+        if relative_path.startswith(self.base_path):
+            remote_file_path = relative_path
+        else:
+            remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
         try:
             with self.get_sftp_connection() as sftp:
-                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
-
                 # Download the file to memory
                 file_obj = BytesIO()
                 sftp.getfo(remote_file_path, file_obj)
