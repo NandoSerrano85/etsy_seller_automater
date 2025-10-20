@@ -875,7 +875,7 @@ class EtsyAPI:
 
     def find_design_in_db(self, search_name, user_id, template_name=None):
         """
-        Search for design file in database using fuzzy matching.
+        Search for design file in database using fuzzy matching with PostgreSQL pattern matching.
         Returns file_path if found, None otherwise.
 
         Args:
@@ -897,8 +897,8 @@ class EtsyAPI:
         from server.src.entities.designs import DesignImages
 
         try:
-            # Query all designs for this user
-            query = self.db.query(DesignImages).filter(
+            # Base query
+            base_query = self.db.query(DesignImages).filter(
                 DesignImages.user_id == user_id,
                 DesignImages.is_active == True
             )
@@ -906,39 +906,57 @@ class EtsyAPI:
             # Optionally filter by template
             if template_name:
                 from server.src.entities.template import EtsyProductTemplate
-                query = query.join(DesignImages.product_templates).filter(
+                base_query = base_query.join(DesignImages.product_templates).filter(
                     EtsyProductTemplate.name == template_name
                 )
 
-            designs = query.all()
+            # Strategy 1: Exact substring match (case-insensitive) using PostgreSQL ILIKE
+            # ILIKE is PostgreSQL's case-insensitive LIKE operator
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{normalized_search}%')
+            ).first()
 
-            # Try different matching strategies
-            for design in designs:
-                filename = os.path.basename(design.filename) if design.filename else ""
+            if design:
+                logging.info(f"DB Search: Found exact match - '{design.filename}' for '{normalized_search}'")
+                return design.file_path
 
-                # Strategy 1: Exact match in filename
-                if normalized_search.lower() in filename.lower():
-                    logging.info(f"DB Search: Found exact match - '{filename}' for '{normalized_search}'")
+            # Strategy 2: Match without spaces (e.g., "UV 632" -> "UV632")
+            no_space_search = normalized_search.replace(" ", "")
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{no_space_search}%')
+            ).first()
+
+            if design:
+                logging.info(f"DB Search: Found no-space match - '{design.filename}' for '{normalized_search}'")
+                return design.file_path
+
+            # Strategy 3: Just the number part (for "UV 632" -> "632")
+            parts = normalized_search.split(" ")
+            if len(parts) > 1 and parts[1].isdigit():
+                design = base_query.filter(
+                    DesignImages.filename.ilike(f'%{parts[1]}%')
+                ).first()
+
+                if design:
+                    logging.info(f"DB Search: Found number match - '{design.filename}' for '{normalized_search}'")
                     return design.file_path
 
-                # Strategy 2: Match without spaces
-                no_space_search = normalized_search.replace(" ", "")
-                if no_space_search.lower() in filename.lower():
-                    logging.info(f"DB Search: Found no-space match - '{filename}' for '{normalized_search}'")
-                    return design.file_path
+            # Strategy 4: Flexible matching with regex (allows spaces, underscores, hyphens)
+            # Convert "UV 632" to a pattern like "UV[\s_-]*632"
+            flexible_pattern = normalized_search.replace(" ", r"[\s_-]*")
+            design = base_query.filter(
+                DesignImages.filename.op('~*')(flexible_pattern)  # ~* is case-insensitive regex in PostgreSQL
+            ).first()
 
-                # Strategy 3: Just the number part (for "UV 632" -> "632")
-                parts = normalized_search.split(" ")
-                if len(parts) > 1 and parts[1].isdigit():
-                    if parts[1] in filename:
-                        logging.info(f"DB Search: Found number match - '{filename}' for '{normalized_search}'")
-                        return design.file_path
+            if design:
+                logging.info(f"DB Search: Found flexible match - '{design.filename}' for '{normalized_search}'")
+                return design.file_path
 
-            logging.debug(f"DB Search: No match found in {len(designs)} designs for '{normalized_search}'")
+            logging.debug(f"DB Search: No match found for '{normalized_search}'")
             return None
 
         except Exception as e:
-            logging.error(f"Error searching database for design: {e}")
+            logging.error(f"Error searching database for design: {e}", exc_info=True)
             return None
 
     def fetch_open_orders_items_nas(self, shop_name, template_name):

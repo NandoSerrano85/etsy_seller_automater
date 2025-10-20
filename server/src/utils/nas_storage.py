@@ -38,26 +38,30 @@ class SFTPConnectionPool:
         if not PARAMIKO_AVAILABLE:
             raise Exception("paramiko not available")
 
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(
-            hostname=self.host,
-            port=self.port,
-            username=self.username,
-            password=self.password,
-            timeout=30
-        )
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                timeout=30
+            )
 
-        # Enable TCP keepalive to prevent connection timeouts during long operations
-        transport = ssh.get_transport()
-        if transport:
-            transport.set_keepalive(30)  # Send keepalive packet every 30 seconds
+            # Enable TCP keepalive to prevent connection timeouts during long operations
+            transport = ssh.get_transport()
+            if transport:
+                transport.set_keepalive(30)  # Send keepalive packet every 30 seconds
 
-        sftp = ssh.open_sftp()
-        # Set a longer timeout for SFTP operations
-        sftp.get_channel().settimeout(300)  # 5 minute timeout for operations
+            sftp = ssh.open_sftp()
+            # Set a longer timeout for SFTP operations
+            sftp.get_channel().settimeout(300)  # 5 minute timeout for operations
 
-        return ssh, sftp
+            return ssh, sftp
+        except Exception as e:
+            logging.error(f"Failed to create NAS SFTP connection to {self.host}:{self.port}: {e}")
+            raise Exception(f"Failed to create NAS connection: {e}") from e
 
     @contextmanager
     def get_connection(self):
@@ -94,8 +98,15 @@ class SFTPConnectionPool:
                         from_pool = False
                     else:
                         # Wait for a connection to become available
-                        ssh, sftp = self.pool.get(timeout=30)
-                        from_pool = True
+                        try:
+                            ssh, sftp = self.pool.get(timeout=30)
+                            from_pool = True
+                        except queue.Empty:
+                            raise Exception(f"NAS connection pool exhausted: {self.active_connections} connections in use, unable to acquire connection within 30 seconds")
+
+            # Ensure we have a valid connection before yielding
+            if not sftp:
+                raise Exception("Failed to obtain SFTP connection: connection is None")
 
             yield sftp
 
@@ -110,6 +121,9 @@ class SFTPConnectionPool:
                 if from_pool:
                     with self.lock:
                         self.active_connections -= 1
+            # Re-raise with more context if it's a bare exception
+            if not str(e):
+                raise Exception(f"NAS connection pool error: {type(e).__name__}")
             raise
         else:
             # Return the connection to the pool if it's healthy
@@ -181,14 +195,19 @@ class NASStorage:
     @contextmanager
     def get_sftp_connection(self):
         """Context manager for SFTP connections with automatic cleanup"""
-        if not self.enabled or not PARAMIKO_AVAILABLE or not self.connection_pool:
-            raise Exception("NAS storage is not enabled. Check QNAP configuration or paramiko installation.")
+        if not self.enabled:
+            raise Exception("NAS storage is not enabled. Check QNAP configuration.")
+        if not PARAMIKO_AVAILABLE:
+            raise Exception("paramiko module is not available. Install paramiko to use NAS storage.")
+        if not self.connection_pool:
+            raise Exception("NAS connection pool is not initialized.")
 
         try:
             with self.connection_pool.get_connection() as sftp:
                 yield sftp
         except Exception as e:
-            logging.error(f"Failed to get NAS connection from pool: {e}")
+            error_msg = str(e) if str(e) else f"{type(e).__name__}"
+            logging.error(f"Failed to get NAS connection from pool: {error_msg}", exc_info=True)
             raise
     
     def ensure_directory(self, sftp, directory_path: str) -> bool:

@@ -34,6 +34,7 @@ def cached_inches_to_pixels(inches, dpi):
    return inches_to_pixels(inches, dpi)
 
 def process_image(img_path):
+   """Process a single image: load, convert to BGRA, and rotate."""
    if os.path.exists(img_path):
        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
        if img is None:
@@ -44,25 +45,142 @@ def process_image(img_path):
        return img
    return None
 
+@lru_cache(maxsize=128)
+def process_image_cached(img_path):
+   """Cached version of process_image for frequently accessed images."""
+   return process_image(img_path)
+
+def process_images_parallel(img_paths, max_workers=4):
+   """
+   OPTIMIZATION: Process multiple images in parallel using ThreadPoolExecutor.
+   Returns a dict mapping index to processed image.
+
+   Args:
+       img_paths: List of image paths to process
+       max_workers: Maximum number of concurrent threads (default: 4)
+
+   Returns:
+       Dict mapping image index to processed numpy array
+   """
+   import logging
+   from concurrent.futures import ThreadPoolExecutor, as_completed
+
+   processed = {}
+
+   # Filter out None values and track indices
+   valid_paths = [(i, path) for i, path in enumerate(img_paths) if path is not None]
+
+   if not valid_paths:
+       return processed
+
+   logging.info(f"Processing {len(valid_paths)} images in parallel with {max_workers} workers")
+
+   with ThreadPoolExecutor(max_workers=max_workers) as executor:
+       # Submit all image processing tasks
+       future_to_index = {
+           executor.submit(process_image, path): i
+           for i, path in valid_paths
+       }
+
+       # Collect results as they complete
+       for future in as_completed(future_to_index):
+           index = future_to_index[future]
+           try:
+               result = future.result()
+               if result is not None:
+                   processed[index] = result
+           except Exception as e:
+               logging.warning(f"Error processing image at index {index}: {e}")
+
+   logging.info(f"Successfully processed {len(processed)}/{len(valid_paths)} images")
+   return processed
+
 
 def get_mockup_images_with_mask_data_from_service(db, user_id, template_name):
     """
-    Helper to fetch mockup images with mask data using the service layer.
+    OPTIMIZED: Fetch mockup images with mask data using bulk queries with eager loading.
     Returns a list of dicts with keys: id, filename, file_path, template_name, image_type, design_id, mask_data, points_data, created_at
     """
+    import logging
+    from sqlalchemy.orm import joinedload
+    from server.src.entities.mockup import Mockup, MockupImage, MockupMaskData
+
+    try:
+        # OPTIMIZATION: Use a single query with eager loading instead of N+1 queries
+        # This loads mockups, images, and mask data in one database round-trip
+        query = db.query(MockupImage).join(
+            Mockup, MockupImage.mockup_id == Mockup.id
+        ).filter(
+            Mockup.user_id == user_id
+        ).options(
+            joinedload(MockupImage.mask_data)  # Eager load mask data
+        )
+
+        # Filter by template if provided
+        if template_name:
+            query = query.filter(MockupImage.image_type == template_name)
+
+        images = query.all()
+
+        result = []
+        for image in images:
+            # Each image can have multiple mask data entries
+            mask_data_list = image.mask_data if hasattr(image, 'mask_data') else []
+
+            if mask_data_list:
+                for mask_data in mask_data_list:
+                    result.append({
+                        'id': image.id,
+                        'filename': image.filename,
+                        'file_path': image.file_path,
+                        'template_name': image.image_type,
+                        'image_type': image.image_type,
+                        'design_id': getattr(image, 'design_id', None),
+                        'mask_data': mask_data.masks,
+                        'points_data': mask_data.points,
+                        'created_at': image.created_at
+                    })
+            else:
+                # Include images without mask data
+                result.append({
+                    'id': image.id,
+                    'filename': image.filename,
+                    'file_path': image.file_path,
+                    'template_name': image.image_type,
+                    'image_type': image.image_type,
+                    'design_id': getattr(image, 'design_id', None),
+                    'mask_data': None,
+                    'points_data': None,
+                    'created_at': image.created_at
+                })
+
+        logging.info(f"Loaded {len(result)} mockup images with mask data in single optimized query")
+        return result
+
+    except Exception as e:
+        logging.error(f"Error loading mockup images with mask data: {e}")
+        # Fallback to old method if there's an error
+        return get_mockup_images_with_mask_data_from_service_fallback(db, user_id, template_name)
+
+
+def get_mockup_images_with_mask_data_from_service_fallback(db, user_id, template_name):
+    """
+    Fallback method using the service layer (slower but more compatible).
+    """
+    import logging
+    logging.warning("Using fallback method for fetching mockup images")
+
     # Get all mockups for the user
     mockups_list = mockup_service.get_mockups_by_user_id(db, user_id).mockups
     result = []
     for mockup in mockups_list:
-        # Filter by template name if provided
-        if template_name and getattr(mockup, 'product_template_id', None):
-            # Get the template name from the template entity if needed
-            # For now, assume template_name is the id or name
-            # You may need to adapt this if template_name is not the id
-            pass  # Add filtering logic if needed
         # Get all images for this mockup
         images_resp = mockup_service.get_mockup_images_by_mockup_id(db, mockup.id, user_id)
         for image in images_resp.mockup_images:
+            # Filter by template
+            if template_name and image.image_type != template_name:
+                continue
+
             # Get mask data for this image
             mask_data_resp = mockup_service.get_mockup_mask_data_by_image_id(db, image.id, user_id)
             mask_data_list = mask_data_resp.mask_data if hasattr(mask_data_resp, 'mask_data') else []
@@ -71,7 +189,7 @@ def get_mockup_images_with_mask_data_from_service(db, user_id, template_name):
                     'id': image.id,
                     'filename': image.filename,
                     'file_path': image.file_path,
-                    'template_name': image.image_type,  # or use template_name
+                    'template_name': image.image_type,
                     'image_type': image.image_type,
                     'design_id': getattr(image, 'design_id', None),
                     'mask_data': mask_data.masks,
@@ -168,39 +286,51 @@ def create_gang_sheets_from_db(
            design_groups[design_id] = []
        design_groups[design_id].append(mockup)
 
-   # Create a list of image data for gangsheet processing
+   # OPTIMIZATION: Collect all image paths first, then process in parallel
+   image_paths_to_process = []
+   path_to_mockup = {}  # Map path to mockup data for later reference
+
+   for design_id, mockups in design_groups.items():
+       for mockup in mockups:
+           mask_data = mockup.get('mask_data')
+           points_data = mockup.get('points_data')
+
+           if mask_data and points_data:
+               img_path = mockup['file_path']
+               image_paths_to_process.append(img_path)
+               path_to_mockup[img_path] = mockup
+
+   if not image_paths_to_process:
+       logging.warning(f"No valid mockup images found for gangsheet creation")
+       return None
+
+   # OPTIMIZATION: Process all images in parallel
+   logging.info(f"Processing {len(image_paths_to_process)} images in parallel...")
+   import time
+   start_time = time.time()
+   processed_images = process_images_parallel(image_paths_to_process, max_workers=6)
+   processing_time = time.time() - start_time
+   logging.info(f"Parallel image processing completed in {processing_time:.2f}s ({len(processed_images)} images)")
+
+   # Build image_data structure from processed images
    image_data = {
        'Title': [],
        'Size': [],
        'Total': []
    }
-   
-   processed_images = {}
-   image_index = 0
-   
-   for design_id, mockups in design_groups.items():
-       for mockup in mockups:
-           # Use the first mockup's mask data for this design
-           mask_data = mockup.get('mask_data')
-           points_data = mockup.get('points_data')
-           
-           if mask_data and points_data:
-               # Process the mockup image
-               img_path = mockup['file_path']
-               processed_img = process_image(img_path)
-               
-               if processed_img is not None:
-                   image_data['Title'].append(img_path)
-                   image_data['Size'].append(template_name)
-                   image_data['Total'].append(1)  # Each mockup counts as 1
-                   processed_images[image_index] = processed_img
-                   image_index += 1
+
+   for idx, img_path in enumerate(image_paths_to_process):
+       if idx in processed_images:
+           image_data['Title'].append(img_path)
+           image_data['Size'].append(template_name)
+           image_data['Total'].append(1)  # Each mockup counts as 1
 
    if not image_data['Title']:
-       print(f"No valid mockup images found for gangsheet creation")
+       logging.warning(f"No valid images were successfully processed")
        return None
 
    # Create gang sheets using the existing logic with dynamic parameters
+   # Pass pre-processed images to avoid re-processing
    return create_gang_sheets(
        image_data=image_data,
        image_type=template_name,
@@ -212,7 +342,8 @@ def create_gang_sheets_from_db(
        spacing_height_inches=spacing_height,
        dpi=dpi,
        std_dpi=dpi,  # Use same DPI for output
-       text=text
+       text=text,
+       processed_images=processed_images  # Pass pre-processed images
    )
 
 
@@ -227,7 +358,8 @@ def create_gang_sheets(
     spacing_height_inches=None,
     dpi=400,
     std_dpi=None,
-    text='Single '
+    text='Single ',
+    processed_images=None
 ):
    """
    Create gang sheets from image data.
@@ -331,12 +463,17 @@ def create_gang_sheets(
            logging.error("No valid title/size pairs found")
            return None
 
-       # Memory-optimized image loading
-       processed_images = {}
+       # OPTIMIZATION: Use pre-processed images if provided, otherwise load on-demand
+       if processed_images is None:
+           processed_images = {}
+           logging.info("No pre-processed images provided, will load on-demand")
+       else:
+           logging.info(f"Using {len(processed_images)} pre-processed images")
+
        image_cache_limit = 10  # Keep max 10 images in memory at once
-       
+
        def get_processed_image(index):
-           """Load image on-demand with memory management"""
+           """Load image on-demand with memory management (or return pre-processed)"""
            if index not in processed_images:
                try:
                    if index < len(titles) and titles[index] is not None:
@@ -349,7 +486,7 @@ def create_gang_sheets(
                                if k in processed_images:
                                    del processed_images[k]
                                    logging.debug(f"Removed image {k} from cache to free memory")
-                       
+
                        processed_images[index] = process_image(titles[index])
                    else:
                        processed_images[index] = None

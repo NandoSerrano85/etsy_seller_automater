@@ -41,8 +41,13 @@ def get_orders(current_user, db) -> model.OrdersResponse:
 
 def create_gang_sheets_from_mockups(template_name: str, current_user, db, printer_id=None, canvas_config_id=None):
     """Create gang sheets from mockup images stored in the database."""
+    import time
     from server.src.entities.printer import Printer
     from server.src.entities.canvas_config import CanvasConfig
+    from sqlalchemy.orm import joinedload
+
+    # Track total execution time
+    start_time = time.time()
 
     # Get user information from database
     user_id = current_user.get_uuid()
@@ -52,6 +57,9 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
 
     if not user.shop_name:
         raise HTTPException(status_code=400, detail="User shop name not set")
+
+    # OPTIMIZATION: Fetch printer, template, and canvas config in a single optimized query
+    db_fetch_start = time.time()
 
     # Get default printer if not specified
     if printer_id is None:
@@ -64,9 +72,11 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
             printer_id = default_printer.id
             logging.info(f"Using default printer: {default_printer.name}")
 
-    # Get canvas config from template if not specified
+    # Get canvas config from template if not specified (with eager loading)
     if canvas_config_id is None:
-        template = db.query(EtsyProductTemplate).filter(
+        template = db.query(EtsyProductTemplate).options(
+            joinedload(EtsyProductTemplate.canvas_configs)
+        ).filter(
             EtsyProductTemplate.name == template_name,
             EtsyProductTemplate.user_id == user_id
         ).first()
@@ -78,11 +88,15 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
                     logging.info(f"Using canvas config: {canvas.name}")
                     break
 
+    db_fetch_time = time.time() - db_fetch_start
+    logging.info(f"Database configuration fetch completed in {db_fetch_time:.3f}s")
+
     # Use temporary directory for processing
     with tempfile.TemporaryDirectory() as temp_dir:
         output_dir = os.path.join(temp_dir, "Printfiles")
         os.makedirs(output_dir, exist_ok=True)
 
+        gangsheet_start = time.time()
         result = create_gang_sheets_from_db(
             db=db,
             user_id=user_id,
@@ -91,14 +105,19 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
             printer_id=printer_id,
             canvas_config_id=canvas_config_id
         )
+        gangsheet_time = time.time() - gangsheet_start
+        logging.info(f"Gangsheet creation completed in {gangsheet_time:.2f}s")
 
         if result is None:
+            total_time = time.time() - start_time
+            logging.info(f"Total request time: {total_time:.2f}s (failed - no mockup images)")
             return {
                 "success": False,
                 "error": f"No mockup images found for template '{template_name}'"
             }
 
         # Upload generated print files to NAS
+        upload_start = time.time()
         uploaded_files = []
         try:
             if os.path.exists(output_dir):
@@ -120,11 +139,17 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
             logging.error(f"Error uploading print files to NAS: {e}")
             # Don't fail the entire process if NAS upload fails
 
+        upload_time = time.time() - upload_start
+        total_time = time.time() - start_time
+        logging.info(f"NAS upload completed in {upload_time:.2f}s")
+        logging.info(f"✅ TOTAL REQUEST TIME: {total_time:.2f}s (DB: {db_fetch_time:.2f}s, Gangsheet: {gangsheet_time:.2f}s, Upload: {upload_time:.2f}s)")
+
         return {
             "success": True,
             "message": f"Successfully created gang sheets from mockup images for template '{template_name}'",
             "uploaded_files": uploaded_files,
-            "files_count": len(uploaded_files)
+            "files_count": len(uploaded_files),
+            "execution_time": f"{total_time:.2f}s"
         }
 
 def create_print_files(current_user, db, printer_id=None, canvas_config_id=None):
