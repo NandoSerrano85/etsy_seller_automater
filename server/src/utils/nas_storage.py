@@ -205,7 +205,12 @@ class NASStorage:
         try:
             with self.connection_pool.get_connection() as sftp:
                 yield sftp
+        except (FileNotFoundError, IOError, OSError) as e:
+            # These are legitimate file operation errors, not connection errors
+            # Re-raise without logging as "connection from pool" error
+            raise
         except Exception as e:
+            # Only log actual connection pool errors
             error_msg = str(e) if str(e) else f"{type(e).__name__}"
             logging.error(f"Failed to get NAS connection from pool: {error_msg}", exc_info=True)
             raise
