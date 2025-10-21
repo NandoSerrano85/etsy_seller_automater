@@ -233,48 +233,50 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                       </>
                     )}
                   </button>
-              <button
-                onClick={handleGeneratePackingSlips}
-                disabled={orders.length === 0 || packingSlipLoading}
-                className={`
-                  px-4 py-2 rounded-lg font-medium flex items-center space-x-2
-                  ${
-                    orders.length === 0 || packingSlipLoading
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-blue-500 text-white hover:bg-blue-600'
-                  }
-                `}
-              >
-                {packingSlipLoading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <>
-                    <span>📄</span>
-                    <span>Packing Slips ({orders.length})</span>
-                  </>
-                )}
-              </button>
-              <button
-                onClick={handleSendToPrint}
-                disabled={orders.length === 0 || printLoading}
-                className={`
-                  px-4 py-2 rounded-lg font-medium flex items-center space-x-2
-                  ${
-                    orders.length === 0 || printLoading
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-lavender-500 text-white hover:bg-lavender-600'
-                  }
-                `}
-              >
-                {printLoading ? (
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                ) : (
-                  <>
-                    <span>🖨️</span>
-                    <span>Send to Print ({orders.length})</span>
-                  </>
-                )}
-              </button>
+                  <button
+                    onClick={handleGeneratePackingSlips}
+                    disabled={orders.length === 0 || packingSlipLoading}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                      ${
+                        orders.length === 0 || packingSlipLoading
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                      }
+                    `}
+                  >
+                    {packingSlipLoading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <span>📄</span>
+                        <span>Packing Slips ({orders.length})</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleSendToPrint}
+                    disabled={orders.length === 0 || printLoading}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                      ${
+                        orders.length === 0 || printLoading
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-lavender-500 text-white hover:bg-lavender-600'
+                      }
+                    `}
+                  >
+                    {printLoading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <span>🖨️</span>
+                        <span>Send to Print ({orders.length})</span>
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
