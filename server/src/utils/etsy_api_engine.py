@@ -1109,20 +1109,40 @@ class EtsyAPI:
                 response.raise_for_status()
                 return response.json()
 
-    def fetch_order_summary(self, model) -> dict:
+    def fetch_order_summary(self, model, was_shipped=None, was_paid=None, was_canceled=None) -> dict:
+        """
+        Fetch order summary with optional status filters.
+
+        Args:
+            model: Model class for response formatting
+            was_shipped: Filter by shipped status ('true', 'false', or None for all)
+            was_paid: Filter by paid status ('true', 'false', or None for all)
+            was_canceled: Filter by canceled status ('true', 'false', or None for all)
+
+        Returns:
+            Dictionary with orders, count, and total
+        """
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}',
         }
         logging.info(f"Using shop ID: {self.shop_id}")
         receipts_url = f"{self.base_url}/application/shops/{self.shop_id}/receipts"
+
+        # Build params with only specified filters
         params = {
             'limit': 100,
             'offset': 0,
-            'was_paid': 'true',
-            'was_shipped': 'false',
-            'was_canceled': 'false'
         }
+
+        # Add filters only if specified (None means don't filter)
+        if was_paid is not None:
+            params['was_paid'] = was_paid
+        if was_shipped is not None:
+            params['was_shipped'] = was_shipped
+        if was_canceled is not None:
+            params['was_canceled'] = was_canceled
+
         response = self.session.get(receipts_url, headers=headers, params=params)
         if not response.ok:
             logging.error(f"Failed to fetch orders: {response.status_code} {response.text}")
@@ -1402,7 +1422,7 @@ class EtsyAPI:
             logging.error(f"Traceback: {traceback.format_exc()}")
             return []
 
-    def get_shop_receipts_with_items(self, shop_id, limit=100, offset=0):
+    def get_shop_receipts_with_items(self, shop_id, limit=100, offset=0, was_shipped=None, was_paid=None, was_canceled=None):
         """
         Get shop receipts (orders) with transaction items.
 
@@ -1410,6 +1430,9 @@ class EtsyAPI:
             shop_id: Shop ID
             limit: Maximum number of receipts to return
             offset: Number of receipts to skip (for pagination)
+            was_shipped: Filter by shipped status ('true', 'false', or None for all)
+            was_paid: Filter by paid status ('true', 'false', or None for all)
+            was_canceled: Filter by canceled status ('true', 'false', or None for all)
 
         Returns:
             Dictionary with results and count
@@ -1423,9 +1446,15 @@ class EtsyAPI:
         params = {
             'limit': min(limit, 100),  # Etsy API max is 100
             'offset': offset,
-            'was_paid': 'true',
-            'was_canceled': 'false'
         }
+
+        # Add filters only if specified (None means don't filter)
+        if was_paid is not None:
+            params['was_paid'] = was_paid
+        if was_shipped is not None:
+            params['was_shipped'] = was_shipped
+        if was_canceled is not None:
+            params['was_canceled'] = was_canceled
 
         response = self.session.get(receipts_url, headers=headers, params=params)
         if not response.ok:

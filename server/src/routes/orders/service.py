@@ -22,10 +22,28 @@ def get_oauth_variables():
         'clientSecret': os.getenv('CLIENT_SECRET'),
     }
 
-def get_orders(current_user, db) -> model.OrdersResponse:
+def get_orders(current_user, db, was_shipped=None, was_paid=None, was_canceled=None) -> model.OrdersResponse:
+    """
+    Get orders with optional status filters.
+
+    Args:
+        current_user: Current authenticated user
+        db: Database session
+        was_shipped: Filter by shipped status ('true', 'false', or None for all)
+        was_paid: Filter by paid status ('true', 'false', or None for all)
+        was_canceled: Filter by canceled status ('true', 'false', or None for all)
+
+    Returns:
+        OrdersResponse with filtered orders
+    """
     try:
         etsy_api = EtsyAPI(current_user.get_uuid(), db)
-        orders = etsy_api.fetch_order_summary(model)
+        orders = etsy_api.fetch_order_summary(
+            model,
+            was_shipped=was_shipped,
+            was_paid=was_paid,
+            was_canceled=was_canceled
+        )
         if orders['success_code'] != 200:
             raise HTTPException(status_code=orders['success_code'], detail=orders['message'])
         return model.OrdersResponse(
@@ -334,7 +352,7 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
             "error": f"Failed to create gang sheets: {str(e)}"
         }
 
-def get_all_orders_with_details(current_user, db, limit=100, offset=0):
+def get_all_orders_with_details(current_user, db, limit=100, offset=0, was_shipped=None, was_paid=None, was_canceled=None):
     """
     Get all Etsy orders with full details for selection interface.
 
@@ -343,6 +361,9 @@ def get_all_orders_with_details(current_user, db, limit=100, offset=0):
         db: Database session
         limit: Maximum number of orders to return
         offset: Number of orders to skip (for pagination)
+        was_shipped: Filter by shipped status ('true', 'false', or None for all)
+        was_paid: Filter by paid status ('true', 'false', or None for all)
+        was_canceled: Filter by canceled status ('true', 'false', or None for all)
 
     Returns:
         Dictionary with orders list and metadata
@@ -362,7 +383,10 @@ def get_all_orders_with_details(current_user, db, limit=100, offset=0):
         orders_data = etsy_api.get_shop_receipts_with_items(
             shop_id=user.shop_id,
             limit=limit,
-            offset=offset
+            offset=offset,
+            was_shipped=was_shipped,
+            was_paid=was_paid,
+            was_canceled=was_canceled
         )
 
         if not orders_data:

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 
 const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const activeSubTab = searchParams.get('subtab') || 'all';
   const [expandedOrders, setExpandedOrders] = useState([]);
   const [selectedOrders, setSelectedOrders] = useState([]);
@@ -15,7 +15,48 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [allOrders, setAllOrders] = useState([]);
   const [loadingAllOrders, setLoadingAllOrders] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState('UVDTF 16oz');
+  const [orderFilter, setOrderFilter] = useState('active'); // 'active', 'shipped', 'all'
+  const [filteredOrders, setFilteredOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
   const api = useApi();
+
+  // Fetch orders based on filter
+  const fetchOrdersByFilter = async filter => {
+    setLoadingOrders(true);
+    setPrintError(null);
+    try {
+      let params = {};
+
+      if (filter === 'active') {
+        // Active orders: paid, not shipped, not canceled
+        params = { was_paid: 'true', was_shipped: 'false', was_canceled: 'false' };
+      } else if (filter === 'shipped') {
+        // Shipped orders: paid, shipped, not canceled
+        params = { was_paid: 'true', was_shipped: 'true', was_canceled: 'false' };
+      }
+      // 'all' filter: no params, gets all orders
+
+      const queryString = new URLSearchParams(params).toString();
+      const url = `/orders${queryString ? `?${queryString}` : ''}`;
+
+      const response = await api.get(url);
+      if (response.orders) {
+        setFilteredOrders(response.orders);
+      } else {
+        setPrintError('Failed to load orders');
+      }
+    } catch (error) {
+      setPrintError(error.message || 'Error loading orders');
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
+
+  // Handle filter change
+  const handleFilterChange = filter => {
+    setOrderFilter(filter);
+    fetchOrdersByFilter(filter);
+  };
 
   // Load all orders for selection
   const loadAllOrdersForSelection = async () => {
@@ -392,12 +433,18 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       <div className="card p-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
           <div className="text-center">
-            <h3 className="text-2xl font-bold text-gray-900">{(orders || []).length}</h3>
-            <p className="text-gray-600">Total Orders</p>
+            <h3 className="text-2xl font-bold text-gray-900">
+              {(filteredOrders.length > 0 ? filteredOrders : orders || []).length}
+            </h3>
+            <p className="text-gray-600">
+              {orderFilter === 'active' && 'Active Orders'}
+              {orderFilter === 'shipped' && 'Shipped Orders'}
+              {orderFilter === 'all' && 'All Orders'}
+            </p>
           </div>
           <div className="text-center">
             <h3 className="text-2xl font-bold text-gray-900">
-              {(orders || []).reduce(
+              {(filteredOrders.length > 0 ? filteredOrders : orders || []).reduce(
                 (sum, order) => sum + (order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0),
                 0
               )}
@@ -408,73 +455,117 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       </div>
       {/* Orders Table */}
       <div className="card p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Active Orders</h2>
-        <div className="overflow-x-auto rounded-lg shadow">
-          <table className="w-full bg-white">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-4 text-left font-semibold text-gray-700"></th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-700">Order ID</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-700">Customer Name</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Method</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Cost</th>
-                <th className="px-6 py-4 text-left font-semibold text-gray-700">Order Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {(orders || []).map(order => (
-                <React.Fragment key={order.order_id}>
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-2 py-4 text-center">
-                      <button
-                        onClick={() => toggleOrderExpand(order.order_id)}
-                        className="focus:outline-none"
-                        aria-label={expandedOrders.includes(order.order_id) ? 'Collapse' : 'Expand'}
-                      >
-                        {expandedOrders.includes(order.order_id) ? <span>&#9660;</span> : <span>&#9654;</span>}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 font-medium text-gray-900">{order.order_id}</td>
-                    <td className="px-6 py-4 text-gray-700">{order.customer_name || 'N/A'}</td>
-                    <td className="px-6 py-4 text-gray-700">{order.shipping_method || 'N/A'}</td>
-                    <td className="px-6 py-4 text-gray-700">{formatCurrency(order.shipping_cost || 0)}</td>
-                    <td className="px-6 py-4 text-gray-700">
-                      {new Date(order.order_date * 1000).toLocaleDateString()}
-                    </td>
-                  </tr>
-                  {/* Transactions Dropdown */}
-                  {expandedOrders.includes(order.order_id) && (
-                    <tr>
-                      <td colSpan={6} className="bg-gray-50 px-6 py-4">
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
-                            <thead>
-                              <tr>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-700">Item Name</th>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-700">Quantity</th>
-                                <th className="px-4 py-2 text-left font-semibold text-gray-700">Price</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(order.items || []).map((item, idx) => (
-                                <tr key={idx}>
-                                  <td className="px-4 py-2 text-gray-700">{item.title || 'N/A'}</td>
-                                  <td className="px-4 py-2 text-gray-700">{item.quantity || 0}</td>
-                                  <td className="px-4 py-2 text-gray-700">{formatCurrency(item.price || 0)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleFilterChange('active')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                orderFilter === 'active' ? 'bg-lavender-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Active Orders
+            </button>
+            <button
+              onClick={() => handleFilterChange('shipped')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                orderFilter === 'shipped' ? 'bg-lavender-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Shipped Orders
+            </button>
+            <button
+              onClick={() => handleFilterChange('all')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                orderFilter === 'all' ? 'bg-lavender-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              All Orders
+            </button>
+          </div>
+        </div>
+
+        {loadingOrders && (
+          <div className="flex items-center justify-center p-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
+            <span className="ml-2 text-gray-600">Loading orders...</span>
+          </div>
+        )}
+
+        {!loadingOrders && (
+          <div className="overflow-x-auto rounded-lg shadow">
+            <table className="w-full bg-white">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-4 text-left font-semibold text-gray-700"></th>
+                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Order ID</th>
+                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Customer Name</th>
+                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Method</th>
+                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Cost</th>
+                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Order Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {(filteredOrders.length > 0 ? filteredOrders : orders || []).map(order => (
+                  <React.Fragment key={order.order_id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-2 py-4 text-center">
+                        <button
+                          onClick={() => toggleOrderExpand(order.order_id)}
+                          className="focus:outline-none"
+                          aria-label={expandedOrders.includes(order.order_id) ? 'Collapse' : 'Expand'}
+                        >
+                          {expandedOrders.includes(order.order_id) ? <span>&#9660;</span> : <span>&#9654;</span>}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-gray-900">{order.order_id}</td>
+                      <td className="px-6 py-4 text-gray-700">{order.customer_name || 'N/A'}</td>
+                      <td className="px-6 py-4 text-gray-700">{order.shipping_method || 'N/A'}</td>
+                      <td className="px-6 py-4 text-gray-700">{formatCurrency(order.shipping_cost || 0)}</td>
+                      <td className="px-6 py-4 text-gray-700">
+                        {new Date(order.order_date * 1000).toLocaleDateString()}
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-          {(orders || []).length === 0 && <div className="text-center py-8 text-gray-500">No active orders found</div>}
-        </div>
+                    {/* Transactions Dropdown */}
+                    {expandedOrders.includes(order.order_id) && (
+                      <tr>
+                        <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                          <div className="overflow-x-auto">
+                            <table className="w-full">
+                              <thead>
+                                <tr>
+                                  <th className="px-4 py-2 text-left font-semibold text-gray-700">Item Name</th>
+                                  <th className="px-4 py-2 text-left font-semibold text-gray-700">Quantity</th>
+                                  <th className="px-4 py-2 text-left font-semibold text-gray-700">Price</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(order.items || []).map((item, idx) => (
+                                  <tr key={idx}>
+                                    <td className="px-4 py-2 text-gray-700">{item.title || 'N/A'}</td>
+                                    <td className="px-4 py-2 text-gray-700">{item.quantity || 0}</td>
+                                    <td className="px-4 py-2 text-gray-700">{formatCurrency(item.price || 0)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+            {(filteredOrders.length > 0 ? filteredOrders : orders || []).length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                {orderFilter === 'active' && 'No active orders found'}
+                {orderFilter === 'shipped' && 'No shipped orders found'}
+                {orderFilter === 'all' && 'No orders found'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

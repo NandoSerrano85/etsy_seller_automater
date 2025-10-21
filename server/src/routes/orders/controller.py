@@ -27,12 +27,28 @@ def run_in_thread(func):
 @router.get('/', response_model=model.OrdersResponse)
 async def get_orders(
     current_user: CurrentUser,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    was_shipped: str = None,
+    was_paid: str = None,
+    was_canceled: str = None
 ):
-    """Get orders (threaded)"""
+    """
+    Get orders with optional status filters (threaded)
+
+    Args:
+        was_shipped: Filter by shipped status ('true', 'false', or omit for all)
+        was_paid: Filter by paid status ('true', 'false', or omit for all)
+        was_canceled: Filter by canceled status ('true', 'false', or omit for all)
+    """
     @run_in_thread
     def get_orders_threaded():
-        return service.get_orders(current_user, db)
+        return service.get_orders(
+            current_user,
+            db,
+            was_shipped=was_shipped,
+            was_paid=was_paid,
+            was_canceled=was_canceled
+        )
 
     return await get_orders_threaded()
 
@@ -66,12 +82,32 @@ async def get_all_orders(
     current_user: CurrentUser,
     db: Session = Depends(get_db),
     limit: int = 100,
-    offset: int = 0
+    offset: int = 0,
+    was_shipped: str = None,
+    was_paid: str = None,
+    was_canceled: str = None
 ):
-    """Get all Etsy orders with full details for selection (threaded)"""
+    """
+    Get all Etsy orders with full details for selection (threaded)
+
+    Args:
+        limit: Maximum number of orders to return
+        offset: Number of orders to skip (for pagination)
+        was_shipped: Filter by shipped status ('true', 'false', or omit for all)
+        was_paid: Filter by paid status ('true', 'false', or omit for all)
+        was_canceled: Filter by canceled status ('true', 'false', or omit for all)
+    """
     @run_in_thread
     def get_all_orders_threaded():
-        return service.get_all_orders_with_details(current_user, db, limit, offset)
+        return service.get_all_orders_with_details(
+            current_user,
+            db,
+            limit,
+            offset,
+            was_shipped=was_shipped,
+            was_paid=was_paid,
+            was_canceled=was_canceled
+        )
 
     return await get_all_orders_threaded()
 
