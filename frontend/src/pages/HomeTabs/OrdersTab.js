@@ -98,7 +98,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       formData.append('template_name', selectedTemplate);
       selectedOrders.forEach(id => formData.append('order_ids', id));
 
-      const response = await api.post('/orders/print-files-from-selection', formData);
+      const response = await api.postFormData('/orders/print-files-from-selection', formData);
       if (response.success) {
         setPrintMsg(
           `Created ${response.sheets_created} gang sheets from ${response.orders_processed} orders. Files uploaded to NAS.`
