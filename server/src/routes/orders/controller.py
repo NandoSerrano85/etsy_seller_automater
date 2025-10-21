@@ -114,16 +114,17 @@ async def get_all_orders(
 @router.post('/print-files-from-selection')
 async def create_print_files_from_selected_orders(
     current_user: CurrentUser,
-    order_ids: list[int] = Form(...),
-    template_name: str = Form(...),
+    request_body: model.PrintFilesFromSelectionRequest,
     db: Session = Depends(get_db)
 ):
-    """Create print files from selected order IDs (threaded - heavy file processing)"""
+    """
+    Create print files from selected order IDs (threaded - heavy file processing)
+    """
     @run_in_thread
     def create_from_selection_threaded():
         return service.create_print_files_from_selected_orders(
-            order_ids,
-            template_name,
+            request_body.order_ids,
+            request_body.template_name,
             current_user,
             db
         )
