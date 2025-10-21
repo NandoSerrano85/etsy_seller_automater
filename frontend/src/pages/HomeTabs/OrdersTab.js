@@ -94,10 +94,20 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       setPrintError(null);
       setPrintMsg(null);
 
+      console.log('🔵 Sending request:', {
+        template_name: selectedTemplate,
+        order_ids: selectedOrders,
+        order_ids_type: typeof selectedOrders,
+        order_ids_is_array: Array.isArray(selectedOrders),
+        order_ids_length: selectedOrders.length,
+      });
+
       const response = await api.post('/orders/print-files-from-selection', {
         template_name: selectedTemplate,
         order_ids: selectedOrders,
       });
+
+      console.log('🟢 Received response:', response);
       if (response.success) {
         setPrintMsg(
           `Created ${response.sheets_created} gang sheets from ${response.orders_processed} orders. Files uploaded to NAS.`
