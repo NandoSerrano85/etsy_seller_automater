@@ -27,5 +27,5 @@ class PrintFilesResponse(BaseModel):
     sheets_created: Optional[int] = None
 
 class PrintFilesFromSelectionRequest(BaseModel):
-    order_ids: List[int]
+    order_ids: List[int]  # Etsy receipt IDs
     template_name: str
