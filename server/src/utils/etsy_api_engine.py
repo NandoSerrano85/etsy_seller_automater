@@ -839,7 +839,7 @@ class EtsyAPI:
         # Pattern 7: Strip all whitespace and match at start of filename (without extension)
         # This handles cases where filename is "UV 632.png" and we're searching for "UV 632"
         stripped_search = search_name.replace(" ", r"\s*")
-        patterns.append(re.compile(f"^{stripped_search}(?:\\.|\s|$)", re.IGNORECASE))
+        patterns.append(re.compile(rf"^{stripped_search}(?:\\.|\s|$)", re.IGNORECASE))
 
         logging.info(f"Created {len(patterns)} search patterns for '{search_name}'")
 
@@ -1534,14 +1534,24 @@ class EtsyAPI:
         Find design file path for an item title.
 
         Args:
-            item_title: Item title from order
+            item_title: Item title from order (e.g., "UV 840 | UVDTF Cup wrap | ...")
             template_name: Template name
 
         Returns:
             Design file path or None
         """
-        # Try database first
-        design_path = self.find_design_in_db(item_title, self.user_id, template_name)
+        import re
+
+        # Extract just the design number from the title
+        # Pattern matches "UV XXX" or "UV XXX |" at the start of the title
+        search_name = item_title
+        match = re.match(r'^(UV\s*\d+)', item_title.strip(), re.IGNORECASE)
+        if match:
+            search_name = match.group(1).strip()
+            logging.debug(f"Extracted design number '{search_name}' from title '{item_title}'")
+
+        # Try database first with extracted design number
+        design_path = self.find_design_in_db(search_name, self.user_id, template_name)
 
         if design_path:
             return design_path
@@ -1549,7 +1559,7 @@ class EtsyAPI:
         # Try NAS if database lookup failed
         if hasattr(self, 'shop_name') and self.shop_name:
             design_path = self.find_images_by_name_nas(
-                item_title,
+                search_name,
                 self.shop_name,
                 template_name
             )
