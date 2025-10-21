@@ -532,7 +532,53 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         # Create gang sheets
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = os.path.join(temp_dir, "Printfiles")
+            temp_designs_dir = os.path.join(temp_dir, "Designs")
             os.makedirs(output_dir, exist_ok=True)
+            os.makedirs(temp_designs_dir, exist_ok=True)
+
+            # Download design files from NAS to temp directory
+            if nas_storage.enabled and order_items_data.get('Title'):
+                download_start = time.time()
+                logging.info(f"Starting download of {len(order_items_data['Title'])} design files from NAS")
+
+                updated_titles = []
+                download_count = 0
+                for design_file_path in order_items_data['Title']:
+                    if design_file_path:  # Skip empty paths
+                        # Skip placeholder files that don't actually exist
+                        if "MISSING_" in design_file_path:
+                            logging.warning(f"Skipping download of placeholder file: {design_file_path}")
+                            updated_titles.append(design_file_path)  # Keep placeholder path
+                            continue
+
+                        # Design file path is relative to shop (e.g., "UVDTF 16oz/UV840.png")
+                        local_filename = os.path.basename(design_file_path)
+                        local_file_path = os.path.join(temp_designs_dir, local_filename)
+
+                        # Download from NAS
+                        success = nas_storage.download_file(
+                            shop_name=user.shop_name,
+                            relative_path=design_file_path,
+                            local_file_path=local_file_path
+                        )
+
+                        if success:
+                            updated_titles.append(local_file_path)
+                            download_count += 1
+                            logging.debug(f"Downloaded design file from NAS: {design_file_path} -> {local_file_path}")
+                        else:
+                            logging.error(f"Failed to download design file from NAS: {design_file_path}")
+                            # Keep original path as fallback (though it might fail)
+                            updated_titles.append(design_file_path)
+                    else:
+                        updated_titles.append(design_file_path)
+
+                download_duration = time.time() - download_start
+                logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s")
+
+                # Update the data with local file paths
+                order_items_data = order_items_data.copy()
+                order_items_data['Title'] = updated_titles
 
             gangsheet_start = time.time()
             result = create_gang_sheets(
