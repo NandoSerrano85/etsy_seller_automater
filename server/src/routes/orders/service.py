@@ -374,14 +374,14 @@ def get_all_orders_with_details(current_user, db, limit=100, offset=0, was_shipp
 
         # Get user for shop info
         user = db.query(User).filter(User.id == user_id).first()
-        if not user or not user.shop_id:
+        if not user or not user.etsy_shop_id:
             raise HTTPException(status_code=400, detail="User shop not configured")
 
         logging.info(f"Fetching all orders for user {user_id} (limit={limit}, offset={offset})")
 
         # Fetch orders with items from Etsy API
         orders_data = etsy_api.get_shop_receipts_with_items(
-            shop_id=user.shop_id,
+            shop_id=user.etsy_shop_id,
             limit=limit,
             offset=offset,
             was_shipped=was_shipped,
@@ -484,7 +484,7 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
 
         # Fetch order items for selected orders only
         order_items_data = etsy_api.fetch_selected_order_items(
-            shop_id=user.shop_id,
+            shop_id=user.etsy_shop_id,
             order_ids=order_ids,
             template_name=template_name
         )
