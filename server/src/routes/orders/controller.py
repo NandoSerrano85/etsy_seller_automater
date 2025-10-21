@@ -5,6 +5,7 @@ from server.src.routes.auth.service import CurrentUser
 from . import model
 from . import service
 import asyncio
+import logging
 from concurrent.futures import ThreadPoolExecutor
 import functools
 
@@ -120,9 +121,9 @@ async def create_print_files_from_selected_orders(
     """
     Create print files from selected order IDs (threaded - heavy file processing)
     """
-    import logging
     logging.info(f"📦 Received request: order_ids={request_body.order_ids}, type={type(request_body.order_ids)}, template={request_body.template_name}")
 
+    print(f"📦 Received request: order_ids={request_body.order_ids}, type={type(request_body.order_ids)}, template={request_body.template_name}")
     # Ensure order_ids is always a list
     order_ids = request_body.order_ids if isinstance(request_body.order_ids, list) else [request_body.order_ids]
     logging.info(f"📦 Normalized order_ids: {order_ids}")
