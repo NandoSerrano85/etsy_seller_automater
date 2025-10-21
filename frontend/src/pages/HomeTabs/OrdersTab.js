@@ -101,7 +101,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
         order_ids_is_array: Array.isArray(selectedOrders),
         order_ids_length: selectedOrders.length,
       });
-
+      console.log(JSON.stringify({ template_name: selectedTemplate, order_ids: selectedOrders }));
       const response = await api.post('/orders/print-files-from-selection', {
         template_name: selectedTemplate,
         order_ids: selectedOrders,
