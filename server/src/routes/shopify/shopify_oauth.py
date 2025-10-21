@@ -1090,6 +1090,77 @@ async def generate_mockup_preview(
     )
     return preview
 
+@router.post("/products/start-creation")
+async def start_product_creation(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    design_files: List[UploadFile] = File(default=[])
+):
+    """Start a new product creation session with progress tracking"""
+    import logging
+    from concurrent.futures import ThreadPoolExecutor
+    import functools
+    import asyncio
+
+    logging.info(f"start_product_creation called for user")
+    user_id = current_user.get_uuid()
+    if not user_id:
+        logging.error("User not authenticated in start_product_creation")
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    # Use thread pool for CPU-bound work
+    thread_pool = ThreadPoolExecutor(max_workers=4)
+
+    def run_in_thread(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+        return wrapper
+
+    @run_in_thread
+    def start_creation_threaded():
+        try:
+            from server.src.routes.designs.service import progress_manager
+
+            # Calculate total file size for time estimation
+            total_size_bytes = 0
+            file_count = 0
+
+            if design_files and len(design_files) > 0:
+                valid_files = [f for f in design_files if f is not None and hasattr(f, 'file')]
+
+                for file in valid_files:
+                    file_count += 1
+                    try:
+                        if file.file:
+                            file.file.seek(0, 2)  # Seek to end
+                            size = file.file.tell()
+                            file.file.seek(0)  # Reset to beginning
+                            total_size_bytes += size
+                    except Exception as e:
+                        logging.error(f"Error reading file size: {e}")
+
+            total_size_mb = total_size_bytes / (1024 * 1024)
+
+            session_id = progress_manager.create_session(total_size_mb, file_count)
+            result = {
+                "session_id": session_id,
+                "estimated_time": progress_manager._file_info[session_id]['estimated_time'],
+                "file_count": file_count,
+                "total_size_mb": round(total_size_mb, 2)
+            }
+
+            logging.info(f"Created product creation session: {session_id} ({file_count} files, {total_size_mb:.2f}MB)")
+            return result
+
+        except Exception as e:
+            logging.error(f"Error in start_creation_threaded: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return await start_creation_threaded()
+
+
 @router.post("/products/from-template")
 async def create_product_from_template(
     current_user: CurrentUser,
@@ -1101,48 +1172,88 @@ async def create_product_from_template(
     vendor: str = Form("Custom Design Store"),
     tags: str = Form(""),
     variants: str = Form("[]"),  # JSON string of variants
-    design_files: List[UploadFile] = File(...)
+    design_files: List[UploadFile] = File(...),
+    session_id: str = Form(None)  # Optional progress tracking session ID
 ):
-    """Create a Shopify product using a template and design files"""
+    """Create a Shopify product using a template and design files (with progress tracking)"""
+    import logging
+    from concurrent.futures import ThreadPoolExecutor
+    import functools
+    import asyncio
+
     if not design_files:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one design file is required"
         )
 
-    # Parse variants JSON
-    try:
-        import json
-        variants_data = json.loads(variants) if variants != "[]" else []
-    except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid variants JSON format"
-        )
+    # Use thread pool for CPU-bound work
+    thread_pool = ThreadPoolExecutor(max_workers=4)
 
-    # Prepare product details
-    product_details = {
-        'title': title,
-        'description': description,
-        'price': price,
-        'vendor': vendor,
-        'tags': tags,
-        'variants': variants_data
-    }
+    def run_in_thread(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
+        return wrapper
 
-    template_service = ShopifyTemplateProductService(db)
-    result = template_service.create_shopify_product_from_template(
-        user_id=current_user.get_uuid(),
-        template_id=UUID(template_id),
-        design_files=design_files,
-        product_details=product_details
-    )
+    @run_in_thread
+    def create_product_threaded():
+        try:
+            # Update progress if session_id provided
+            if session_id:
+                from server.src.routes.designs.service import progress_manager
+                progress_manager.update_progress(session_id, 5, "Parsing product data...")
 
-    return {
-        "success": True,
-        "message": "Product created successfully",
-        "product": result
-    }
+            # Parse variants JSON
+            import json
+            variants_data = json.loads(variants) if variants != "[]" else []
+
+            # Prepare product details
+            product_details = {
+                'title': title,
+                'description': description,
+                'price': price,
+                'vendor': vendor,
+                'tags': tags,
+                'variants': variants_data
+            }
+
+            if session_id:
+                progress_manager.update_progress(session_id, 10, "Creating product...")
+
+            template_service = ShopifyTemplateProductService(db)
+            result = template_service.create_shopify_product_from_template(
+                user_id=current_user.get_uuid(),
+                template_id=UUID(template_id),
+                design_files=design_files,
+                product_details=product_details,
+                session_id=session_id  # Pass session_id for progress updates
+            )
+
+            if session_id:
+                progress_manager.update_progress(session_id, 100, "Product created successfully!")
+                progress_manager.mark_complete(session_id)
+
+            return {
+                "success": True,
+                "message": "Product created successfully",
+                "product": result
+            }
+
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid variants JSON format"
+            )
+        except Exception as e:
+            if session_id:
+                from server.src.routes.designs.service import progress_manager
+                progress_manager.mark_error(session_id, str(e))
+            logging.error(f"Error creating product: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return await create_product_threaded()
 
 @router.get("/products/my-products")
 async def get_my_shopify_products(

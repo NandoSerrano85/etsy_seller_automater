@@ -278,20 +278,34 @@ class ShopifyTemplateProductService:
         user_id: UUID,
         template_id: UUID,
         design_files: List[UploadFile],
-        product_details: Dict[str, Any]
+        product_details: Dict[str, Any],
+        session_id: str = None
     ) -> Dict[str, Any]:
         """
-        Create a Shopify product using a template and design files.
+        Create a Shopify product using a template and design files with progress tracking.
 
         Args:
             user_id: User UUID
             template_id: Template UUID
             design_files: List of uploaded design files
             product_details: Product details (title, price, description, variants)
+            session_id: Optional progress tracking session ID
 
         Returns:
             Created product information
         """
+        import logging
+
+        # Get progress manager if session_id provided
+        progress_manager = None
+        if session_id:
+            try:
+                from server.src.routes.designs.service import progress_manager as pm
+                progress_manager = pm
+                progress_manager.update_progress(session_id, 15, "Validating Shopify store...")
+            except ImportError:
+                logging.warning("Progress manager not available")
+
         # Get user's Shopify store
         store = self.db.query(ShopifyStore).filter(
             ShopifyStore.user_id == user_id,
@@ -303,6 +317,9 @@ class ShopifyTemplateProductService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No active Shopify store found"
             )
+
+        if progress_manager:
+            progress_manager.update_progress(session_id, 20, "Loading template...")
 
         # Get template
         template = self.db.query(EtsyProductTemplate).filter(
@@ -316,6 +333,9 @@ class ShopifyTemplateProductService:
                 detail="Template not found"
             )
 
+        if progress_manager:
+            progress_manager.update_progress(session_id, 25, "Loading mockups...")
+
         # Get mockups for this template
         mockups = self.get_template_mockups(template_id, user_id)
         if not mockups:
@@ -324,10 +344,16 @@ class ShopifyTemplateProductService:
                 detail="No mockups found for this template"
             )
 
+        if progress_manager:
+            progress_manager.update_progress(session_id, 35, f"Processing {len(design_files)} design files...")
+
         # Process design files
         processed_files = self.process_design_files(design_files, template.name)
 
         try:
+            if progress_manager:
+                progress_manager.update_progress(session_id, 45, "Preparing mockup data...")
+
             # Generate mockup images
             mockup_data = mockups[0]  # Use first mockup
 
@@ -350,6 +376,9 @@ class ShopifyTemplateProductService:
                         'alignment': first_mask['alignment']
                     }
 
+            if progress_manager:
+                progress_manager.update_progress(session_id, 55, "Generating mockup images...")
+
             # Generate mockup images
             root_path = os.getenv('LOCAL_ROOT_PATH', '/tmp/')
             generated_mockups = create_mockup_images(
@@ -360,6 +389,9 @@ class ShopifyTemplateProductService:
                 starting_name=mockup_data['starting_name'],
                 mask_data=mask_info
             )
+
+            if progress_manager:
+                progress_manager.update_progress(session_id, 70, "Preparing product data...")
 
             # Prepare product data for Shopify
             shopify_product_data = {
@@ -384,16 +416,26 @@ class ShopifyTemplateProductService:
 
             shopify_product_data['variants'] = variants
 
+            if progress_manager:
+                progress_manager.update_progress(session_id, 75, "Creating product in Shopify...")
+
             # Create product in Shopify
             created_product = self.client.create_product(
                 store_id=str(store.id),
                 product_data=shopify_product_data
             )
 
+            if progress_manager:
+                progress_manager.update_progress(session_id, 80, f"Uploading {len(generated_mockups)} mockup images...")
+
             # Upload mockup images to Shopify
             uploaded_images = []
             for i, mockup in enumerate(generated_mockups):
                 try:
+                    if progress_manager:
+                        progress = 80 + (15 * (i + 1) / len(generated_mockups))
+                        progress_manager.update_progress(session_id, int(progress), f"Uploading image {i+1}/{len(generated_mockups)}...")
+
                     with open(mockup['file_path'], 'rb') as img_file:
                         uploaded_image = self.client.upload_product_image(
                             store_id=str(store.id),

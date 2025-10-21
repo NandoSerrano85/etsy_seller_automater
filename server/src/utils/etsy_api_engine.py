@@ -1401,3 +1401,128 @@ class EtsyAPI:
             import traceback
             logging.error(f"Traceback: {traceback.format_exc()}")
             return []
+
+    def get_shop_receipts_with_items(self, shop_id, limit=100, offset=0):
+        """
+        Get shop receipts (orders) with transaction items.
+
+        Args:
+            shop_id: Shop ID
+            limit: Maximum number of receipts to return
+            offset: Number of receipts to skip (for pagination)
+
+        Returns:
+            Dictionary with results and count
+        """
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        receipts_url = f"{self.base_url}/application/shops/{shop_id}/receipts"
+        params = {
+            'limit': min(limit, 100),  # Etsy API max is 100
+            'offset': offset,
+            'was_paid': 'true',
+            'was_canceled': 'false'
+        }
+
+        response = self.session.get(receipts_url, headers=headers, params=params)
+        if not response.ok:
+            logging.error(f"Failed to fetch receipts: {response.status_code} {response.text}")
+            return None
+
+        return response.json()
+
+    def fetch_selected_order_items(self, shop_id, order_ids, template_name):
+        """
+        Fetch items from specific selected orders and process them for gang sheet creation.
+
+        Args:
+            shop_id: Shop ID
+            order_ids: List of order/receipt IDs to fetch
+            template_name: Template name to filter items
+
+        Returns:
+            Dictionary formatted for gang sheet creation with Title, Size, Total arrays
+        """
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        # Initialize result structure
+        image_data = {
+            'Title': [],
+            'Size': [],
+            'Total': []
+        }
+
+        processed_items = 0
+
+        # Fetch each order
+        for order_id in order_ids:
+            try:
+                receipt_url = f"{self.base_url}/application/shops/{shop_id}/receipts/{order_id}"
+                response = self.session.get(receipt_url, headers=headers)
+
+                if not response.ok:
+                    logging.warning(f"Failed to fetch order {order_id}: {response.status_code}")
+                    continue
+
+                receipt = response.json()
+
+                # Process each transaction in the order
+                for transaction in receipt.get('transactions', []):
+                    item_title = transaction.get('title', '')
+                    quantity = transaction.get('quantity', 1)
+
+                    # Try to find design file for this item
+                    design_path = self.find_design_for_item(item_title, template_name)
+
+                    if design_path:
+                        image_data['Title'].append(design_path)
+                        image_data['Size'].append(template_name)
+                        image_data['Total'].append(quantity)
+                        processed_items += 1
+                        logging.info(f"Added item from order {order_id}: {item_title} (qty: {quantity})")
+                    else:
+                        logging.warning(f"No design found for item: {item_title}")
+
+            except Exception as e:
+                logging.error(f"Error processing order {order_id}: {e}")
+                continue
+
+        logging.info(f"Processed {processed_items} items from {len(order_ids)} selected orders")
+
+        return {
+            'items': processed_items,
+            **image_data
+        }
+
+    def find_design_for_item(self, item_title, template_name):
+        """
+        Find design file path for an item title.
+
+        Args:
+            item_title: Item title from order
+            template_name: Template name
+
+        Returns:
+            Design file path or None
+        """
+        # Try database first
+        design_path = self.find_design_in_db(item_title, self.user_id, template_name)
+
+        if design_path:
+            return design_path
+
+        # Try NAS if database lookup failed
+        if hasattr(self, 'shop_name') and self.shop_name:
+            design_path = self.find_images_by_name_nas(
+                item_title,
+                self.shop_name,
+                template_name
+            )
+
+        return design_path

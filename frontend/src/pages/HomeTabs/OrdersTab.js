@@ -6,12 +6,73 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [searchParams] = useSearchParams();
   const activeSubTab = searchParams.get('subtab') || 'all';
   const [expandedOrders, setExpandedOrders] = useState([]);
-  // const [selectedOrders, setSelectedOrders] = useState([]);
+  const [selectedOrders, setSelectedOrders] = useState([]);
   const [printLoading, setPrintLoading] = useState(false);
   const [printError, setPrintError] = useState(null);
   const [printMsg, setPrintMsg] = useState(null);
   const [packingSlipLoading, setPackingSlipLoading] = useState(false);
+  const [showSelectionMode, setShowSelectionMode] = useState(false);
+  const [allOrders, setAllOrders] = useState([]);
+  const [loadingAllOrders, setLoadingAllOrders] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('UVDTF 16oz');
   const api = useApi();
+
+  // Load all orders for selection
+  const loadAllOrdersForSelection = async () => {
+    setLoadingAllOrders(true);
+    setPrintError(null);
+    try {
+      const response = await api.get('/orders/all-orders?limit=100&offset=0');
+      if (response.success) {
+        setAllOrders(response.orders || []);
+        setShowSelectionMode(true);
+      } else {
+        setPrintError(response.message || 'Failed to load all orders');
+      }
+    } catch (error) {
+      setPrintError(error.message || 'Error loading all orders');
+    } finally {
+      setLoadingAllOrders(false);
+    }
+  };
+
+  // Handle order selection
+  const handleOrderSelect = orderId => {
+    setSelectedOrders(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
+  };
+
+  // Create print files from selected orders
+  const handleCreateFromSelection = async () => {
+    if (selectedOrders.length === 0) {
+      setPrintError('Please select at least one order');
+      return;
+    }
+
+    try {
+      setPrintLoading(true);
+      setPrintError(null);
+      setPrintMsg(null);
+
+      const formData = new FormData();
+      formData.append('template_name', selectedTemplate);
+      selectedOrders.forEach(id => formData.append('order_ids', id));
+
+      const response = await api.post('/orders/print-files-from-selection', formData);
+      if (response.success) {
+        setPrintMsg(
+          `Created ${response.sheets_created} gang sheets from ${response.orders_processed} orders. Files uploaded to NAS.`
+        );
+        setSelectedOrders([]);
+        setShowSelectionMode(false);
+      } else {
+        setPrintError(response.message || 'Failed to create print files');
+      }
+    } catch (error) {
+      setPrintError(error.message || 'Error creating print files from selection');
+    } finally {
+      setPrintLoading(false);
+    }
+  };
 
   // Add send to print function
   const handleSendToPrint = async () => {
@@ -95,19 +156,83 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     }
   };
 
-  // Add order selection handler
-  // const handleOrderSelect = orderId => {
-  //   setSelectedOrders(prev => (prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]));
-  // };
-
   // Add print tab content
   const renderPrintTab = () => {
     return (
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-semibold">Selected Orders for Print</h3>
+            <h3 className="text-lg font-semibold">
+              {showSelectionMode ? 'Select Orders for Print' : 'Selected Orders for Print'}
+            </h3>
             <div className="flex gap-3">
+              {showSelectionMode && (
+                <>
+                  <select
+                    value={selectedTemplate}
+                    onChange={e => setSelectedTemplate(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-lavender-500"
+                  >
+                    <option value="UVDTF 16oz">UVDTF 16oz</option>
+                    <option value="UVDTF 12oz">UVDTF 12oz</option>
+                    <option value="UVDTF Misc">UVDTF Misc</option>
+                  </select>
+                  <button
+                    onClick={handleCreateFromSelection}
+                    disabled={selectedOrders.length === 0 || printLoading}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                      ${
+                        selectedOrders.length === 0 || printLoading
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-lavender-500 text-white hover:bg-lavender-600'
+                      }
+                    `}
+                  >
+                    {printLoading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <span>🖨️</span>
+                        <span>Create Print Files ({selectedOrders.length})</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSelectionMode(false);
+                      setSelectedOrders([]);
+                      setAllOrders([]);
+                    }}
+                    className="px-4 py-2 rounded-lg font-medium bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                </>
+              )}
+              {!showSelectionMode && (
+                <>
+                  <button
+                    onClick={loadAllOrdersForSelection}
+                    disabled={loadingAllOrders}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                      ${
+                        loadingAllOrders
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-green-500 text-white hover:bg-green-600'
+                      }
+                    `}
+                  >
+                    {loadingAllOrders ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <span>📋</span>
+                        <span>Select Orders</span>
+                      </>
+                    )}
+                  </button>
               <button
                 onClick={handleGeneratePackingSlips}
                 disabled={orders.length === 0 || packingSlipLoading}
@@ -171,32 +296,44 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200">
-                  {/* <th className="px-4 py-2 text-left">Select</th> */}
+                  {showSelectionMode && <th className="px-4 py-2 text-left">Select</th>}
                   <th className="px-4 py-2 text-left">Order ID</th>
                   <th className="px-4 py-2 text-left">Customer</th>
                   <th className="px-4 py-2 text-left">Items</th>
+                  {showSelectionMode && <th className="px-4 py-2 text-left">Order Date</th>}
                 </tr>
               </thead>
               <tbody>
-                {orders.map(order => (
-                  <tr key={order.order_id} className="border-b border-gray-100">
-                    {/* <td className="px-4 py-2">
-                      <input
-                        type="checkbox"
-                        checked={selectedOrders.includes(order.order_id)}
-                        // onChange={() => handleOrderSelect(order.order_id)}
-                        className="rounded border-gray-300 text-lavender-600 focus:ring-lavender-500"
-                      />
-                    </td> */}
+                {(showSelectionMode ? allOrders : orders).map(order => (
+                  <tr key={order.order_id} className="border-b border-gray-100 hover:bg-gray-50">
+                    {showSelectionMode && (
+                      <td className="px-4 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedOrders.includes(order.order_id)}
+                          onChange={() => handleOrderSelect(order.order_id)}
+                          className="rounded border-gray-300 text-lavender-600 focus:ring-lavender-500"
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-2">{order.order_id}</td>
                     <td className="px-4 py-2">{order.customer_name || 'N/A'}</td>
                     <td className="px-4 py-2">
                       {order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0}
                     </td>
+                    {showSelectionMode && (
+                      <td className="px-4 py-2">{new Date(order.order_date * 1000).toLocaleDateString()}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
+            {showSelectionMode && allOrders.length === 0 && (
+              <div className="text-center py-8 text-gray-500">No orders available</div>
+            )}
+            {!showSelectionMode && orders.length === 0 && (
+              <div className="text-center py-8 text-gray-500">No orders selected for print</div>
+            )}
           </div>
         </div>
       </div>

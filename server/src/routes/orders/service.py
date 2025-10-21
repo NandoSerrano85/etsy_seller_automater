@@ -333,3 +333,241 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
             "success": False,
             "error": f"Failed to create gang sheets: {str(e)}"
         }
+
+def get_all_orders_with_details(current_user, db, limit=100, offset=0):
+    """
+    Get all Etsy orders with full details for selection interface.
+
+    Args:
+        current_user: Current authenticated user
+        db: Database session
+        limit: Maximum number of orders to return
+        offset: Number of orders to skip (for pagination)
+
+    Returns:
+        Dictionary with orders list and metadata
+    """
+    try:
+        user_id = current_user.get_uuid()
+        etsy_api = EtsyAPI(user_id, db)
+
+        # Get user for shop info
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.shop_id:
+            raise HTTPException(status_code=400, detail="User shop not configured")
+
+        logging.info(f"Fetching all orders for user {user_id} (limit={limit}, offset={offset})")
+
+        # Fetch orders with items from Etsy API
+        orders_data = etsy_api.get_shop_receipts_with_items(
+            shop_id=user.shop_id,
+            limit=limit,
+            offset=offset
+        )
+
+        if not orders_data:
+            return {
+                "success": True,
+                "orders": [],
+                "count": 0,
+                "total": 0,
+                "limit": limit,
+                "offset": offset
+            }
+
+        # Process orders to include item details
+        processed_orders = []
+        for order in orders_data.get('results', []):
+            # Get items for this order
+            items = []
+            for transaction in order.get('transactions', []):
+                items.append({
+                    "transaction_id": transaction.get('transaction_id'),
+                    "title": transaction.get('title', 'Unknown Item'),
+                    "quantity": transaction.get('quantity', 1),
+                    "price": transaction.get('price', {}).get('amount', 0),
+                    "listing_id": transaction.get('listing_id'),
+                    "product_id": transaction.get('product_id'),
+                    "variation": transaction.get('variations', [])
+                })
+
+            processed_orders.append({
+                "receipt_id": order.get('receipt_id'),
+                "order_id": order.get('receipt_id'),  # Use receipt_id as order_id
+                "buyer_name": f"{order.get('name', '')} {order.get('first_line', '')}".strip(),
+                "buyer_email": order.get('buyer_email', ''),
+                "create_timestamp": order.get('create_timestamp'),
+                "status": order.get('status', 'unknown'),
+                "grandtotal": order.get('grandtotal', {}).get('amount', 0),
+                "items_count": len(items),
+                "items": items,
+                "is_gift": order.get('is_gift', False),
+                "message_from_buyer": order.get('message_from_buyer', ''),
+                "shipments": order.get('shipments', [])
+            })
+
+        return {
+            "success": True,
+            "orders": processed_orders,
+            "count": len(processed_orders),
+            "total": orders_data.get('count', len(processed_orders)),
+            "limit": limit,
+            "offset": offset
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error fetching all orders: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch orders: {str(e)}")
+
+def create_print_files_from_selected_orders(order_ids, template_name, current_user, db, printer_id=None, canvas_config_id=None):
+    """
+    Create print files (gang sheets) from specific selected orders.
+
+    Args:
+        order_ids: List of order/receipt IDs to process
+        template_name: Template name to use for gang sheet
+        current_user: Current authenticated user
+        db: Database session
+        printer_id: Optional printer ID
+        canvas_config_id: Optional canvas config ID
+
+    Returns:
+        Dictionary with success status and file information
+    """
+    import time
+    from server.src.entities.printer import Printer
+    from server.src.entities.canvas_config import CanvasConfig
+    from sqlalchemy.orm import joinedload
+
+    # Track total execution time
+    start_time = time.time()
+
+    try:
+        user_id = current_user.get_uuid()
+        etsy_api = EtsyAPI(user_id, db)
+
+        # Get user information
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        if not user.shop_name:
+            raise HTTPException(status_code=400, detail="User shop name not set")
+
+        logging.info(f"Creating print files for {len(order_ids)} selected orders")
+
+        # Fetch order items for selected orders only
+        order_items_data = etsy_api.fetch_selected_order_items(
+            shop_id=user.shop_id,
+            order_ids=order_ids,
+            template_name=template_name
+        )
+
+        if not order_items_data or not order_items_data.get('items'):
+            return {
+                "success": False,
+                "error": "No items found in selected orders"
+            }
+
+        logging.info(f"Found {len(order_items_data['items'])} items in selected orders")
+
+        # Get configuration (same as create_print_files)
+        db_fetch_start = time.time()
+
+        if printer_id is None:
+            default_printer = db.query(Printer).filter(
+                Printer.user_id == user_id,
+                Printer.is_default == True,
+                Printer.is_active == True
+            ).first()
+            if default_printer:
+                printer_id = default_printer.id
+                logging.info(f"Using default printer: {default_printer.name}")
+
+        if canvas_config_id is None:
+            template = db.query(EtsyProductTemplate).options(
+                joinedload(EtsyProductTemplate.canvas_configs)
+            ).filter(
+                EtsyProductTemplate.name == template_name,
+                EtsyProductTemplate.user_id == user_id
+            ).first()
+            if template and template.canvas_configs:
+                for canvas in template.canvas_configs:
+                    if canvas.is_active:
+                        canvas_config_id = canvas.id
+                        logging.info(f"Using canvas config: {canvas.name}")
+                        break
+
+        db_fetch_time = time.time() - db_fetch_start
+        logging.info(f"Database configuration fetch completed in {db_fetch_time:.3f}s")
+
+        # Create gang sheets
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = os.path.join(temp_dir, "Printfiles")
+            os.makedirs(output_dir, exist_ok=True)
+
+            gangsheet_start = time.time()
+            result = create_gang_sheets(
+                image_data=order_items_data,
+                image_type=template_name,
+                output_path=output_dir,
+                total_images=len(order_items_data.get('Title', [])),
+                dpi=400,
+                std_dpi=400
+            )
+            gangsheet_time = time.time() - gangsheet_start
+            logging.info(f"Gangsheet creation completed in {gangsheet_time:.2f}s")
+
+            if result is None:
+                total_time = time.time() - start_time
+                logging.info(f"Total request time: {total_time:.2f}s (failed)")
+                return {
+                    "success": False,
+                    "error": "Gang sheet creation failed"
+                }
+
+            # Upload to NAS
+            upload_start = time.time()
+            uploaded_files = []
+            try:
+                if os.path.exists(output_dir):
+                    for filename in os.listdir(output_dir):
+                        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+                            file_path = os.path.join(output_dir, filename)
+                            relative_path = f"Printfiles/{filename}"
+                            success = nas_storage.upload_file(
+                                local_file_path=file_path,
+                                shop_name=user.shop_name,
+                                relative_path=relative_path
+                            )
+                            if success:
+                                logging.info(f"Successfully uploaded print file to NAS: {relative_path}")
+                                uploaded_files.append(filename)
+                            else:
+                                logging.warning(f"Failed to upload print file to NAS: {relative_path}")
+            except Exception as e:
+                logging.error(f"Error uploading print files to NAS: {e}")
+
+            upload_time = time.time() - upload_start
+            total_time = time.time() - start_time
+            logging.info(f"NAS upload completed in {upload_time:.2f}s")
+            logging.info(f"✅ TOTAL REQUEST TIME: {total_time:.2f}s (Selected Orders: {len(order_ids)}, Gangsheet: {gangsheet_time:.2f}s, Upload: {upload_time:.2f}s)")
+
+            return {
+                "success": True,
+                "message": f"Successfully created gang sheets from {len(order_ids)} selected orders",
+                "orders_processed": len(order_ids),
+                "items_processed": len(order_items_data.get('Title', [])),
+                "uploaded_files": uploaded_files,
+                "files_count": len(uploaded_files),
+                "execution_time": f"{total_time:.2f}s",
+                "sheets_created": result.get('sheets_created', 0)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error creating print files from selected orders: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create print files: {str(e)}")

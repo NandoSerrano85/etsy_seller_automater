@@ -60,3 +60,36 @@ async def create_print_files(
         return service.create_print_files(current_user, db)
 
     return await create_print_files_threaded()
+
+@router.get('/all-orders')
+async def get_all_orders(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    limit: int = 100,
+    offset: int = 0
+):
+    """Get all Etsy orders with full details for selection (threaded)"""
+    @run_in_thread
+    def get_all_orders_threaded():
+        return service.get_all_orders_with_details(current_user, db, limit, offset)
+
+    return await get_all_orders_threaded()
+
+@router.post('/print-files-from-selection')
+async def create_print_files_from_selected_orders(
+    current_user: CurrentUser,
+    order_ids: list[int] = Form(...),
+    template_name: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Create print files from selected order IDs (threaded - heavy file processing)"""
+    @run_in_thread
+    def create_from_selection_threaded():
+        return service.create_print_files_from_selected_orders(
+            order_ids,
+            template_name,
+            current_user,
+            db
+        )
+
+    return await create_from_selection_threaded()
