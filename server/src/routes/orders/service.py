@@ -497,7 +497,7 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                 "error": "No items found in selected orders"
             }
 
-        logging.info(f"Found {len(order_items_data['items'])} items in selected orders")
+        logging.info(f"Found {order_items_data['items']} items in selected orders")
 
         # Get configuration (same as create_print_files)
         db_fetch_start = time.time()
