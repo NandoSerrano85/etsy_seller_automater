@@ -460,6 +460,8 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
     Returns:
         Dictionary with success status and file information
     """
+    print(f"Starting create_print_files_from_selected_orders with order_ids: {order_ids} and template_name: {template_name}")
+    print(type(order_ids))
     import time
     from server.src.entities.printer import Printer
     from server.src.entities.canvas_config import CanvasConfig
