@@ -120,10 +120,17 @@ async def create_print_files_from_selected_orders(
     """
     Create print files from selected order IDs (threaded - heavy file processing)
     """
+    import logging
+    logging.info(f"📦 Received request: order_ids={request_body.order_ids}, type={type(request_body.order_ids)}, template={request_body.template_name}")
+
+    # Ensure order_ids is always a list
+    order_ids = request_body.order_ids if isinstance(request_body.order_ids, list) else [request_body.order_ids]
+    logging.info(f"📦 Normalized order_ids: {order_ids}")
+
     @run_in_thread
     def create_from_selection_threaded():
         return service.create_print_files_from_selected_orders(
-            request_body.order_ids,
+            order_ids,
             request_body.template_name,
             current_user,
             db
