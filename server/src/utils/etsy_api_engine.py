@@ -952,7 +952,7 @@ class EtsyAPI:
                 logging.info(f"DB Search: Found flexible match - '{design.filename}' for '{normalized_search}'")
                 return design.file_path
 
-            logging.debug(f"DB Search: No match found for '{normalized_search}'")
+            logging.warning(f"DB Search: No match found for '{normalized_search}' in template '{template_name}'")
             return None
 
         except Exception as e:
@@ -1463,7 +1463,7 @@ class EtsyAPI:
 
         return response.json()
 
-    def fetch_selected_order_items(self, shop_id, order_ids, template_name):
+    def fetch_selected_order_items(self, shop_id, order_ids, template_name, shop_name=None):
         """
         Fetch items from specific selected orders and process them for gang sheet creation.
 
@@ -1471,10 +1471,13 @@ class EtsyAPI:
             shop_id: Shop ID
             order_ids: List of order/receipt IDs to fetch
             template_name: Template name to filter items
+            shop_name: Shop name for NAS lookup (optional)
 
         Returns:
             Dictionary formatted for gang sheet creation with Title, Size, Total arrays
         """
+        # Store shop_name for use in find_design_for_item
+        self.shop_name = shop_name
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}',
@@ -1567,20 +1570,31 @@ class EtsyAPI:
         match = re.match(r'^(UV\s*\d+)', item_title.strip(), re.IGNORECASE)
         if match:
             search_name = match.group(1).strip()
-            logging.debug(f"Extracted design number '{search_name}' from title '{item_title}'")
+            logging.info(f"🔍 Extracted design number '{search_name}' from title '{item_title}'")
+        else:
+            logging.warning(f"⚠️ Could not extract UV number from title: '{item_title}'")
 
         # Try database first with extracted design number
+        logging.info(f"🔍 Searching database for '{search_name}' in template '{template_name}'")
         design_path = self.find_design_in_db(search_name, self.user_id, template_name)
 
         if design_path:
+            logging.info(f"✅ Found in database: {design_path}")
             return design_path
 
         # Try NAS if database lookup failed
+        logging.info(f"🔍 Database search failed, trying NAS for '{search_name}'")
         if hasattr(self, 'shop_name') and self.shop_name:
             design_path = self.find_images_by_name_nas(
                 search_name,
                 self.shop_name,
                 template_name
             )
+            if design_path:
+                logging.info(f"✅ Found on NAS: {design_path}")
+            else:
+                logging.warning(f"❌ Not found on NAS for '{search_name}'")
+        else:
+            logging.warning(f"⚠️ Cannot search NAS - shop_name not available")
 
         return design_path

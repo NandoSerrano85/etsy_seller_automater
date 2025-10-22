@@ -488,7 +488,8 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         order_items_data = etsy_api.fetch_selected_order_items(
             shop_id=user.etsy_shop_id,
             order_ids=order_ids,
-            template_name=template_name
+            template_name=template_name,
+            shop_name=user.shop_name
         )
 
         if not order_items_data or not order_items_data.get('items'):
