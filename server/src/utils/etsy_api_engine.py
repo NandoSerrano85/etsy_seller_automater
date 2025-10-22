@@ -952,6 +952,14 @@ class EtsyAPI:
                 logging.info(f"DB Search: Found flexible match - '{design.filename}' for '{normalized_search}'")
                 return design.file_path
 
+            # Show what files ARE in the database for this template (for debugging)
+            all_designs = base_query.limit(10).all()
+            if all_designs:
+                sample_files = [d.filename for d in all_designs]
+                logging.debug(f"DB Search: Sample files in template '{template_name}': {sample_files}")
+            else:
+                logging.warning(f"DB Search: No files found in database for template '{template_name}'")
+
             logging.warning(f"DB Search: No match found for '{normalized_search}' in template '{template_name}'")
             return None
 
