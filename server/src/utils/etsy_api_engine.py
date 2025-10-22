@@ -1501,8 +1501,12 @@ class EtsyAPI:
 
                 receipt = response.json()
 
+                # Log order details
+                transactions = receipt.get('transactions', [])
+                logging.info(f"📦 Order {order_id}: Found {len(transactions)} items (shipped: {receipt.get('was_shipped', 'unknown')})")
+
                 # Process each transaction in the order
-                for transaction in receipt.get('transactions', []):
+                for transaction in transactions:
                     item_title = transaction.get('title', '')
                     quantity = transaction.get('quantity', 1)
 
