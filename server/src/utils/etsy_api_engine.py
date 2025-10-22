@@ -1501,14 +1501,29 @@ class EtsyAPI:
 
                 receipt = response.json()
 
-                # Log order details
+                # Log order details with full diagnostic info
                 transactions = receipt.get('transactions', [])
-                logging.info(f"📦 Order {order_id}: Found {len(transactions)} items (shipped: {receipt.get('was_shipped', 'unknown')})")
+                was_shipped = receipt.get('was_shipped', False)
+                was_paid = receipt.get('was_paid', False)
+
+                logging.info(f"📦 Order {order_id}: Found {len(transactions)} items | shipped: {was_shipped} | paid: {was_paid}")
+
+                # Log full receipt data for debugging completed orders
+                if was_shipped:
+                    logging.debug(f"🔍 Full receipt data for shipped order {order_id}: {receipt}")
+
+                # Check if transactions list is empty
+                if not transactions:
+                    logging.warning(f"⚠️ Order {order_id} returned ZERO transactions! Receipt keys: {list(receipt.keys())}")
+                    logging.warning(f"⚠️ Full receipt: {receipt}")
 
                 # Process each transaction in the order
-                for transaction in transactions:
+                for idx, transaction in enumerate(transactions, 1):
                     item_title = transaction.get('title', '')
                     quantity = transaction.get('quantity', 1)
+                    transaction_id = transaction.get('transaction_id', 'unknown')
+
+                    logging.info(f"  Processing item {idx}/{len(transactions)} from order {order_id}: '{item_title}' (qty: {quantity}, tx_id: {transaction_id})")
 
                     # Try to find design file for this item
                     design_path = self.find_design_for_item(item_title, template_name)
@@ -1518,9 +1533,9 @@ class EtsyAPI:
                         image_data['Size'].append(template_name)
                         image_data['Total'].append(quantity)
                         processed_items += 1
-                        logging.info(f"Added item from order {order_id}: {item_title} (qty: {quantity})")
+                        logging.info(f"  ✅ Added item from order {order_id}: {item_title} (qty: {quantity}) -> {design_path}")
                     else:
-                        logging.warning(f"No design found for item: {item_title}")
+                        logging.warning(f"  ❌ No design found for item: {item_title}")
 
             except Exception as e:
                 logging.error(f"Error processing order {order_id}: {e}")
