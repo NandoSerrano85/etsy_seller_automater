@@ -242,16 +242,14 @@ def import_funnybunny_designs(connection, user_id: str, template_id: Optional[st
 
             # Create template association if template_id exists
             if template_id:
-                association_id = str(uuid.uuid4())
                 assoc_query = text("""
-                    INSERT INTO design_product_template_association
-                    (id, design_image_id, product_template_id)
+                    INSERT INTO design_template_association
+                    (design_image_id, product_template_id)
                     VALUES
-                    (:id, :design_image_id, :product_template_id)
+                    (:design_image_id, :product_template_id)
                     ON CONFLICT DO NOTHING
                 """)
                 connection.execute(assoc_query, {
-                    "id": association_id,
                     "design_image_id": design_id,
                     "product_template_id": template_id
                 })
