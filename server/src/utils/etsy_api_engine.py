@@ -789,9 +789,13 @@ class EtsyAPI:
             template_name: Template name for NAS directory
             extensions: File extensions to search for
         """
+        logging.info(f"🔍 NAS Search called with: search_name='{search_name}', shop_name='{shop_name}', template='{template_name}'")
+
         if not nas_storage.enabled:
-            logging.warning("NAS storage not enabled, cannot search for images")
+            logging.error("❌ NAS storage NOT enabled! Cannot search for images")
             return None
+
+        logging.info(f"✅ NAS storage is enabled")
 
         # Normalize whitespace - replace multiple spaces with single space and trim
         import re as regex_module
@@ -846,14 +850,18 @@ class EtsyAPI:
         # List files in the template directory on NAS
         template_relative_path = template_name  # Remove trailing slash - might cause issues
         try:
+            logging.info(f"📂 About to call nas_storage.list_files('{shop_name}', '{template_relative_path}')")
             files = nas_storage.list_files(shop_name, template_relative_path)
-            logging.info(f"NAS Search: Looking for '{search_name}' in {len(files) if files else 0} files in {shop_name}/{template_relative_path}")
+            logging.info(f"📂 nas_storage.list_files returned: {type(files)}, length: {len(files) if files else 0}")
+
             if files:
                 filenames = [f.get('filename', '') if isinstance(f, dict) else str(f) for f in files]
-                logging.info(f"Available filenames: {filenames}")
+                logging.info(f"📋 Available filenames ({len(filenames)} total): {filenames[:20]}")  # Show first 20
+                logging.info(f"🔍 NAS Search: Looking for '{search_name}' in {len(files)} files in {shop_name}/{template_relative_path}")
             else:
-                logging.warning(f"No files found in {shop_name}/{template_relative_path}")
+                logging.error(f"❌ No files returned from NAS in {shop_name}/{template_relative_path}")
 
+            matched = False
             for file_info in files:
                 # Extract filename from the file info dictionary
                 filename = file_info.get('filename', '') if isinstance(file_info, dict) else str(file_info)
@@ -862,12 +870,20 @@ class EtsyAPI:
                     # Try each pattern until we find a match
                     for i, pattern in enumerate(patterns):
                         if pattern.search(filename):
-                            logging.info(f"NAS Search: Found match - '{filename}' using pattern {i}: {pattern.pattern}")
+                            logging.info(f"✅ NAS Match Found! '{filename}' matched pattern #{i}: {pattern.pattern}")
                             # Return the relative path that can be used for NAS operations
                             return f"{template_name}/{filename}"
 
+                    # Log files that had correct extension but didn't match
+                    logging.debug(f"  File '{filename}' has correct extension but didn't match any pattern")
+                else:
+                    logging.debug(f"  Skipping '{filename}' - wrong extension")
+
             # Only log if no match was found at all
-            logging.warning(f"NAS Search: No file found matching '{search_name}' in {shop_name}/{template_relative_path} ({len(files)} files searched)")
+            if not matched:
+                logging.error(f"❌ NAS Search FAILED: No file found matching '{search_name}' in {shop_name}/{template_relative_path}")
+                logging.error(f"   Searched {len(files)} files with {len(patterns)} patterns")
+                logging.error(f"   Patterns used: {[p.pattern for p in patterns]}")
         except Exception as e:
             logging.error(f"Error searching NAS for images: {e}")
 
