@@ -478,6 +478,11 @@ class ShopifyService:
             }
 
         # Download design files from NAS if needed
+        # IMPORTANT: Use Shopify store name, not Etsy shop name
+        # NAS path: /share/Graphics/<shopify_store_name>/<template>/
+        shopify_shop_name = store.shop_name
+        logger.info(f"Using Shopify store name for NAS: '{shopify_shop_name}'")
+
         temp_designs_dir = tempfile.mkdtemp(prefix="shopify_designs_")
         try:
             if nas_storage.enabled and image_data.get('Title'):
@@ -492,7 +497,7 @@ class ShopifyService:
                         local_file_path = os.path.join(temp_designs_dir, local_filename)
 
                         success = nas_storage.download_file(
-                            shop_name=user.shop_name,
+                            shop_name=shopify_shop_name,  # Use Shopify store name
                             relative_path=design_file_path,
                             local_file_path=local_file_path
                         )
@@ -509,9 +514,9 @@ class ShopifyService:
                 download_time = time.time() - download_start
                 logger.info(f"Downloaded {download_count}/{len(image_data['Title'])} files from NAS in {download_time:.2f}s")
 
-            # Create gang sheets
+            # Create gang sheets using Shopify store name
             gangsheet_start = time.time()
-            result = create_gang_sheets(image_data, template_name, user.shop_name)
+            result = create_gang_sheets(image_data, template_name, shopify_shop_name)
             gangsheet_time = time.time() - gangsheet_start
 
             logger.info(f"Gang sheet creation took {gangsheet_time:.2f}s")
