@@ -258,6 +258,14 @@ const ShopifyOrders = () => {
                   <option value="UVDTF 16oz">UVDTF 16oz</option>
                   <option value="UVDTF 12oz">UVDTF 12oz</option>
                   <option value="UVDTF 20oz">UVDTF 20oz</option>
+                  <option value="UVDTF Decal">UVDTF Decal</option>
+                  <option value="MK">MK</option>
+                  <option value="UVDTF Bookmark">UVDTF Bookmark</option>
+                  <option value="UVDTF Ornament">UVDTF Ornament</option>
+                  <option value="DTF">DTF</option>
+                  <option value="Kindel Decal">Kindel Decal</option>
+                  <option value="UVDTF Mirror">UVDTF Mirror</option>
+                  <option value="UVDTF Milk Carton">UVDTF Milk Carton</option>
                 </select>
               </div>
 
