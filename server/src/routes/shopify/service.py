@@ -555,14 +555,46 @@ class ShopifyService:
         from server.src.entities.designs import DesignImages
         from server.src.entities.template import EtsyProductTemplate
 
-        # Extract UV number or design identifier from title
+        # Check if this is a non-design item (physical products, services, etc.)
+        # These should be skipped as they don't have design files
+        skip_keywords = [
+            'glass can', 'tumbler wrap', 'package protection', 'route package',
+            'clear film', 'sublimation', 'frosted glass', 'shipping', 'insurance'
+        ]
+
+        lower_title = item_title.lower()
+        for keyword in skip_keywords:
+            if keyword in lower_title:
+                logger.info(f"⏭️  Skipping non-design item: '{item_title}' (matched: {keyword})")
+                return None
+
+        # Extract design identifier from title - support multiple patterns:
+        # 1. UV 123 / UV123
+        # 2. TS12 / TS 12
+        # 3. Any alphanumeric code at start (MK123, K-Pop, etc.)
         search_name = item_title
-        match = re.match(r'^(UV\s*\d+)', item_title.strip(), re.IGNORECASE)
-        if match:
-            search_name = match.group(1).strip()
-            logger.info(f"🔍 Extracted design number '{search_name}' from title '{item_title}'")
-        else:
-            logger.warning(f"⚠️ Could not extract UV number from title: '{item_title}'")
+
+        # Try multiple patterns in order of specificity
+        patterns = [
+            (r'^(UV\s*\d+)', 'UV number'),  # UV 123, UV123
+            (r'^([A-Z]{2,}\s*\d+)', 'Alpha code'),  # TS12, MK123, TS 12
+            (r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', 'Word code')  # K Pop, Bad Bunny, etc.
+        ]
+
+        extracted_code = None
+        for pattern, pattern_name in patterns:
+            match = re.match(pattern, item_title.strip(), re.IGNORECASE)
+            if match:
+                extracted_code = match.group(1).strip()
+                logger.info(f"🔍 Extracted {pattern_name} '{extracted_code}' from title '{item_title}'")
+                search_name = extracted_code
+                break
+
+        if not extracted_code:
+            # No code found - use first few words as search term
+            words = item_title.split('-')[0].strip().split()[:3]  # Take first 3 words before hyphen
+            search_name = ' '.join(words)
+            logger.info(f"🔍 No code found, using first words '{search_name}' from title '{item_title}'")
 
         # Try database first
         try:
@@ -598,16 +630,28 @@ class ShopifyService:
                 logger.info(f"✅ Found in database (no-space match): {design.file_path}")
                 return design.file_path
 
-            # Try just the number
+            # Try just the number/code suffix
             parts = normalized_search.split(" ")
-            if len(parts) > 1 and parts[1].isdigit():
+            if len(parts) > 1 and (parts[-1].isdigit() or len(parts[-1]) <= 4):
+                # Try last part (number or short code)
                 design = base_query.filter(
-                    DesignImages.filename.ilike(f'%{parts[1]}%')
+                    DesignImages.filename.ilike(f'%{parts[-1]}%')
                 ).first()
 
                 if design:
-                    logger.info(f"✅ Found in database (number match): {design.file_path}")
+                    logger.info(f"✅ Found in database (suffix match): {design.file_path}")
                     return design.file_path
+
+            # Try fuzzy word match - search each word individually
+            for word in parts:
+                if len(word) >= 3:  # Skip very short words
+                    design = base_query.filter(
+                        DesignImages.filename.ilike(f'%{word}%')
+                    ).first()
+
+                    if design:
+                        logger.info(f"✅ Found in database (word match '{word}'): {design.file_path}")
+                        return design.file_path
 
             logger.warning(f"DB Search: No match found for '{normalized_search}' in template '{template_name}'")
             return None
