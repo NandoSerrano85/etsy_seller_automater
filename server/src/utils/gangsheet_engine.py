@@ -33,14 +33,72 @@ STD_DPI = 400  # USE printer.dpi or canvas_config.dpi instead
 def cached_inches_to_pixels(inches, dpi):
    return inches_to_pixels(inches, dpi)
 
-def process_image(img_path):
-   """Process a single image: load, convert to BGRA, and rotate."""
+def process_image(img_path, normalize_dpi=True, target_dpi=400):
+   """
+   Process a single image: load, convert to BGRA, normalize DPI, and rotate.
+
+   Args:
+       img_path: Path to the image file
+       normalize_dpi: If True, normalize DPI metadata to target_dpi (default: True)
+       target_dpi: Target DPI for normalization (default: 400)
+
+   Returns:
+       Processed image as numpy array or None if failed
+   """
+   import logging
    if os.path.exists(img_path):
        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
        if img is None:
+           logging.warning(f"Failed to load image: {img_path}")
            return None
-       if img.shape[2] == 3:
+
+       # Ensure image has alpha channel (BGRA)
+       if len(img.shape) == 2:
+           # Grayscale - convert to BGRA
+           img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+       elif img.shape[2] == 3:
+           # BGR - convert to BGRA
            img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+       elif img.shape[2] == 4:
+           # Already BGRA, do nothing
+           pass
+
+       # CRITICAL FIX: Normalize DPI to handle mixed DPI images
+       # Images with 72 DPI, 96 DPI, 300 DPI, 400 DPI etc. can cause issues
+       # when combined in a gang sheet even if pixel dimensions are identical
+       if normalize_dpi:
+           try:
+               from PIL import Image
+               # Read DPI metadata using PIL
+               with Image.open(img_path) as pil_img:
+                   current_dpi = pil_img.info.get('dpi', (target_dpi, target_dpi))
+                   if isinstance(current_dpi, (int, float)):
+                       current_dpi = (current_dpi, current_dpi)
+
+                   # Log DPI normalization
+                   if current_dpi[0] != target_dpi or current_dpi[1] != target_dpi:
+                       logging.info(f"Normalizing DPI: {img_path} from {current_dpi} to ({target_dpi}, {target_dpi})")
+
+                       # Calculate scale factor based on DPI difference
+                       # If image is 72 DPI but we want 400 DPI, we need to scale it up
+                       # to maintain the same physical size
+                       scale_x = target_dpi / current_dpi[0]
+                       scale_y = target_dpi / current_dpi[1]
+
+                       # Only scale if there's a significant difference (> 1% variation)
+                       if abs(scale_x - 1.0) > 0.01 or abs(scale_y - 1.0) > 0.01:
+                           h, w = img.shape[:2]
+                           new_w = int(w * scale_x)
+                           new_h = int(h * scale_y)
+
+                           # Use high-quality interpolation
+                           interpolation = cv2.INTER_CUBIC if scale_x > 1 else cv2.INTER_AREA
+                           img = cv2.resize(img, (new_w, new_h), interpolation=interpolation)
+                           logging.info(f"Resized from {w}x{h} to {new_w}x{new_h} (scale: {scale_x:.2f}x, {scale_y:.2f}x)")
+           except Exception as e:
+               logging.warning(f"Failed to normalize DPI for {img_path}: {e}")
+
+       # Rotate image
        img = rotate_image_90(img, 1)
        return img
    return None
