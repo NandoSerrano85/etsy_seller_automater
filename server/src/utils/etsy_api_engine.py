@@ -1570,11 +1570,20 @@ class EtsyAPI:
                     design_path = self.find_design_for_item(item_title, template_name)
 
                     if design_path:
-                        image_data['Title'].append(design_path)
-                        image_data['Size'].append(template_name)
-                        image_data['Total'].append(quantity)
+                        # Check if this design already exists in our data
+                        # If so, add to its quantity instead of creating a duplicate entry
+                        if design_path in image_data['Title']:
+                            # Find the index and add to existing quantity
+                            existing_idx = image_data['Title'].index(design_path)
+                            image_data['Total'][existing_idx] += quantity
+                            logging.info(f"  ✅ Updated existing item: {item_title} (added qty: {quantity}, total now: {image_data['Total'][existing_idx]}) -> {design_path}")
+                        else:
+                            # New design, add to arrays
+                            image_data['Title'].append(design_path)
+                            image_data['Size'].append(template_name)
+                            image_data['Total'].append(quantity)
+                            logging.info(f"  ✅ Added new item from order {order_id}: {item_title} (qty: {quantity}) -> {design_path}")
                         processed_items += 1
-                        logging.info(f"  ✅ Added item from order {order_id}: {item_title} (qty: {quantity}) -> {design_path}")
                     else:
                         logging.warning(f"  ❌ No design found for item: {item_title}")
 
