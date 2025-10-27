@@ -872,8 +872,6 @@ class EtsyAPI:
                 # Extract filename from the file info dictionary
                 filename = file_info.get('filename', '') if isinstance(file_info, dict) else str(file_info)
 
-                logging.debug(f"  Checking file: '{filename}' (type: {type(filename)})")
-
                 if filename.lower().endswith(extensions):
                     # Try each pattern until we find a match
                     for i, pattern in enumerate(patterns):
@@ -882,13 +880,18 @@ class EtsyAPI:
                             logging.info(f"✅ NAS Match Found! '{filename}' matched pattern #{i}: '{pattern.pattern}' at position {match_result.span()}")
                             # Return the relative path that can be used for NAS operations
                             return f"{template_name}/{filename}"
-                        else:
-                            logging.debug(f"    Pattern #{i} '{pattern.pattern}' did NOT match '{filename}'")
 
-                    # Log files that had correct extension but didn't match
-                    logging.warning(f"  ⚠️ File '{filename}' has correct extension but didn't match any of {len(patterns)} patterns")
-                else:
-                    logging.debug(f"  Skipping '{filename}' - extension is '{filename[-4:]}', needed {extensions}")
+                    # Log FIRST failing file with detailed pattern info
+                    if not matched:
+                        logging.error(f"❌ PATTERN MISMATCH DEBUG:")
+                        logging.error(f"   Searching for: '{search_name}'")
+                        logging.error(f"   Filename: '{filename}'")
+                        logging.error(f"   All patterns: {[p.pattern for p in patterns]}")
+                        # Test each pattern manually
+                        for i, pattern in enumerate(patterns):
+                            test_result = pattern.search(filename)
+                            logging.error(f"   Pattern #{i} '{pattern.pattern}': {'MATCH' if test_result else 'NO MATCH'}")
+                        matched = True  # Only log once
 
             # Only log if no match was found at all
             if not matched:
