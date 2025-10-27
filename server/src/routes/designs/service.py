@@ -592,14 +592,27 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
                 logging.info(f"📤 Uploading to NAS: {filename}")
 
-                # Encode to bytes
+                # Encode to bytes with DPI metadata
                 encode_start = time.time()
-                success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
-                if not success:
-                    logging.error("❌ Failed to encode image")
-                    return None, None, None
-                image_bytes = encoded_image.tobytes()
-                logging.info(f"💾 Encoded in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
+
+                # Convert OpenCV image to PIL for proper DPI metadata
+                # CRITICAL: Ensure images are saved with 400 DPI for consistency
+                if len(resized_image.shape) == 3 and resized_image.shape[2] == 4:
+                    # BGRA to RGBA
+                    pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGRA2RGBA))
+                elif len(resized_image.shape) == 3 and resized_image.shape[2] == 3:
+                    # BGR to RGB
+                    pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB))
+                else:
+                    # Grayscale
+                    pil_image = Image.fromarray(resized_image)
+
+                # Save with DPI metadata
+                from io import BytesIO
+                buffer = BytesIO()
+                pil_image.save(buffer, format='PNG', optimize=True, compress_level=3, dpi=(400, 400))
+                image_bytes = buffer.getvalue()
+                logging.info(f"💾 Encoded in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB) with DPI: 400x400")
 
                 # Upload to NAS
                 nas_start = time.time()
@@ -802,14 +815,27 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
                 logging.info(f"📤 Uploading to NAS: {filename}")
 
-                # Encode to bytes
+                # Encode to bytes with DPI metadata
                 encode_start = time.time()
-                success, encoded_image = cv2.imencode('.png', resized_image, [cv2.IMWRITE_PNG_COMPRESSION, 3])
-                if not success:
-                    logging.error("❌ Failed to encode image")
-                    return None, None, None
-                image_bytes = encoded_image.tobytes()
-                logging.info(f"💾 Encoded in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB)")
+
+                # Convert OpenCV image to PIL for proper DPI metadata
+                # CRITICAL: Ensure images are saved with 400 DPI for consistency
+                if len(resized_image.shape) == 3 and resized_image.shape[2] == 4:
+                    # BGRA to RGBA
+                    pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGRA2RGBA))
+                elif len(resized_image.shape) == 3 and resized_image.shape[2] == 3:
+                    # BGR to RGB
+                    pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB))
+                else:
+                    # Grayscale
+                    pil_image = Image.fromarray(resized_image)
+
+                # Save with DPI metadata
+                from io import BytesIO
+                buffer = BytesIO()
+                pil_image.save(buffer, format='PNG', optimize=True, compress_level=3, dpi=(400, 400))
+                image_bytes = buffer.getvalue()
+                logging.info(f"💾 Encoded in {time.time() - encode_start:.2f}s ({len(image_bytes) / 1024 / 1024:.2f}MB) with DPI: 400x400")
 
                 # Upload to NAS
                 nas_start = time.time()

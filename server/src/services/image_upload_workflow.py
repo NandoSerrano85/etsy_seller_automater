@@ -645,9 +645,12 @@ class ImageUploadWorkflow:
 
             # Convert processed image to bytes for storage
             # Use maximum PNG compression (9) for large batch uploads to reduce transfer size
+            # IMPORTANT: Set DPI to 400 to ensure consistent resolution across all design files
             buffer = BytesIO()
-            pil_image.save(buffer, format='PNG', optimize=True, compress_level=9)
+            pil_image.save(buffer, format='PNG', optimize=True, compress_level=9, dpi=(400, 400))
             resized_content = buffer.getvalue()
+
+            logging.info(f"Saved {image.original_filename} with DPI: 400x400")
 
             # Generate multiple hashes for enhanced duplicate detection
             logging.info(f"🔍 DEBUG: Generating hashes for {image.original_filename}")
