@@ -778,7 +778,7 @@ class EtsyAPI:
                     full_path = os.path.join(root, file)
                     return full_path
 
-    def find_images_by_name_nas(self, search_name, shop_name, template_name, extensions=(".png")):
+    def find_images_by_name_nas(self, search_name, shop_name, template_name, extensions=(".png", ".jpg", ".jpeg")):
         """
         Search for design files on NAS that match search_name.
         Returns the relative path if found, None if not found.
@@ -828,11 +828,17 @@ class EtsyAPI:
             patterns.append(re.compile(re.escape(with_hyphens), re.IGNORECASE))
 
         # Pattern 5: Just the number part (for patterns like "UV 674" -> "674")
+        # This handles filenames like "Cup_Wrap_402.png" or "UVDTF_16oz_404.png"
         if len(parts) > 1 and parts[1].isdigit():
-            patterns.append(re.compile(re.escape(parts[1]), re.IGNORECASE))
+            number = parts[1]
+            # Match number with word boundaries or underscores (e.g., "_402" or "402.")
+            patterns.append(re.compile(rf'[_\s-]{re.escape(number)}(?:\.|$)', re.IGNORECASE))
+            # Also match just the number anywhere
+            patterns.append(re.compile(re.escape(number), re.IGNORECASE))
             # Also try with leading zeros
             padded_number = parts[1].zfill(3)  # e.g., "674" -> "674", "74" -> "074"
             if padded_number != parts[1]:
+                patterns.append(re.compile(rf'[_\s-]{re.escape(padded_number)}(?:\.|$)', re.IGNORECASE))
                 patterns.append(re.compile(re.escape(padded_number), re.IGNORECASE))
 
         # Pattern 6: More flexible matching - allow word boundaries
@@ -866,18 +872,23 @@ class EtsyAPI:
                 # Extract filename from the file info dictionary
                 filename = file_info.get('filename', '') if isinstance(file_info, dict) else str(file_info)
 
+                logging.debug(f"  Checking file: '{filename}' (type: {type(filename)})")
+
                 if filename.lower().endswith(extensions):
                     # Try each pattern until we find a match
                     for i, pattern in enumerate(patterns):
-                        if pattern.search(filename):
-                            logging.info(f"✅ NAS Match Found! '{filename}' matched pattern #{i}: {pattern.pattern}")
+                        match_result = pattern.search(filename)
+                        if match_result:
+                            logging.info(f"✅ NAS Match Found! '{filename}' matched pattern #{i}: '{pattern.pattern}' at position {match_result.span()}")
                             # Return the relative path that can be used for NAS operations
                             return f"{template_name}/{filename}"
+                        else:
+                            logging.debug(f"    Pattern #{i} '{pattern.pattern}' did NOT match '{filename}'")
 
                     # Log files that had correct extension but didn't match
-                    logging.debug(f"  File '{filename}' has correct extension but didn't match any pattern")
+                    logging.warning(f"  ⚠️ File '{filename}' has correct extension but didn't match any of {len(patterns)} patterns")
                 else:
-                    logging.debug(f"  Skipping '{filename}' - wrong extension")
+                    logging.debug(f"  Skipping '{filename}' - extension is '{filename[-4:]}', needed {extensions}")
 
             # Only log if no match was found at all
             if not matched:
