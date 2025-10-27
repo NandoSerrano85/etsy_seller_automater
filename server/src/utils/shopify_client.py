@@ -237,6 +237,37 @@ class ShopifyClient:
             logger.error(f"❌ Failed to fetch orders from store {store_id}: {e}")
             raise
 
+    def get_order_by_id(self, store_id: str, order_id: int) -> Dict[str, Any]:
+        """
+        Fetch a single order by ID from Shopify store.
+
+        Args:
+            store_id: UUID of the store
+            order_id: Shopify order ID
+
+        Returns:
+            Order dictionary with line items
+
+        Raises:
+            ShopifyAPIError: If API request fails
+        """
+        store = self._get_store_info(store_id)
+        url = f"https://{store.shop_domain}/admin/api/{self.API_VERSION}/orders/{order_id}.json"
+
+        headers = self._get_headers(store.access_token)
+
+        try:
+            logger.info(f"🔗 Fetching order {order_id} from {store.shop_name}")
+            response = self._make_request_with_retry('GET', url, headers)
+            data = response.json()
+
+            logger.info(f"✅ Successfully fetched order {order_id} with {len(data.get('order', {}).get('line_items', []))} items")
+            return data.get('order', {})
+
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch order {order_id} from store {store_id}: {e}")
+            raise
+
     def get_products(self, store_id: str, limit: int = 250,
                     published_status: str = "published") -> List[Dict[str, Any]]:
         """

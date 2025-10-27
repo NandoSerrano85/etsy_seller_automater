@@ -33,3 +33,13 @@ class ShopifyOAuthCallbackResponse(BaseModel):
 class ShopifyStoresListResponse(BaseModel):
     stores: list[ShopifyStoreResponse]
     total: int
+
+class ShopifyPrintFilesFromSelectionRequest(BaseModel):
+    order_ids: list[int]  # Shopify order IDs
+    template_name: str
+
+class PrintFilesResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    error: Optional[str] = None
+    sheets_created: Optional[int] = None

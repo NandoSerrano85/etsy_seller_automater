@@ -619,6 +619,31 @@ async def get_order_by_id(
 
     return {"order": order}
 
+@router.post("/print-files-from-selection")
+async def create_print_files_from_selected_orders(
+    current_user: CurrentUser,
+    request_body: model.ShopifyPrintFilesFromSelectionRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Create print files from selected Shopify order IDs
+    """
+    logger.info(f"📦 Received Shopify print files request: order_ids={request_body.order_ids}, template={request_body.template_name}")
+
+    # Ensure order_ids is always a list
+    order_ids = request_body.order_ids if isinstance(request_body.order_ids, list) else [request_body.order_ids]
+    logger.info(f"📦 Normalized order_ids: {order_ids}")
+
+    service = ShopifyService(db)
+
+    result = service.create_print_files_from_selected_orders(
+        user_id=current_user.get_uuid(),
+        order_ids=order_ids,
+        template_name=request_body.template_name
+    )
+
+    return result
+
 @router.post("/products")
 async def create_product(
     product_data: dict,

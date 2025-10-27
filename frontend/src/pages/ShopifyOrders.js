@@ -34,6 +34,12 @@ const ShopifyOrders = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [storeConnected, setStoreConnected] = useState(true);
 
+  // Selection mode for creating print files
+  const [showSelectionMode, setShowSelectionMode] = useState(false);
+  const [selectedOrders, setSelectedOrders] = useState([]);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState('UVDTF 16oz');
+
   useEffect(() => {
     loadOrders();
   }, []);
@@ -81,6 +87,52 @@ const ShopifyOrders = () => {
     // Construct Shopify admin URL for the order
     const shopDomain = 'your-shop'; // Would need to get this from store info
     window.open(`https://${shopDomain}.myshopify.com/admin/orders/${order.id}`, '_blank');
+  };
+
+  const handleOrderSelect = orderId => {
+    setSelectedOrders(prev => {
+      if (prev.includes(orderId)) {
+        return prev.filter(id => id !== orderId);
+      } else {
+        return [...prev, orderId];
+      }
+    });
+  };
+
+  const handleCreatePrintFiles = async () => {
+    if (selectedOrders.length === 0) {
+      addNotification('Please select at least one order', 'error');
+      return;
+    }
+
+    setPrintLoading(true);
+    try {
+      console.log('🔵 Sending Shopify print files request:', {
+        template_name: selectedTemplate,
+        order_ids: selectedOrders,
+      });
+
+      const response = await api.post('/api/shopify/print-files-from-selection', {
+        template_name: selectedTemplate,
+        order_ids: selectedOrders,
+      });
+
+      if (response.success) {
+        addNotification(
+          `Successfully created ${response.sheets_created || 0} gang sheets from ${selectedOrders.length} orders`,
+          'success'
+        );
+        setSelectedOrders([]);
+        setShowSelectionMode(false);
+      } else {
+        addNotification(response.error || 'Failed to create print files', 'error');
+      }
+    } catch (error) {
+      console.error('Error creating print files:', error);
+      addNotification(error.message || 'Failed to create print files', 'error');
+    } finally {
+      setPrintLoading(false);
+    }
   };
 
   // Filter orders based on search and status
@@ -188,6 +240,69 @@ const ShopifyOrders = () => {
           </button>
         </div>
 
+        {/* Print Files Selection Mode */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            {showSelectionMode ? 'Select Orders for Print' : 'Create Print Files'}
+          </h3>
+
+          {showSelectionMode && (
+            <div className="mb-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Template</label>
+                <select
+                  value={selectedTemplate}
+                  onChange={e => setSelectedTemplate(e.target.value)}
+                  className="w-full md:w-64 border border-gray-300 rounded-md px-3 py-2"
+                >
+                  <option value="UVDTF 16oz">UVDTF 16oz</option>
+                  <option value="UVDTF 12oz">UVDTF 12oz</option>
+                  <option value="UVDTF 20oz">UVDTF 20oz</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleCreatePrintFiles}
+                  disabled={selectedOrders.length === 0 || printLoading}
+                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                    selectedOrders.length === 0 || printLoading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-green-600 text-white hover:bg-green-700'
+                  }`}
+                >
+                  {printLoading ? (
+                    <span className="flex items-center">
+                      <ArrowPathIcon className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </span>
+                  ) : (
+                    <span>Create Print Files ({selectedOrders.length})</span>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSelectionMode(false);
+                    setSelectedOrders([]);
+                  }}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!showSelectionMode && (
+            <button
+              onClick={() => setShowSelectionMode(true)}
+              className="px-4 py-2 bg-lavender-600 text-white rounded-md hover:bg-lavender-700 font-medium"
+            >
+              Select Orders for Print Files
+            </button>
+          )}
+        </div>
+
         {/* Filters and Search */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
@@ -256,6 +371,11 @@ const ShopifyOrders = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    {showSelectionMode && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Select
+                      </th>
+                    )}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Order
                     </th>
@@ -282,6 +402,16 @@ const ShopifyOrders = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredOrders.map(order => (
                     <tr key={order.id} className="hover:bg-gray-50">
+                      {showSelectionMode && (
+                        <td className="px-4 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrders.includes(order.id)}
+                            onChange={() => handleOrderSelect(order.id)}
+                            className="h-4 w-4 text-lavender-600 focus:ring-lavender-500 border-gray-300 rounded"
+                          />
+                        </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
                           <div className="text-sm font-medium text-gray-900">

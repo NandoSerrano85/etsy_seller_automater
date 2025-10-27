@@ -381,3 +381,223 @@ class ShopifyService:
         except Exception as e:
             logger.error(f"Error verifying webhook signature: {e}")
             return False
+
+    def create_print_files_from_selected_orders(
+        self,
+        user_id: UUID,
+        order_ids: List[int],
+        template_name: str
+    ) -> Dict[str, Any]:
+        """
+        Create gang sheet print files from selected Shopify orders.
+
+        Args:
+            user_id: User UUID
+            order_ids: List of Shopify order IDs
+            template_name: Template name for gang sheet
+
+        Returns:
+            Dictionary with success status and details
+        """
+        import time
+        import os
+        import tempfile
+        from server.src.utils.gangsheet_engine import create_gang_sheets
+        from server.src.utils.nas_storage import nas_storage
+        from server.src.entities.user import User
+        from server.src.entities.designs import DesignImages
+
+        logger.info(f"Creating print files for {len(order_ids)} selected Shopify orders")
+
+        # Get user and store information
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        store = self.get_user_store(user_id)
+        if not store:
+            raise HTTPException(status_code=404, detail="No connected Shopify store found")
+
+        # Initialize result structure
+        image_data = {
+            'Title': [],
+            'Size': [],
+            'Total': []
+        }
+
+        processed_items = 0
+
+        # Fetch each order and extract line items
+        for order_id in order_ids:
+            try:
+                order = self.client.get_order_by_id(str(store.id), order_id)
+
+                fulfillment_status = order.get('fulfillment_status', 'unfulfilled')
+                line_items = order.get('line_items', [])
+                logger.info(f"📦 Order {order_id}: Found {len(line_items)} items | fulfillment: {fulfillment_status}")
+
+                # Process each line item
+                for idx, line_item in enumerate(line_items, 1):
+                    item_title = line_item.get('name', '')
+                    quantity = line_item.get('quantity', 1)
+                    item_id = line_item.get('id', 'unknown')
+
+                    logger.info(f"  Processing item {idx}/{len(line_items)} from order {order_id}: '{item_title}' (qty: {quantity}, item_id: {item_id})")
+
+                    # Try to find design file for this item
+                    design_path = self._find_design_for_shopify_item(item_title, template_name, user_id)
+
+                    if design_path:
+                        image_data['Title'].append(design_path)
+                        image_data['Size'].append(template_name)
+                        image_data['Total'].append(quantity)
+                        processed_items += 1
+                        logger.info(f"  ✅ Added item from order {order_id}: {item_title} (qty: {quantity}) -> {design_path}")
+                    else:
+                        logger.warning(f"  ❌ No design found for item: {item_title}")
+
+            except Exception as e:
+                logger.error(f"Error processing order {order_id}: {e}")
+                continue
+
+        logger.info(f"Processed {processed_items} items from {len(order_ids)} selected orders")
+
+        if processed_items == 0:
+            return {
+                "success": False,
+                "error": "No items found in selected orders"
+            }
+
+        # Download design files from NAS if needed
+        temp_designs_dir = tempfile.mkdtemp(prefix="shopify_designs_")
+        try:
+            if nas_storage.enabled and image_data.get('Title'):
+                download_start = time.time()
+                logger.info(f"Starting download of {len(image_data['Title'])} design files from NAS")
+
+                updated_titles = []
+                download_count = 0
+                for design_file_path in image_data['Title']:
+                    if design_file_path and "MISSING_" not in design_file_path:
+                        local_filename = os.path.basename(design_file_path)
+                        local_file_path = os.path.join(temp_designs_dir, local_filename)
+
+                        success = nas_storage.download_file(
+                            shop_name=user.shop_name,
+                            relative_path=design_file_path,
+                            local_file_path=local_file_path
+                        )
+                        if success:
+                            updated_titles.append(local_file_path)
+                            download_count += 1
+                        else:
+                            logger.warning(f"Failed to download: {design_file_path}")
+                            updated_titles.append(design_file_path)
+                    else:
+                        updated_titles.append(design_file_path)
+
+                image_data['Title'] = updated_titles
+                download_time = time.time() - download_start
+                logger.info(f"Downloaded {download_count}/{len(image_data['Title'])} files from NAS in {download_time:.2f}s")
+
+            # Create gang sheets
+            gangsheet_start = time.time()
+            result = create_gang_sheets(image_data, template_name, user.shop_name)
+            gangsheet_time = time.time() - gangsheet_start
+
+            logger.info(f"Gang sheet creation took {gangsheet_time:.2f}s")
+
+            return {
+                "success": True,
+                "message": f"Created gang sheets from {processed_items} items",
+                "sheets_created": result.get('sheets_created', 0)
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating gang sheets: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+        finally:
+            # Clean up temp directory
+            import shutil
+            if os.path.exists(temp_designs_dir):
+                shutil.rmtree(temp_designs_dir)
+
+    def _find_design_for_shopify_item(self, item_title: str, template_name: str, user_id: UUID) -> Optional[str]:
+        """
+        Find design file for a Shopify item.
+
+        Args:
+            item_title: Item title from Shopify order
+            template_name: Template name
+            user_id: User UUID
+
+        Returns:
+            Design file path or None
+        """
+        import re
+        from server.src.entities.designs import DesignImages
+        from server.src.entities.template import EtsyProductTemplate
+
+        # Extract UV number or design identifier from title
+        search_name = item_title
+        match = re.match(r'^(UV\s*\d+)', item_title.strip(), re.IGNORECASE)
+        if match:
+            search_name = match.group(1).strip()
+            logger.info(f"🔍 Extracted design number '{search_name}' from title '{item_title}'")
+        else:
+            logger.warning(f"⚠️ Could not extract UV number from title: '{item_title}'")
+
+        # Try database first
+        try:
+            normalized_search = re.sub(r'\s+', ' ', search_name.strip())
+
+            base_query = self.db.query(DesignImages).filter(
+                DesignImages.user_id == user_id,
+                DesignImages.is_active == True
+            )
+
+            # Filter by template if provided
+            if template_name:
+                base_query = base_query.join(DesignImages.product_templates).filter(
+                    EtsyProductTemplate.name == template_name
+                )
+
+            # Try exact substring match
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{normalized_search}%')
+            ).first()
+
+            if design:
+                logger.info(f"✅ Found in database: {design.file_path}")
+                return design.file_path
+
+            # Try without spaces
+            no_space_search = normalized_search.replace(" ", "")
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{no_space_search}%')
+            ).first()
+
+            if design:
+                logger.info(f"✅ Found in database (no-space match): {design.file_path}")
+                return design.file_path
+
+            # Try just the number
+            parts = normalized_search.split(" ")
+            if len(parts) > 1 and parts[1].isdigit():
+                design = base_query.filter(
+                    DesignImages.filename.ilike(f'%{parts[1]}%')
+                ).first()
+
+                if design:
+                    logger.info(f"✅ Found in database (number match): {design.file_path}")
+                    return design.file_path
+
+            logger.warning(f"DB Search: No match found for '{normalized_search}' in template '{template_name}'")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error searching database for design: {e}")
+            return None
