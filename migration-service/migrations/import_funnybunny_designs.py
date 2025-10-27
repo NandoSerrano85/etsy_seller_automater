@@ -96,7 +96,7 @@ def get_template_id(connection, template_name: str) -> Optional[str]:
     from sqlalchemy import text
 
     result = connection.execute(
-        text("SELECT id FROM etsy_product_template WHERE name = :name LIMIT 1"),
+        text("SELECT id FROM etsy_product_templates WHERE name = :name LIMIT 1"),
         {"name": template_name}
     )
     row = result.fetchone()
