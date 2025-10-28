@@ -40,8 +40,14 @@ const ShopifyOrders = () => {
   const [printLoading, setPrintLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState('UVDTF 16oz');
 
+  // Print files state
+  const [printFiles, setPrintFiles] = useState([]);
+  const [printFilesLoading, setPrintFilesLoading] = useState(false);
+  const [showPrintFiles, setShowPrintFiles] = useState(false);
+
   useEffect(() => {
     loadOrders();
+    loadPrintFiles();
   }, []);
 
   const loadOrders = async (showRefreshing = false) => {
@@ -99,6 +105,62 @@ const ShopifyOrders = () => {
     });
   };
 
+  const loadPrintFiles = async () => {
+    setPrintFilesLoading(true);
+    try {
+      const data = await api.get('/api/shopify/print-files');
+      setPrintFiles(data.files || []);
+    } catch (error) {
+      console.error('Error loading print files:', error);
+      addNotification('Failed to load print files', 'error');
+    } finally {
+      setPrintFilesLoading(false);
+    }
+  };
+
+  const downloadPrintFile = async filename => {
+    try {
+      addNotification('Downloading print file...', 'info');
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/shopify/print-files/${encodeURIComponent(filename)}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Download failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      addNotification('Print file downloaded successfully', 'success');
+    } catch (error) {
+      console.error('Error downloading print file:', error);
+      addNotification('Failed to download print file', 'error');
+    }
+  };
+
+  const formatFileSize = bytes => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const formatDate = isoString => {
+    const date = new Date(isoString);
+    return date.toLocaleString();
+  };
+
   const handleCreatePrintFiles = async () => {
     if (selectedOrders.length === 0) {
       addNotification('Please select at least one order', 'error');
@@ -124,6 +186,8 @@ const ShopifyOrders = () => {
         );
         setSelectedOrders([]);
         setShowSelectionMode(false);
+        // Refresh print files list
+        loadPrintFiles();
       } else {
         addNotification(response.error || 'Failed to create print files', 'error');
       }
@@ -302,14 +366,91 @@ const ShopifyOrders = () => {
           )}
 
           {!showSelectionMode && (
-            <button
-              onClick={() => setShowSelectionMode(true)}
-              className="px-4 py-2 bg-lavender-600 text-white rounded-md hover:bg-lavender-700 font-medium"
-            >
-              Select Orders for Print Files
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSelectionMode(true)}
+                className="px-4 py-2 bg-lavender-600 text-white rounded-md hover:bg-lavender-700 font-medium"
+              >
+                Select Orders for Print Files
+              </button>
+              <button
+                onClick={() => setShowPrintFiles(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+              >
+                View Print Files ({printFiles.length})
+              </button>
+            </div>
           )}
         </div>
+
+        {/* Print Files Modal */}
+        {showPrintFiles && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] overflow-hidden flex flex-col m-4">
+              <div className="flex items-center justify-between p-6 border-b">
+                <h2 className="text-2xl font-bold text-gray-900">Available Print Files</h2>
+                <button onClick={() => setShowPrintFiles(false)} className="text-gray-400 hover:text-gray-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                {printFilesLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <ArrowPathIcon className="w-8 h-8 animate-spin text-blue-600" />
+                    <span className="ml-3 text-gray-600">Loading print files...</span>
+                  </div>
+                ) : printFiles.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No print files available</p>
+                    <p className="text-sm text-gray-400 mt-2">Create print files from your orders to see them here</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {printFiles.map(file => (
+                      <div
+                        key={file.filename}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50"
+                      >
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{file.filename}</p>
+                          <div className="flex gap-4 mt-1 text-sm text-gray-500">
+                            <span>{formatFileSize(file.size)}</span>
+                            <span>{formatDate(file.modified)}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => downloadPrintFile(file.filename)}
+                          className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+                        >
+                          Download
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 border-t flex justify-between items-center">
+                <button
+                  onClick={loadPrintFiles}
+                  disabled={printFilesLoading}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 font-medium disabled:opacity-50"
+                >
+                  {printFilesLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+                <button
+                  onClick={() => setShowPrintFiles(false)}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 font-medium"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Filters and Search */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
