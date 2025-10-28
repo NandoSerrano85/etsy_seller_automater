@@ -517,7 +517,13 @@ class ShopifyService:
 
             # Create gang sheets using Shopify store name
             gangsheet_start = time.time()
-            result = create_gang_sheets(image_data, template_name, shopify_shop_name)
+            total_images = sum(image_data.get('Total', []))  # Sum of all quantities
+            result = create_gang_sheets(
+                image_data=image_data,
+                image_type=template_name,
+                output_path=shopify_shop_name,
+                total_images=total_images
+            )
             gangsheet_time = time.time() - gangsheet_start
 
             logger.info(f"Gang sheet creation took {gangsheet_time:.2f}s")
@@ -560,7 +566,8 @@ class ShopifyService:
         # These should be skipped as they don't have design files
         skip_keywords = [
             'glass can', 'tumbler wrap', 'package protection', 'route package',
-            'clear film', 'sublimation', 'frosted glass', 'shipping', 'insurance'
+            'clear film', 'sublimation', 'frosted glass', 'shipping', 'insurance',
+            'screen print', 'screenprint'
         ]
 
         lower_title = item_title.lower()
@@ -568,6 +575,15 @@ class ShopifyService:
             if keyword in lower_title:
                 logger.info(f"⏭️  Skipping non-design item: '{item_title}' (matched: {keyword})")
                 return None
+
+        # Check for template mismatch - DTF items in non-DTF template, Decal items in non-Decal template
+        if template_name and template_name != 'DTF' and 'dtf transfer' in lower_title:
+            logger.info(f"⏭️  Skipping DTF item in {template_name} template: '{item_title}'")
+            return None
+
+        if template_name and 'decal' not in template_name.lower() and 'decal' in lower_title and 'uvdtf' not in lower_title:
+            logger.info(f"⏭️  Skipping Decal item in {template_name} template: '{item_title}'")
+            return None
 
         # Extract design identifier from title - support multiple patterns:
         # 1. UV 123 / UV123
