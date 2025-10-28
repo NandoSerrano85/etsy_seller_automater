@@ -515,24 +515,62 @@ class ShopifyService:
                 download_time = time.time() - download_start
                 logger.info(f"Downloaded {download_count}/{len(image_data['Title'])} files from NAS in {download_time:.2f}s")
 
-            # Create gang sheets using Shopify store name
+            # Create gang sheets in temp directory, then upload to NAS
             gangsheet_start = time.time()
             total_images = sum(image_data.get('Total', []))  # Sum of all quantities
-            result = create_gang_sheets(
-                image_data=image_data,
-                image_type=template_name,
-                output_path=shopify_shop_name,
-                total_images=total_images
-            )
-            gangsheet_time = time.time() - gangsheet_start
 
-            logger.info(f"Gang sheet creation took {gangsheet_time:.2f}s")
+            # Create temporary directory for gangsheet output
+            temp_gangsheet_dir = tempfile.mkdtemp(prefix="shopify_gangsheets_")
 
-            return {
-                "success": True,
-                "message": f"Created gang sheets from {processed_items} items",
-                "sheets_created": result.get('sheets_created', 0)
-            }
+            try:
+                result = create_gang_sheets(
+                    image_data=image_data,
+                    image_type=template_name,
+                    output_path=temp_gangsheet_dir,
+                    total_images=total_images
+                )
+                gangsheet_time = time.time() - gangsheet_start
+                logger.info(f"Gang sheet creation took {gangsheet_time:.2f}s")
+
+                # Upload gangsheets to NAS at /share/Graphics/<shopify_name>/PrintFiles/
+                if nas_storage.enabled and result:
+                    upload_start = time.time()
+                    nas_print_files_path = f"PrintFiles"  # Relative path within shop
+                    uploaded_count = 0
+
+                    # Find all PNG files in the temp gangsheet directory
+                    for filename in os.listdir(temp_gangsheet_dir):
+                        if filename.endswith('.png'):
+                            local_file = os.path.join(temp_gangsheet_dir, filename)
+
+                            # Upload to NAS: /share/Graphics/<shopify_name>/PrintFiles/<filename>
+                            success = nas_storage.upload_file(
+                                local_file_path=local_file,
+                                shop_name=shopify_shop_name,
+                                relative_path=f"{nas_print_files_path}/{filename}"
+                            )
+
+                            if success:
+                                uploaded_count += 1
+                                logger.info(f"✅ Uploaded gangsheet to NAS: {shopify_shop_name}/PrintFiles/{filename}")
+                            else:
+                                logger.warning(f"⚠️  Failed to upload gangsheet to NAS: {filename}")
+
+                    upload_time = time.time() - upload_start
+                    logger.info(f"Uploaded {uploaded_count} gangsheet(s) to NAS in {upload_time:.2f}s")
+
+                return {
+                    "success": True,
+                    "message": f"Created gang sheets from {processed_items} items",
+                    "sheets_created": result.get('sheets_created', 0),
+                    "uploaded_to_nas": uploaded_count if nas_storage.enabled else 0
+                }
+
+            finally:
+                # Clean up temp gangsheet directory
+                import shutil
+                if os.path.exists(temp_gangsheet_dir):
+                    shutil.rmtree(temp_gangsheet_dir)
 
         except Exception as e:
             logger.error(f"Error creating gang sheets: {e}")
@@ -541,7 +579,7 @@ class ShopifyService:
                 "error": str(e)
             }
         finally:
-            # Clean up temp directory
+            # Clean up temp designs directory
             import shutil
             if os.path.exists(temp_designs_dir):
                 shutil.rmtree(temp_designs_dir)
