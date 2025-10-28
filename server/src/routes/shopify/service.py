@@ -480,8 +480,9 @@ class ShopifyService:
         # Download design files from NAS if needed
         # IMPORTANT: Use Shopify store name, not Etsy shop name
         # NAS path: /share/Graphics/<shopify_store_name>/<template>/
-        shopify_shop_name = store.shop_name
-        logger.info(f"Using Shopify store name for NAS: '{shopify_shop_name}'")
+        # IMPORTANT: Remove spaces from shop name for NAS paths
+        shopify_shop_name = store.shop_name.replace(' ', '')  # Remove spaces for NAS paths
+        logger.info(f"Using Shopify store name for NAS: '{store.shop_name}' -> '{shopify_shop_name}' (normalized)")
 
         temp_designs_dir = tempfile.mkdtemp(prefix="shopify_designs_")
         try:

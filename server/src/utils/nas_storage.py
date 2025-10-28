@@ -69,6 +69,7 @@ class SFTPConnectionPool:
         ssh = None
         sftp = None
         from_pool = False
+        connection_counted = False  # Track if we incremented active_connections
 
         try:
             # Try to get a connection from the pool
@@ -86,8 +87,10 @@ class SFTPConnectionPool:
                         ssh.close()
                     except:
                         pass
+                    # Don't adjust counter - we'll replace this stale connection
                     ssh, sftp = self._create_connection()
-                    from_pool = False
+                    # Still counts as from_pool since we're replacing a pool connection
+                    from_pool = True
 
             except queue.Empty:
                 # No connections available, create a new one if we're under the limit
@@ -95,6 +98,7 @@ class SFTPConnectionPool:
                     if self.active_connections < self.max_connections:
                         ssh, sftp = self._create_connection()
                         self.active_connections += 1
+                        connection_counted = True
                         from_pool = False
                     else:
                         # Wait for a connection to become available
@@ -112,15 +116,19 @@ class SFTPConnectionPool:
 
         except Exception as e:
             # If there was an error, don't return a potentially broken connection to the pool
+            # Always close the connection
             if ssh:
                 try:
                     sftp.close()
                     ssh.close()
                 except:
                     pass
-                if from_pool:
-                    with self.lock:
-                        self.active_connections -= 1
+
+            # Decrement active connections only if we created a new one
+            if connection_counted:
+                with self.lock:
+                    self.active_connections -= 1
+
             # Re-raise with more context if it's a bare exception
             if not str(e):
                 raise Exception(f"NAS connection pool error: {type(e).__name__}")
@@ -138,7 +146,8 @@ class SFTPConnectionPool:
                         ssh.close()
                     except:
                         pass
-                    if not from_pool:
+                    # If we created this connection (not from pool), decrement the counter
+                    if connection_counted:
                         with self.lock:
                             self.active_connections -= 1
 
