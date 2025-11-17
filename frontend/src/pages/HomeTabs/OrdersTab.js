@@ -144,18 +144,18 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       selectedOrdersData.forEach(order => {
         if (order && order.items) {
           order.items.forEach(item => {
-            // Get design file name without extension
-            const designFile = item.design_file;
-            if (designFile) {
-              // Extract filename without extension
-              const filename = designFile.replace(/\.png$/i, '');
+            // Extract design name from item title (e.g., "UV 840 | UVDTF Cup wrap" -> "UV 840")
+            const itemTitle = item.title || '';
+            const match = itemTitle.match(/^(UV\s*\d+)/i);
 
+            if (match) {
+              const designName = match[1].trim();
               const quantity = item.quantity || 1;
 
-              if (designQuantities[filename]) {
-                designQuantities[filename] += quantity;
+              if (designQuantities[designName]) {
+                designQuantities[designName] += quantity;
               } else {
-                designQuantities[filename] = quantity;
+                designQuantities[designName] = quantity;
               }
             }
           });
@@ -166,8 +166,8 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       const csvRows = [];
       csvRows.push(['Product title', 'Type', 'Total'].join(','));
 
-      Object.entries(designQuantities).forEach(([filename, total]) => {
-        csvRows.push([`"${filename}"`, `"${selectedTemplate}"`, total].join(','));
+      Object.entries(designQuantities).forEach(([designName, total]) => {
+        csvRows.push([`"${designName}"`, `"${selectedTemplate}"`, total].join(','));
       });
 
       const csvContent = csvRows.join('\n');
