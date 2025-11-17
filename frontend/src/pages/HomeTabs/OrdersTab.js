@@ -135,29 +135,28 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     setCsvExporting(true);
     setPrintError(null);
     try {
-      // Fetch full details for all selected orders
-      const orderDetailsPromises = selectedOrders.map(orderId => api.get(`/orders/${orderId}`));
-      const orderDetailsResponses = await Promise.all(orderDetailsPromises);
+      // Get selected orders from the allOrders array
+      const selectedOrdersData = allOrders.filter(order => selectedOrders.includes(order.order_id));
 
       // Aggregate design quantities
       const designQuantities = {};
 
-      orderDetailsResponses.forEach(response => {
-        const orderData = response.order || response;
-        if (orderData && orderData.design_images) {
-          orderData.design_images.forEach(design => {
-            // Extract filename without extension
-            const filename = design.replace(/\.png$/i, '');
+      selectedOrdersData.forEach(order => {
+        if (order && order.items) {
+          order.items.forEach(item => {
+            // Get design file name without extension
+            const designFile = item.design_file;
+            if (designFile) {
+              // Extract filename without extension
+              const filename = designFile.replace(/\.png$/i, '');
 
-            // Find the quantity for this design from line items
-            const lineItem = orderData.items?.find(item => item.design_file?.includes(filename));
+              const quantity = item.quantity || 1;
 
-            const quantity = lineItem?.quantity || 1;
-
-            if (designQuantities[filename]) {
-              designQuantities[filename] += quantity;
-            } else {
-              designQuantities[filename] = quantity;
+              if (designQuantities[filename]) {
+                designQuantities[filename] += quantity;
+              } else {
+                designQuantities[filename] = quantity;
+              }
             }
           });
         }
