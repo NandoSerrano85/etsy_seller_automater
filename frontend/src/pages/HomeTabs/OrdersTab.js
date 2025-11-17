@@ -11,6 +11,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [printError, setPrintError] = useState(null);
   const [printMsg, setPrintMsg] = useState(null);
   const [packingSlipLoading, setPackingSlipLoading] = useState(false);
+  const [csvExporting, setCsvExporting] = useState(false);
   const [showSelectionMode, setShowSelectionMode] = useState(false);
   const [allOrders, setAllOrders] = useState([]);
   const [loadingAllOrders, setLoadingAllOrders] = useState(false);
@@ -121,6 +122,74 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       setPrintError(error.message || 'Error creating print files from selection');
     } finally {
       setPrintLoading(false);
+    }
+  };
+
+  // Export CSV of selected orders
+  const handleExportCSV = async () => {
+    if (selectedOrders.length === 0) {
+      setPrintError('Please select at least one order');
+      return;
+    }
+
+    setCsvExporting(true);
+    setPrintError(null);
+    try {
+      // Fetch full details for all selected orders
+      const orderDetailsPromises = selectedOrders.map(orderId => api.get(`/orders/${orderId}`));
+      const orderDetailsResponses = await Promise.all(orderDetailsPromises);
+
+      // Aggregate design quantities
+      const designQuantities = {};
+
+      orderDetailsResponses.forEach(response => {
+        const orderData = response.order || response;
+        if (orderData && orderData.design_images) {
+          orderData.design_images.forEach(design => {
+            // Extract filename without extension
+            const filename = design.replace(/\.png$/i, '');
+
+            // Find the quantity for this design from line items
+            const lineItem = orderData.items?.find(item => item.design_file?.includes(filename));
+
+            const quantity = lineItem?.quantity || 1;
+
+            if (designQuantities[filename]) {
+              designQuantities[filename] += quantity;
+            } else {
+              designQuantities[filename] = quantity;
+            }
+          });
+        }
+      });
+
+      // Create CSV content
+      const csvRows = [];
+      csvRows.push(['Product title', 'Type', 'Total'].join(','));
+
+      Object.entries(designQuantities).forEach(([filename, total]) => {
+        csvRows.push([`"${filename}"`, `"${selectedTemplate}"`, total].join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `etsy-print-order-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      setPrintMsg('CSV exported successfully');
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      setPrintError(error.message || 'Failed to export CSV');
+    } finally {
+      setCsvExporting(false);
     }
   };
 
@@ -245,6 +314,27 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                       <>
                         <span>🖨️</span>
                         <span>Create Print Files ({selectedOrders.length})</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleExportCSV}
+                    disabled={selectedOrders.length === 0 || csvExporting}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                      ${
+                        selectedOrders.length === 0 || csvExporting
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                      }
+                    `}
+                  >
+                    {csvExporting ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <span>📥</span>
+                        <span>Export CSV ({selectedOrders.length})</span>
                       </>
                     )}
                   </button>
