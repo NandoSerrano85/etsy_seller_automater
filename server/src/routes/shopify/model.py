@@ -43,3 +43,31 @@ class PrintFilesResponse(BaseModel):
     message: Optional[str] = None
     error: Optional[str] = None
     sheets_created: Optional[int] = None
+
+class BulkProductCreateRequest(BaseModel):
+    # Name generation settings
+    quantity: int
+    name_prefix: str
+    starting_number: int
+    name_postfix: str = ""
+
+    # Standard Shopify product fields
+    description: str = ""
+    price: float
+    vendor: str = "Custom Design Store"
+    product_type: str = ""
+    tags: str = ""
+    status: str = "draft"  # draft, active, archived
+
+    # Inventory settings
+    inventory_quantity: int = 0
+    track_inventory: bool = True
+
+    class Config:
+        str_strip_whitespace = True
+
+class BulkProductCreateResponse(BaseModel):
+    success: bool
+    message: str
+    products_created: int
+    products: list[dict]

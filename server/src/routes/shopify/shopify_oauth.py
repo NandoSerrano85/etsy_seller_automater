@@ -807,6 +807,26 @@ async def delete_product(
 
     return {"success": success, "message": "Product deleted successfully"}
 
+@router.post("/products/bulk-create", response_model=model.BulkProductCreateResponse)
+async def bulk_create_products(
+    request: model.BulkProductCreateRequest,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """
+    Create multiple products with auto-generated names.
+    Names are generated as: {prefix}{number}{postfix}
+    where number starts at starting_number and increments for each product.
+    """
+    service = ShopifyService(db)
+
+    result = service.bulk_create_products(
+        user_id=current_user.get_uuid(),
+        bulk_request=request.dict()
+    )
+
+    return result
+
 @router.post("/products/{product_id}/images")
 async def upload_product_image(
     product_id: str,

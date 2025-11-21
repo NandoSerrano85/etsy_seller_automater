@@ -31,6 +31,7 @@ const ShopifyProducts = React.lazy(() => import('./pages/ShopifyProducts'));
 const ShopifyOrders = React.lazy(() => import('./pages/ShopifyOrders'));
 const ShopifyDashboard = React.lazy(() => import('./pages/ShopifyDashboard'));
 const ShopifyProductCreator = React.lazy(() => import('./pages/ShopifyProductCreator'));
+const ShopifyBulkProductCreator = React.lazy(() => import('./pages/ShopifyBulkProductCreator'));
 const ShopifyTemplateCreator = React.lazy(() => import('./pages/ShopifyTemplateCreator'));
 
 // Template components (lazy loaded)
@@ -252,6 +253,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ShopifyProductCreator />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/shopify/products/bulk-create"
+              element={
+                <ProtectedRoute>
+                  <ShopifyBulkProductCreator />
                 </ProtectedRoute>
               }
             />

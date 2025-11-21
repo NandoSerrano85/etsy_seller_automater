@@ -18,6 +18,7 @@ import {
   TagIcon,
   PhotoIcon,
   LinkIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline';
 
 const ShopifyProducts = () => {
@@ -102,6 +103,13 @@ const ShopifyProducts = () => {
             <p className="text-gray-600">Manage your Shopify store products</p>
           </div>
           <div className="flex items-center space-x-3">
+            <button
+              onClick={() => navigate('/shopify/products/bulk-create')}
+              className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+            >
+              <SparklesIcon className="w-4 h-4 mr-2" />
+              Bulk Create
+            </button>
             <button
               onClick={() => navigate('/shopify/create')}
               className="flex items-center px-4 py-2 bg-sage-600 text-white rounded-md hover:bg-sage-700"

@@ -714,3 +714,121 @@ class ShopifyService:
         except Exception as e:
             logger.error(f"Error searching database for design: {e}")
             return None
+
+    def bulk_create_products(self, user_id: UUID, bulk_request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create multiple products with auto-generated names in user's connected Shopify store.
+
+        Args:
+            user_id: User UUID
+            bulk_request: Dictionary containing:
+                - quantity: Number of products to create
+                - name_prefix: Fixed text before the number
+                - starting_number: Starting number for auto-increment
+                - name_postfix: Fixed text after the number
+                - description: Product description
+                - price: Product price
+                - vendor: Product vendor
+                - product_type: Product type
+                - tags: Product tags
+                - status: Product status (draft, active, archived)
+                - inventory_quantity: Initial inventory quantity
+                - track_inventory: Whether to track inventory
+
+        Returns:
+            Dictionary containing created products and summary
+
+        Raises:
+            HTTPException: If store not found or API error occurs
+        """
+        store = self.get_user_store(user_id)
+        if not store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Shopify store found. Please connect a store first."
+            )
+
+        # Validate quantity
+        quantity = bulk_request.get('quantity', 0)
+        if quantity <= 0 or quantity > 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Quantity must be between 1 and 100"
+            )
+
+        # Extract parameters
+        name_prefix = bulk_request.get('name_prefix', '')
+        starting_number = bulk_request.get('starting_number', 1)
+        name_postfix = bulk_request.get('name_postfix', '')
+        description = bulk_request.get('description', '')
+        price = bulk_request.get('price')
+        vendor = bulk_request.get('vendor', 'Custom Design Store')
+        product_type = bulk_request.get('product_type', '')
+        tags = bulk_request.get('tags', '')
+        status_value = bulk_request.get('status', 'draft')
+        inventory_quantity = bulk_request.get('inventory_quantity', 0)
+        track_inventory = bulk_request.get('track_inventory', True)
+
+        if not price or price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Price must be greater than 0"
+            )
+
+        created_products = []
+        errors = []
+
+        logger.info(f"🔄 Starting bulk product creation: {quantity} products")
+
+        for i in range(quantity):
+            current_number = starting_number + i
+            product_title = f"{name_prefix}{current_number}{name_postfix}"
+
+            try:
+                # Build product data
+                product_data = {
+                    "product": {
+                        "title": product_title,
+                        "body_html": description,
+                        "vendor": vendor,
+                        "product_type": product_type,
+                        "tags": tags,
+                        "status": status_value,
+                        "variants": [
+                            {
+                                "price": str(price),
+                                "inventory_management": "shopify" if track_inventory else None,
+                                "inventory_quantity": inventory_quantity if track_inventory else None,
+                            }
+                        ]
+                    }
+                }
+
+                # Create product via Shopify API
+                product = self.client.create_product(
+                    store_id=str(store.id),
+                    product_data=product_data
+                )
+
+                created_products.append({
+                    "id": product.get("id"),
+                    "title": product.get("title"),
+                    "status": product.get("status")
+                })
+
+                logger.info(f"✅ Created product {i+1}/{quantity}: {product_title}")
+
+            except Exception as e:
+                error_msg = f"Failed to create product '{product_title}': {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                errors.append(error_msg)
+                continue
+
+        # Return summary
+        return {
+            "success": len(created_products) > 0,
+            "message": f"Successfully created {len(created_products)} of {quantity} products",
+            "products_created": len(created_products),
+            "products": created_products,
+            "errors": errors if errors else None
+        }
