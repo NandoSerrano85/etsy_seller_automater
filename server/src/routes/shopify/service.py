@@ -715,6 +715,29 @@ class ShopifyService:
             logger.error(f"Error searching database for design: {e}")
             return None
 
+    def _generate_variant_combinations(self, variant_configs: List[Dict[str, Any]]) -> List[List[str]]:
+        """
+        Generate all combinations of variant options.
+
+        Args:
+            variant_configs: List of variant configurations with option_name and option_values
+
+        Returns:
+            List of variant combinations, each as a list of values
+        """
+        if not variant_configs:
+            return [[]]
+
+        from itertools import product
+
+        # Extract just the values for each option
+        option_values_list = [config.get('option_values', []) for config in variant_configs]
+
+        # Generate all combinations
+        combinations = list(product(*option_values_list))
+
+        return [list(combo) for combo in combinations]
+
     def bulk_create_products(self, user_id: UUID, bulk_request: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create multiple products with auto-generated names in user's connected Shopify store.
@@ -732,6 +755,8 @@ class ShopifyService:
                 - product_type: Product type
                 - tags: Product tags
                 - status: Product status (draft, active, archived)
+                - template_suffix: Theme template suffix (optional)
+                - variants: List of variant configurations (optional)
                 - inventory_quantity: Initial inventory quantity
                 - track_inventory: Whether to track inventory
 
@@ -766,6 +791,8 @@ class ShopifyService:
         product_type = bulk_request.get('product_type', '')
         tags = bulk_request.get('tags', '')
         status_value = bulk_request.get('status', 'draft')
+        template_suffix = bulk_request.get('template_suffix')
+        variant_configs = bulk_request.get('variants', [])
         inventory_quantity = bulk_request.get('inventory_quantity', 0)
         track_inventory = bulk_request.get('track_inventory', True)
 
@@ -785,7 +812,7 @@ class ShopifyService:
             product_title = f"{name_prefix}{current_number}{name_postfix}"
 
             try:
-                # Build product data
+                # Build base product data
                 product_data = {
                     "product": {
                         "title": product_title,
@@ -794,15 +821,60 @@ class ShopifyService:
                         "product_type": product_type,
                         "tags": tags,
                         "status": status_value,
-                        "variants": [
-                            {
-                                "price": str(price),
-                                "inventory_management": "shopify" if track_inventory else None,
-                                "inventory_quantity": inventory_quantity if track_inventory else None,
-                            }
-                        ]
                     }
                 }
+
+                # Add template suffix if provided
+                if template_suffix:
+                    product_data["product"]["template_suffix"] = template_suffix
+
+                # Handle variants
+                if variant_configs and len(variant_configs) > 0:
+                    # Set up variant options
+                    options = []
+                    for idx, config in enumerate(variant_configs[:3]):  # Shopify supports max 3 options
+                        options.append({
+                            "name": config.get('option_name'),
+                            "values": config.get('option_values', [])
+                        })
+
+                    product_data["product"]["options"] = options
+
+                    # Generate variant combinations
+                    variant_combinations = self._generate_variant_combinations(variant_configs)
+
+                    # Build variants array
+                    variants = []
+                    for combo in variant_combinations:
+                        # Calculate variant price
+                        variant_price = price
+                        for idx, config in enumerate(variant_configs):
+                            if idx < len(combo):
+                                modifier = config.get('price_modifier', 0.0)
+                                variant_price += modifier
+
+                        variant_data = {
+                            "price": str(variant_price),
+                            "inventory_management": "shopify" if track_inventory else None,
+                            "inventory_quantity": inventory_quantity if track_inventory else None,
+                        }
+
+                        # Add option values
+                        for idx, value in enumerate(combo[:3]):  # Max 3 options
+                            variant_data[f"option{idx + 1}"] = value
+
+                        variants.append(variant_data)
+
+                    product_data["product"]["variants"] = variants
+                else:
+                    # No variants - single default variant
+                    product_data["product"]["variants"] = [
+                        {
+                            "price": str(price),
+                            "inventory_management": "shopify" if track_inventory else None,
+                            "inventory_quantity": inventory_quantity if track_inventory else None,
+                        }
+                    ]
 
                 # Create product via Shopify API
                 product = self.client.create_product(
@@ -813,7 +885,8 @@ class ShopifyService:
                 created_products.append({
                     "id": product.get("id"),
                     "title": product.get("title"),
-                    "status": product.get("status")
+                    "status": product.get("status"),
+                    "variants_count": len(product.get("variants", []))
                 })
 
                 logger.info(f"✅ Created product {i+1}/{quantity}: {product_title}")

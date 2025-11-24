@@ -44,6 +44,11 @@ class PrintFilesResponse(BaseModel):
     error: Optional[str] = None
     sheets_created: Optional[int] = None
 
+class ProductVariantConfig(BaseModel):
+    option_name: str  # e.g., "Size", "Color"
+    option_values: list[str]  # e.g., ["S", "M", "L", "XL"]
+    price_modifier: Optional[float] = 0.0  # Additional price per variant
+
 class BulkProductCreateRequest(BaseModel):
     # Name generation settings
     quantity: int
@@ -58,6 +63,10 @@ class BulkProductCreateRequest(BaseModel):
     product_type: str = ""
     tags: str = ""
     status: str = "draft"  # draft, active, archived
+    template_suffix: Optional[str] = None  # Theme template suffix
+
+    # Variant settings (optional)
+    variants: Optional[list[ProductVariantConfig]] = None
 
     # Inventory settings
     inventory_quantity: int = 0

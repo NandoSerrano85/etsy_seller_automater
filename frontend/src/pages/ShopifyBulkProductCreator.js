@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
 import { useNavigate } from 'react-router-dom';
@@ -9,6 +9,8 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
   SparklesIcon,
+  XMarkIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 
 const ShopifyBulkProductCreator = () => {
@@ -18,7 +20,13 @@ const ShopifyBulkProductCreator = () => {
   const { isConnected, store } = useShopify();
 
   const [loading, setLoading] = useState(false);
+  const [loadingMetadata, setLoadingMetadata] = useState(false);
   const [creationResult, setCreationResult] = useState(null);
+
+  // Shopify metadata
+  const [productTypes, setProductTypes] = useState([]);
+  const [vendors, setVendors] = useState([]);
+  const [themeTemplates, setThemeTemplates] = useState([]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -32,9 +40,57 @@ const ShopifyBulkProductCreator = () => {
     product_type: '',
     tags: '',
     status: 'draft',
+    template_suffix: '',
     inventory_quantity: 0,
     track_inventory: true,
   });
+
+  // Variant state
+  const [variants, setVariants] = useState([]);
+
+  // Load Shopify metadata on mount
+  useEffect(() => {
+    if (isConnected && store) {
+      loadShopifyMetadata();
+    }
+  }, [isConnected, store]);
+
+  const loadShopifyMetadata = async () => {
+    setLoadingMetadata(true);
+    try {
+      // Fetch product types, vendors, and theme templates in parallel
+      const [typesRes, vendorsRes, templatesRes] = await Promise.all([
+        fetch(`${process.env.REACT_APP_API_URL}/api/shopify/metadata/product-types?store_id=${store.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.REACT_APP_API_URL}/api/shopify/metadata/vendors?store_id=${store.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${process.env.REACT_APP_API_URL}/api/shopify/metadata/theme-templates?store_id=${store.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (typesRes.ok) {
+        const data = await typesRes.json();
+        setProductTypes(data.product_types || []);
+      }
+
+      if (vendorsRes.ok) {
+        const data = await vendorsRes.json();
+        setVendors(data.vendors || []);
+      }
+
+      if (templatesRes.ok) {
+        const data = await templatesRes.json();
+        setThemeTemplates(data.templates || []);
+      }
+    } catch (error) {
+      console.error('Error loading Shopify metadata:', error);
+    } finally {
+      setLoadingMetadata(false);
+    }
+  };
 
   const handleChange = e => {
     const { name, value, type, checked } = e.target;
@@ -42,6 +98,35 @@ const ShopifyBulkProductCreator = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  // Variant management
+  const addVariant = () => {
+    if (variants.length >= 3) {
+      addNotification('Shopify supports maximum 3 variant options', 'warning');
+      return;
+    }
+    setVariants([...variants, { option_name: '', option_values: [], price_modifier: 0 }]);
+  };
+
+  const removeVariant = index => {
+    setVariants(variants.filter((_, i) => i !== index));
+  };
+
+  const updateVariant = (index, field, value) => {
+    const updated = [...variants];
+    updated[index][field] = value;
+    setVariants(updated);
+  };
+
+  const updateVariantValues = (index, valuesString) => {
+    const updated = [...variants];
+    // Split by comma and trim whitespace
+    updated[index].option_values = valuesString
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v);
+    setVariants(updated);
   };
 
   const handleSubmit = async e => {
@@ -63,30 +148,55 @@ const ShopifyBulkProductCreator = () => {
       return;
     }
 
+    // Validate variants
+    for (let i = 0; i < variants.length; i++) {
+      const variant = variants[i];
+      if (!variant.option_name) {
+        addNotification(`Variant ${i + 1}: Please enter an option name`, 'error');
+        return;
+      }
+      if (!variant.option_values || variant.option_values.length === 0) {
+        addNotification(`Variant ${i + 1}: Please enter at least one option value`, 'error');
+        return;
+      }
+    }
+
     setLoading(true);
     setCreationResult(null);
 
     try {
+      const requestBody = {
+        quantity: parseInt(formData.quantity),
+        name_prefix: formData.name_prefix,
+        starting_number: parseInt(formData.starting_number),
+        name_postfix: formData.name_postfix,
+        description: formData.description,
+        price: parseFloat(formData.price),
+        vendor: formData.vendor,
+        product_type: formData.product_type,
+        tags: formData.tags,
+        status: formData.status,
+        inventory_quantity: parseInt(formData.inventory_quantity),
+        track_inventory: formData.track_inventory,
+      };
+
+      // Add template_suffix if provided
+      if (formData.template_suffix) {
+        requestBody.template_suffix = formData.template_suffix;
+      }
+
+      // Add variants if any
+      if (variants.length > 0) {
+        requestBody.variants = variants;
+      }
+
       const response = await fetch(`${process.env.REACT_APP_API_URL}/api/shopify/products/bulk-create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          quantity: parseInt(formData.quantity),
-          name_prefix: formData.name_prefix,
-          starting_number: parseInt(formData.starting_number),
-          name_postfix: formData.name_postfix,
-          description: formData.description,
-          price: parseFloat(formData.price),
-          vendor: formData.vendor,
-          product_type: formData.product_type,
-          tags: formData.tags,
-          status: formData.status,
-          inventory_quantity: parseInt(formData.inventory_quantity),
-          track_inventory: formData.track_inventory,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -303,25 +413,58 @@ const ShopifyBulkProductCreator = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Vendor</label>
-                <input
-                  type="text"
-                  name="vendor"
-                  value={formData.vendor}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
-                />
+                {vendors.length > 0 ? (
+                  <select
+                    name="vendor"
+                    value={formData.vendor}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                  >
+                    <option value="">Select or type custom...</option>
+                    {vendors.map((vendor, idx) => (
+                      <option key={idx} value={vendor}>
+                        {vendor}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    name="vendor"
+                    value={formData.vendor}
+                    onChange={handleChange}
+                    placeholder="Enter vendor name"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                  />
+                )}
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Product Type</label>
-                <input
-                  type="text"
-                  name="product_type"
-                  value={formData.product_type}
-                  onChange={handleChange}
-                  placeholder="e.g., T-Shirt, Mug, Print"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
-                />
+                {productTypes.length > 0 ? (
+                  <select
+                    name="product_type"
+                    value={formData.product_type}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                  >
+                    <option value="">Select or type custom...</option>
+                    {productTypes.map((type, idx) => (
+                      <option key={idx} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    name="product_type"
+                    value={formData.product_type}
+                    onChange={handleChange}
+                    placeholder="e.g., T-Shirt, Mug, Print"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                  />
+                )}
               </div>
 
               <div>
@@ -337,6 +480,26 @@ const ShopifyBulkProductCreator = () => {
                   <option value="archived">Archived</option>
                 </select>
               </div>
+
+              {themeTemplates.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Theme Template</label>
+                  <select
+                    name="template_suffix"
+                    value={formData.template_suffix}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                  >
+                    <option value="">Default Template</option>
+                    {themeTemplates.map((template, idx) => (
+                      <option key={idx} value={template.suffix}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Optional: Select a custom theme template</p>
+                </div>
+              )}
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tags</label>
@@ -363,6 +526,127 @@ const ShopifyBulkProductCreator = () => {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Product Variants */}
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Product Variants (Optional)</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Add variant options like Size, Color, Material. Max 3 options.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addVariant}
+                disabled={variants.length >= 3}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                <PlusIcon className="w-4 h-4 mr-2" />
+                Add Variant Option
+              </button>
+            </div>
+
+            {variants.length > 0 && (
+              <div className="space-y-4">
+                {variants.map((variant, index) => (
+                  <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start justify-between mb-4">
+                      <h3 className="font-medium text-gray-900">Variant Option {index + 1}</h3>
+                      <button
+                        type="button"
+                        onClick={() => removeVariant(index)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <XMarkIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Option Name <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={variant.option_name}
+                          onChange={e => updateVariant(index, 'option_name', e.target.value)}
+                          placeholder="e.g., Size, Color"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Option Values <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={variant.option_values.join(', ')}
+                          onChange={e => updateVariantValues(index, e.target.value)}
+                          placeholder="S, M, L, XL"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Comma-separated values</p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Price Modifier (optional)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-gray-500">$</span>
+                          <input
+                            type="number"
+                            value={variant.price_modifier}
+                            onChange={e => updateVariant(index, 'price_modifier', parseFloat(e.target.value) || 0)}
+                            step="0.01"
+                            placeholder="0.00"
+                            className="w-full pl-7 pr-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">Added to base price</p>
+                      </div>
+                    </div>
+
+                    {variant.option_values.length > 0 && (
+                      <div className="mt-3 bg-white rounded p-3">
+                        <p className="text-xs font-medium text-gray-700 mb-1">Preview:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {variant.option_values.map((value, vIdx) => (
+                            <span
+                              key={vIdx}
+                              className="inline-flex items-center px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded"
+                            >
+                              {variant.option_name}: {value}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {variants.length > 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm font-medium text-blue-900 mb-2">
+                      Total Variants: {variants.reduce((acc, v) => acc * (v.option_values.length || 1), 1)}
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      Each product will have all combinations of the variant options you've added.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {variants.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <p className="text-sm">No variants added. Products will be created with default variant.</p>
+                <p className="text-xs mt-1">Click "Add Variant Option" to create products with multiple variants.</p>
+              </div>
+            )}
           </div>
 
           {/* Inventory Settings */}
