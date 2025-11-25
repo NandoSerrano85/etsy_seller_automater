@@ -221,7 +221,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     }
   };
 
-  // Add packing slip generation function
+  // Add packing slip generation function for all active orders
   const handleGeneratePackingSlips = async () => {
     console.log('🔵 Packing slip button clicked!', { ordersLength: orders.length });
 
@@ -268,6 +268,56 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       setPrintMsg(`Successfully generated packing slips for ${orders.length} orders`);
     } catch (error) {
       setPrintError(error.message || 'Error generating packing slips');
+      console.error('Packing slip error:', error);
+    } finally {
+      setPackingSlipLoading(false);
+    }
+  };
+
+  // Add packing slip generation function for selected orders
+  const handleGenerateSelectedPackingSlips = async () => {
+    if (selectedOrders.length === 0) {
+      setPrintError('Please select at least one order');
+      return;
+    }
+
+    try {
+      setPackingSlipLoading(true);
+      setPrintError(null);
+      setPrintMsg(null);
+
+      console.log('Generating packing slips for selected orders:', selectedOrders);
+
+      // Fetch the PDF from the API using authenticated fetchFile
+      const response = await api.fetchFile('/api/packing-slip/bulk/selected-orders', {
+        method: 'POST',
+        body: JSON.stringify({ order_ids: selectedOrders }),
+      });
+
+      console.log('Response status:', response.status);
+
+      // Get the PDF blob
+      const blob = await response.blob();
+      console.log('Blob size:', blob.size, 'Blob type:', blob.type);
+
+      // Verify we got a PDF
+      if (blob.type !== 'application/pdf' && blob.type !== '') {
+        const text = await blob.text();
+        console.error('Received non-PDF response:', text.substring(0, 500));
+        throw new Error(`Expected PDF but got ${blob.type}. Check console for details.`);
+      }
+
+      if (blob.size === 0) {
+        throw new Error('Received empty PDF file');
+      }
+
+      // Open PDF in new tab for viewing/printing
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+
+      setPrintMsg(`Successfully generated packing slips for ${selectedOrders.length} orders`);
+    } catch (error) {
+      setPrintError(error.message || 'Error generating packing slips for selected orders');
       console.error('Packing slip error:', error);
     } finally {
       setPackingSlipLoading(false);
@@ -334,6 +384,27 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                       <>
                         <span>📥</span>
                         <span>Export CSV ({selectedOrders.length})</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleGenerateSelectedPackingSlips}
+                    disabled={selectedOrders.length === 0 || packingSlipLoading}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium flex items-center space-x-2
+                      ${
+                        selectedOrders.length === 0 || packingSlipLoading
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-green-500 text-white hover:bg-green-600'
+                      }
+                    `}
+                  >
+                    {packingSlipLoading ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    ) : (
+                      <>
+                        <span>📄</span>
+                        <span>Packing Slips ({selectedOrders.length})</span>
                       </>
                     )}
                   </button>
@@ -553,32 +624,48 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       </div>
       {/* Orders Table */}
       <div className="card p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
-          <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              {orderFilter === 'active' && '🟢 Showing unshipped orders (ready to process)'}
+              {orderFilter === 'shipped' && '📦 Showing shipped orders'}
+              {orderFilter === 'all' && '📋 Showing all orders'}
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => handleFilterChange('active')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                orderFilter === 'active' ? 'bg-lavender-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                orderFilter === 'active'
+                  ? 'bg-green-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Active Orders
+              <span>🟢</span>
+              <span>Unshipped</span>
             </button>
             <button
               onClick={() => handleFilterChange('shipped')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                orderFilter === 'shipped' ? 'bg-lavender-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                orderFilter === 'shipped'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Shipped Orders
+              <span>📦</span>
+              <span>Shipped</span>
             </button>
             <button
               onClick={() => handleFilterChange('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                orderFilter === 'all' ? 'bg-lavender-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                orderFilter === 'all'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              All Orders
+              <span>📋</span>
+              <span>All</span>
             </button>
           </div>
         </div>
