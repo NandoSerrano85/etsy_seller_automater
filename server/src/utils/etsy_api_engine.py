@@ -6,6 +6,10 @@ from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
 from server.src.utils.nas_storage import nas_storage
 
 class EtsyAPI:
+    # Class-level cache for order data {cache_key: {'data': ..., 'timestamp': ...}}
+    _order_cache = {}
+    _cache_ttl = 60  # Cache time-to-live in seconds (1 minute)
+
     def __init__(self, user_id=None, db=None):
         """
         Initialize the Etsy listing uploader with OAuth credentials
@@ -1150,6 +1154,7 @@ class EtsyAPI:
     def fetch_order_summary(self, model, was_shipped=None, was_paid=None, was_canceled=None) -> dict:
         """
         Fetch order summary with optional status filters.
+        Uses caching to prevent excessive API calls and rate limiting.
 
         Args:
             model: Model class for response formatting
@@ -1160,6 +1165,21 @@ class EtsyAPI:
         Returns:
             Dictionary with orders, count, and total
         """
+        # Create cache key based on user and filters
+        cache_key = f"{self.user_id}:{was_shipped}:{was_paid}:{was_canceled}"
+
+        # Check if we have cached data that's still valid
+        current_time = time.time()
+        if cache_key in self._order_cache:
+            cached_entry = self._order_cache[cache_key]
+            if current_time - cached_entry['timestamp'] < self._cache_ttl:
+                logging.info(f"Returning cached order data for user {self.user_id}")
+                return cached_entry['data']
+            else:
+                # Cache expired, remove it
+                del self._order_cache[cache_key]
+                logging.info(f"Cache expired for user {self.user_id}, fetching fresh data")
+
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}',
@@ -1181,32 +1201,78 @@ class EtsyAPI:
         if was_canceled is not None:
             params['was_canceled'] = was_canceled
 
-        response = self.session.get(receipts_url, headers=headers, params=params)
-        if not response.ok:
-            logging.error(f"Failed to fetch orders: {response.status_code} {response.text}")
-            return {"success_code": 200, "message": f"Failed to fetch orders: {response.text}"}
-        receipts_data = response.json()
-        orders = []
-        for receipt in receipts_data.get('results', []):
-            items = [
-                model.OrderItem(
-                    title=transaction.get('title', 'N/A'),
-                    quantity=transaction.get('quantity', 0),
-                    price=float(transaction.get('price', {}).get('amount', 0)),
-                    listing_id=transaction.get('listing_id')
+        try:
+            response = self.session.get(receipts_url, headers=headers, params=params)
+
+            # Handle rate limiting with better error message
+            if response.status_code == 429:
+                logging.error(f"Etsy API rate limit hit for user {self.user_id}")
+                return {
+                    "success_code": 429,
+                    "message": "Etsy API rate limit reached. Please wait a minute before refreshing.",
+                    "orders": [],
+                    "count": 0,
+                    "total": 0
+                }
+
+            if not response.ok:
+                logging.error(f"Failed to fetch orders: {response.status_code} {response.text}")
+                return {
+                    "success_code": response.status_code,
+                    "message": f"Failed to fetch orders: {response.text}",
+                    "orders": [],
+                    "count": 0,
+                    "total": 0
+                }
+
+            receipts_data = response.json()
+            orders = []
+            for receipt in receipts_data.get('results', []):
+                items = [
+                    model.OrderItem(
+                        title=transaction.get('title', 'N/A'),
+                        quantity=transaction.get('quantity', 0),
+                        price=float(transaction.get('price', {}).get('amount', 0)),
+                        listing_id=transaction.get('listing_id')
+                    )
+                    for transaction in receipt.get('transactions', [])
+                ]
+                order = model.Order(
+                    order_id=receipt.get('receipt_id'),
+                    order_date=receipt.get('created_timestamp'),
+                    shipping_method=receipt.get('shipping_carrier', 'N/A'),
+                    shipping_cost=float(receipt.get('total_shipping_cost', {}).get('amount', 0)),
+                    customer_name=receipt.get('name', 'N/A'),
+                    items=items
                 )
-                for transaction in receipt.get('transactions', [])
-            ]
-            order = model.Order(
-                order_id=receipt.get('receipt_id'),
-                order_date=receipt.get('created_timestamp'),
-                shipping_method=receipt.get('shipping_carrier', 'N/A'),
-                shipping_cost=float(receipt.get('total_shipping_cost', {}).get('amount', 0)),
-                customer_name=receipt.get('name', 'N/A'),
-                items=items
-            )
-            orders.append(order)
-        return {"orders":  orders, "count": len(orders), "total": receipts_data.get('count', 0), "success_code": 200}
+                orders.append(order)
+
+            # Build result
+            result = {
+                "orders": orders,
+                "count": len(orders),
+                "total": receipts_data.get('count', 0),
+                "success_code": 200
+            }
+
+            # Cache the successful result
+            self._order_cache[cache_key] = {
+                'data': result,
+                'timestamp': current_time
+            }
+            logging.info(f"Cached order data for user {self.user_id}")
+
+            return result
+
+        except Exception as e:
+            logging.error(f"Exception while fetching orders: {str(e)}")
+            return {
+                "success_code": 500,
+                "message": f"Unexpected error: {str(e)}",
+                "orders": [],
+                "count": 0,
+                "total": 0
+            }
 
     def get_shop_listings(self, state: str = "active", limit: int = 100, offset: int = 0, include_images: bool = True) -> dict:
         """

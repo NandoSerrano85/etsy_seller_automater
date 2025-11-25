@@ -58,35 +58,56 @@ const ShopifyBulkProductCreator = () => {
   const loadShopifyMetadata = async () => {
     setLoadingMetadata(true);
     try {
-      // Fetch product types, vendors, and theme templates in parallel
-      const [typesRes, vendorsRes, templatesRes] = await Promise.all([
-        fetch(`${process.env.REACT_APP_API_URL}/api/shopify/metadata/product-types?store_id=${store.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${process.env.REACT_APP_API_URL}/api/shopify/metadata/vendors?store_id=${store.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${process.env.REACT_APP_API_URL}/api/shopify/metadata/theme-templates?store_id=${store.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-
-      if (typesRes.ok) {
-        const data = await typesRes.json();
-        setProductTypes(data.product_types || []);
+      // Fetch product types with error handling
+      try {
+        const typesRes = await fetch(
+          `${process.env.REACT_APP_API_URL}/api/shopify/metadata/product-types?store_id=${store.id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (typesRes.ok) {
+          const data = await typesRes.json();
+          setProductTypes(data.product_types || []);
+        }
+      } catch (error) {
+        console.warn('Failed to load product types:', error);
       }
 
-      if (vendorsRes.ok) {
-        const data = await vendorsRes.json();
-        setVendors(data.vendors || []);
+      // Fetch vendors with error handling
+      try {
+        const vendorsRes = await fetch(
+          `${process.env.REACT_APP_API_URL}/api/shopify/metadata/vendors?store_id=${store.id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (vendorsRes.ok) {
+          const data = await vendorsRes.json();
+          setVendors(data.vendors || []);
+        }
+      } catch (error) {
+        console.warn('Failed to load vendors:', error);
       }
 
-      if (templatesRes.ok) {
-        const data = await templatesRes.json();
-        setThemeTemplates(data.templates || []);
+      // Fetch theme templates with error handling
+      try {
+        const templatesRes = await fetch(
+          `${process.env.REACT_APP_API_URL}/api/shopify/metadata/theme-templates?store_id=${store.id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (templatesRes.ok) {
+          const data = await templatesRes.json();
+          setThemeTemplates(data.templates || []);
+        }
+      } catch (error) {
+        console.warn('Failed to load theme templates:', error);
       }
     } catch (error) {
       console.error('Error loading Shopify metadata:', error);
+      // Metadata loading failed, but form will still work with text inputs
     } finally {
       setLoadingMetadata(false);
     }
