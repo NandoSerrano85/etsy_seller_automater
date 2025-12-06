@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-const DEFAULT_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-const ANALYTICS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for analytics
-const DESIGNS_CACHE_DURATION = 15 * 60 * 1000; // 15 minutes for designs
+// OPTIMIZED: Extended cache durations to reduce backend API calls
+// Previous values: DEFAULT: 5min, ANALYTICS: 10min, DESIGNS: 15min
+const DEFAULT_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes (up from 5)
+const ANALYTICS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes (up from 10) - matches backend 6hr cache
+const DESIGNS_CACHE_DURATION = 60 * 60 * 1000; // 60 minutes (up from 15)
 
 const useDataStore = create(
   persist(

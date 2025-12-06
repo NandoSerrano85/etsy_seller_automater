@@ -8,7 +8,9 @@ from server.src.utils.nas_storage import nas_storage
 class EtsyAPI:
     # Class-level cache for order data {cache_key: {'data': ..., 'timestamp': ...}}
     _order_cache = {}
-    _cache_ttl = 60  # Cache time-to-live in seconds (1 minute)
+    _cache_ttl = 300  # Cache time-to-live in seconds (5 minutes)
+    # Increased from 60 seconds to 300 seconds (5 minutes) for better performance
+    # Orders don't change frequently enough to warrant 1-minute cache expiry
 
     def __init__(self, user_id=None, db=None):
         """
