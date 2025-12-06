@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 
@@ -19,12 +19,14 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [orderFilter, setOrderFilter] = useState('active'); // 'active', 'shipped', 'all'
   const [filteredOrders, setFilteredOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [isFilterActive, setIsFilterActive] = useState(true); // Track if filter is being used
   const api = useApi();
 
   // Fetch orders based on filter
   const fetchOrdersByFilter = async filter => {
     setLoadingOrders(true);
     setPrintError(null);
+    setIsFilterActive(true); // Mark that we're using filtered data
     try {
       let params = {};
 
@@ -57,6 +59,20 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const handleFilterChange = filter => {
     setOrderFilter(filter);
     fetchOrdersByFilter(filter);
+  };
+
+  // Fetch initial orders when component mounts or when connected status changes
+  useEffect(() => {
+    if (isConnected && activeSubTab !== 'print') {
+      fetchOrdersByFilter(orderFilter);
+    }
+  }, [isConnected, activeSubTab]); // Only re-run if connection status or tab changes
+
+  // Get the orders to display (filtered if filter is active, otherwise from props)
+  const getDisplayOrders = () => {
+    // If we're using the filter (which is always true after the fix), use filteredOrders
+    // Otherwise fall back to orders prop (legacy support)
+    return isFilterActive ? filteredOrders : orders || [];
   };
 
   // Load all orders for selection
@@ -194,7 +210,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
 
   // Add send to print function
   const handleSendToPrint = async () => {
-    if (orders.length === 0) {
+    if (getDisplayOrders().length === 0) {
       setPrintError('Please select at least one order to print');
       return;
     }
@@ -223,9 +239,9 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
 
   // Add packing slip generation function for all active orders
   const handleGeneratePackingSlips = async () => {
-    console.log('🔵 Packing slip button clicked!', { ordersLength: orders.length });
+    console.log('🔵 Packing slip button clicked!', { ordersLength: getDisplayOrders().length });
 
-    if (orders.length === 0) {
+    if (getDisplayOrders().length === 0) {
       setPrintError('No orders available to generate packing slips');
       return;
     }
@@ -265,7 +281,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       const url = window.URL.createObjectURL(blob);
       window.open(url, '_blank');
 
-      setPrintMsg(`Successfully generated packing slips for ${orders.length} orders`);
+      setPrintMsg(`Successfully generated packing slips for ${getDisplayOrders().length} orders`);
     } catch (error) {
       setPrintError(error.message || 'Error generating packing slips');
       console.error('Packing slip error:', error);
@@ -445,11 +461,11 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                   </button>
                   <button
                     onClick={handleGeneratePackingSlips}
-                    disabled={orders.length === 0 || packingSlipLoading}
+                    disabled={getDisplayOrders().length === 0 || packingSlipLoading}
                     className={`
                       px-4 py-2 rounded-lg font-medium flex items-center space-x-2
                       ${
-                        orders.length === 0 || packingSlipLoading
+                        getDisplayOrders().length === 0 || packingSlipLoading
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                           : 'bg-blue-500 text-white hover:bg-blue-600'
                       }
@@ -460,17 +476,17 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                     ) : (
                       <>
                         <span>📄</span>
-                        <span>Packing Slips ({orders.length})</span>
+                        <span>Packing Slips ({getDisplayOrders().length})</span>
                       </>
                     )}
                   </button>
                   <button
                     onClick={handleSendToPrint}
-                    disabled={orders.length === 0 || printLoading}
+                    disabled={getDisplayOrders().length === 0 || printLoading}
                     className={`
                       px-4 py-2 rounded-lg font-medium flex items-center space-x-2
                       ${
-                        orders.length === 0 || printLoading
+                        getDisplayOrders().length === 0 || printLoading
                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                           : 'bg-lavender-500 text-white hover:bg-lavender-600'
                       }
@@ -481,7 +497,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                     ) : (
                       <>
                         <span>🖨️</span>
-                        <span>Send to Print ({orders.length})</span>
+                        <span>Send to Print ({getDisplayOrders().length})</span>
                       </>
                     )}
                   </button>
@@ -543,7 +559,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
             {showSelectionMode && allOrders.length === 0 && (
               <div className="text-center py-8 text-gray-500">No orders available</div>
             )}
-            {!showSelectionMode && orders.length === 0 && (
+            {!showSelectionMode && getDisplayOrders().length === 0 && (
               <div className="text-center py-8 text-gray-500">No orders selected for print</div>
             )}
           </div>
@@ -602,9 +618,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       <div className="card p-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
           <div className="text-center">
-            <h3 className="text-2xl font-bold text-gray-900">
-              {(filteredOrders.length > 0 ? filteredOrders : orders || []).length}
-            </h3>
+            <h3 className="text-2xl font-bold text-gray-900">{getDisplayOrders().length}</h3>
             <p className="text-gray-600">
               {orderFilter === 'active' && 'Active Orders'}
               {orderFilter === 'shipped' && 'Shipped Orders'}
@@ -613,7 +627,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
           </div>
           <div className="text-center">
             <h3 className="text-2xl font-bold text-gray-900">
-              {(filteredOrders.length > 0 ? filteredOrders : orders || []).reduce(
+              {getDisplayOrders().reduce(
                 (sum, order) => sum + (order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0),
                 0
               )}
@@ -691,7 +705,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {(filteredOrders.length > 0 ? filteredOrders : orders || []).map(order => (
+                {getDisplayOrders().map(order => (
                   <React.Fragment key={order.order_id}>
                     <tr className="hover:bg-gray-50">
                       <td className="px-2 py-4 text-center">
@@ -742,7 +756,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                 ))}
               </tbody>
             </table>
-            {(filteredOrders.length > 0 ? filteredOrders : orders || []).length === 0 && (
+            {getDisplayOrders().length === 0 && (
               <div className="text-center py-8 text-gray-500">
                 {orderFilter === 'active' && 'No active orders found'}
                 {orderFilter === 'shipped' && 'No shipped orders found'}
