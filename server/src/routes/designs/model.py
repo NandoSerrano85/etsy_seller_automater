@@ -10,7 +10,7 @@ class DesignImageBase(BaseModel):
     canvas_config_id: Optional[UUID] = None
     size_config_id: Optional[UUID] = None
     is_active: bool = True
-    is_digital: bool = False
+    is_digital: Optional[bool] = False  # Allow None for backwards compatibility
 
 class DesignImageCreate(BaseModel):
     product_template_id: UUID
