@@ -1373,8 +1373,27 @@ async def upload_mockup_files_to_etsy(
         is_digital = len(digital_image_paths) > 0
         current_id_number = int(current_id_number)
 
-        logging.info(f"DEBUG API: finished processing uploaded files")
-        logging.info(f"DEBUG API: Starting Etsy API calls")
+        # Check if mockup generation failed for some designs
+        designs_count = len(designs)
+        mockups_generated = len(mockup_data)
+        if mockups_generated < designs_count:
+            failed_count = designs_count - mockups_generated
+            logging.error(f"⚠️ MOCKUP GENERATION FAILURE: {failed_count}/{designs_count} designs failed to generate mockups and will NOT be uploaded to Etsy")
+            # Log which designs failed
+            design_filenames = {d.filename for d in designs}
+            successful_filenames = set(mockup_data.keys())
+            failed_filenames = design_filenames - successful_filenames
+            logging.error(f"⚠️ Failed designs: {failed_filenames}")
+
+        logging.info(f"DEBUG API: finished processing uploaded files - {mockups_generated}/{designs_count} mockups generated successfully")
+
+        # If NO mockups were generated, raise an error
+        if mockups_generated == 0:
+            error_msg = f"Failed to generate mockups for all {designs_count} designs. No Etsy listings will be created."
+            logging.error(error_msg)
+            raise HTTPException(status_code=500, detail=error_msg)
+
+        logging.info(f"DEBUG API: Starting Etsy API calls for {mockups_generated} listings")
         etsy_api = EtsyAPI(user_id, db)
         
         # Parse materials and tags from string to list if needed
@@ -1486,11 +1505,32 @@ async def upload_mockup_files_to_etsy(
         db.commit()
         db.refresh(mockup)
 
-        logging.info(f"DEBUG API: Returning success response")
+        # Build response message with details about failures
+        mockup_gen_failures = designs_count - mockups_generated
+        etsy_upload_failures = failed_listings
+
+        if mockup_gen_failures > 0 or etsy_upload_failures > 0:
+            message_parts = []
+
+            if successful_listings > 0:
+                message_parts.append(f"✅ Successfully uploaded {successful_listings} listing(s) to Etsy")
+
+            if mockup_gen_failures > 0:
+                message_parts.append(f"⚠️ {mockup_gen_failures} design(s) failed mockup generation")
+
+            if etsy_upload_failures > 0:
+                message_parts.append(f"⚠️ {etsy_upload_failures} listing(s) failed to upload to Etsy")
+
+            message = ". ".join(message_parts) + "."
+            logging.warning(f"Partial success: {message}")
+        else:
+            message = f"✅ Successfully processed {successful_listings} mockup file(s) and created Etsy listings."
+
+        logging.info(f"DEBUG API: Returning response: {message}")
         return model.UploadToEtsyResponse(
             success=True,
             success_code=200,
-            message="Successfully processed mockup files and created Etsy listings.",
+            message=message,
         )
         
     except Exception as e:

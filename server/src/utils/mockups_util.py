@@ -835,9 +835,13 @@ def create_mockups_for_etsy(
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.error(f"❌ Failed to process mockup for {filename}: {e}")
+                # Log stack trace for debugging
+                import traceback
+                logger.error(f"Stack trace: {traceback.format_exc()}")
                 return (filename, [], design_id, False)
 
         # Process all designs in parallel
+        failed_designs = []
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(process_single_design, n, filename): filename
                       for n, filename in enumerate(design_filenames)}
@@ -847,8 +851,15 @@ def create_mockups_for_etsy(
                 if success:
                     mockup_return[filename] = paths
                     current_id_number = design_id
+                    logger.info(f"✅ Successfully generated mockups for {filename}")
+                else:
+                    failed_designs.append(filename)
+                    logger.error(f"❌ Failed to generate mockups for {filename} - will not be uploaded to Etsy")
 
-        logger.info(f"✅ Completed parallel mockup generation")
+        if failed_designs:
+            logger.error(f"⚠️ WARNING: {len(failed_designs)}/{len(design_filenames)} designs failed mockup generation and will NOT be uploaded to Etsy: {failed_designs}")
+
+        logger.info(f"✅ Completed parallel mockup generation: {len(mockup_return)}/{len(design_filenames)} successful")
 
     else:
         # Use sequential processing for small batches (≤10 designs)
