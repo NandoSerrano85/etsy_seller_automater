@@ -703,10 +703,14 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 logging.error(f"❌ Error checking database duplicates: {e}")
                 return False
 
-        def check_hamming_distance_in_database(phash_hex: str, platform: str = 'etsy', threshold: int = 5) -> tuple[bool, Optional[str]]:
+        def check_hamming_distance_in_database(phash_hex: str, platform: str = 'etsy', threshold: int = None) -> tuple[bool, Optional[str]]:
             """Check Hamming distance against recent database entries (last 1000 images only)"""
             from sqlalchemy import text
             import time
+
+            # Use configurable threshold, default to 15 (was 5, too strict)
+            if threshold is None:
+                threshold = int(os.getenv('DUPLICATE_HAMMING_THRESHOLD', '15'))
 
             check_start = time.time()
             try:
@@ -723,7 +727,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 """), {"user_id": str(user_id), "platform": platform})
 
                 rows = result.fetchall()
-                logging.info(f"🔍 Checking Hamming distance against {len(rows)} recent {platform} images")
+                logging.info(f"🔍 Checking Hamming distance (threshold={threshold}) against {len(rows)} recent {platform} images")
 
                 # Convert uploaded hash to ImageHash object
                 try:
@@ -957,13 +961,14 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             duplicate_source = None
 
             # 1. Check against other images in this batch first (fastest)
+            batch_threshold = int(os.getenv('DUPLICATE_HAMMING_THRESHOLD', '15'))
             for other_phash, other_filename in checked_hashes.items():
                 try:
                     hash_obj = imagehash.hex_to_hash(phash)
                     other_hash_obj = imagehash.hex_to_hash(other_phash)
                     distance = hash_obj - other_hash_obj
-                    if distance <= 5:
-                        logging.warning(f"⚠️ Duplicate within batch: {file.filename} matches {other_filename} (distance: {distance})")
+                    if distance <= batch_threshold:
+                        logging.warning(f"⚠️ Duplicate within batch: {file.filename} matches {other_filename} (distance: {distance}, threshold: {batch_threshold})")
                         duplicate_count += 1
                         is_duplicate = True
                         duplicate_source = f"batch file {other_filename}"
@@ -981,7 +986,9 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
             # 3. Check Hamming distance against recent 1000 images
             if not is_duplicate:
-                is_similar, similar_filename = check_hamming_distance_in_database(phash, platform=design_data.platform, threshold=5)
+                # Use configurable threshold (default 15, was 5 which was too strict)
+                hamming_threshold = int(os.getenv('DUPLICATE_HAMMING_THRESHOLD', '15'))
+                is_similar, similar_filename = check_hamming_distance_in_database(phash, platform=design_data.platform, threshold=hamming_threshold)
                 if is_similar:
                     logging.warning(f"⚠️ Duplicate in database (similar): {file.filename} matches {similar_filename}")
                     duplicate_count += 1
