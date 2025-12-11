@@ -153,31 +153,29 @@ def get_or_create_template_id(connection, template_name: str, user_id: str) -> O
     if multi_tenant and org_id:
         insert_query = text("""
             INSERT INTO etsy_product_templates
-            (id, user_id, org_id, name, is_active, created_at, updated_at)
+            (id, user_id, org_id, name, created_at, updated_at)
             VALUES
-            (:id, :user_id, :org_id, :name, :is_active, :created_at, :updated_at)
+            (:id, :user_id, :org_id, :name, :created_at, :updated_at)
         """)
         connection.execute(insert_query, {
             "id": template_id,
             "user_id": user_id,
             "org_id": org_id,
             "name": template_name,
-            "is_active": True,
             "created_at": now,
             "updated_at": now
         })
     else:
         insert_query = text("""
             INSERT INTO etsy_product_templates
-            (id, user_id, name, is_active, created_at, updated_at)
+            (id, user_id, name, created_at, updated_at)
             VALUES
-            (:id, :user_id, :name, :is_active, :created_at, :updated_at)
+            (:id, :user_id, :name, :created_at, :updated_at)
         """)
         connection.execute(insert_query, {
             "id": template_id,
             "user_id": user_id,
             "name": template_name,
-            "is_active": True,
             "created_at": now,
             "updated_at": now
         })
