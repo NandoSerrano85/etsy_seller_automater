@@ -685,6 +685,10 @@ def create_mockups_for_etsy(
     design_file_paths = set()
     design_filenames = list()
     design_image_path_list = list()
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 DEBUG create_mockups_for_etsy: Processing {len(designs)} design objects")
+
     for design_image in designs:
         if hasattr(design_image, 'file_path') and design_image.file_path is not None:
             split_path = design_image.file_path.split('/')
@@ -693,8 +697,13 @@ def create_mockups_for_etsy(
             design_file_paths.add(''.join(split_path))
         if hasattr(design_image, 'filename') and design_image.filename is not None:
             design_filenames.append(design_image.filename)
+            logger.info(f"🔍 DEBUG: Added filename to list: {design_image.filename}")
         if hasattr(design_image, 'is_digital') and design_image.is_digital is True:
             design_image_path_list.append(design_image.file_path)
+
+    logger.info(f"🔍 DEBUG: Total design_filenames collected: {len(design_filenames)}")
+    logger.info(f"🔍 DEBUG: design_filenames list: {design_filenames}")
+
     if len(design_file_paths) > 1:
         raise ValueError(f"More than one design file path {design_file_paths}")
     design_file_paths = str(design_file_paths.pop())
@@ -860,6 +869,7 @@ def create_mockups_for_etsy(
             logger.error(f"⚠️ WARNING: {len(failed_designs)}/{len(design_filenames)} designs failed mockup generation and will NOT be uploaded to Etsy: {failed_designs}")
 
         logger.info(f"✅ Completed parallel mockup generation: {len(mockup_return)}/{len(design_filenames)} successful")
+        logger.info(f"🔍 DEBUG: mockup_return dict has {len(mockup_return)} entries: {list(mockup_return.keys())}")
 
     else:
         # Use sequential processing for small batches (≤10 designs)
@@ -1002,5 +1012,11 @@ def create_mockups_for_etsy(
                 logger = logging.getLogger(__name__)
                 logger.info(f"📁 Mockup saved locally: {local_mockup_path}")
         mockup_return[filename] = generated_mockup_path_list
+
+    # DEBUG: Final summary
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 DEBUG: Returning from create_mockups_for_etsy")
+    logger.info(f"🔍 DEBUG: mockup_return has {len(mockup_return)} entries: {list(mockup_return.keys())}")
+    logger.info(f"🔍 DEBUG: current_id_number = {current_id_number}")
 
     return current_id_number, mockup_return, design_image_path_list

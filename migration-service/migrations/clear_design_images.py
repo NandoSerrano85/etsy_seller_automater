@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def get_database_url():
     """Get database URL from environment."""
-    database_url = os.getenv('DATABASE_URL')
+    database_url = "shortline.proxy.rlwy.net:57574"
     if not database_url:
         raise ValueError("DATABASE_URL environment variable not set")
 

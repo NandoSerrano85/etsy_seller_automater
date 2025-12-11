@@ -1306,6 +1306,13 @@ async def upload_mockup_files_to_etsy(
             .all()
         )
 
+        # DEBUG: Log design details
+        logging.info(f"🔍 DEBUG: Received {len(product_data.design_ids)} design IDs from frontend")
+        logging.info(f"🔍 DEBUG: Design IDs: {product_data.design_ids}")
+        logging.info(f"🔍 DEBUG: Queried {len(designs)} designs from database")
+        for idx, design in enumerate(designs):
+            logging.info(f"🔍 DEBUG: Design {idx+1}: id={design.id}, filename={design.filename}, file_path={design.file_path}")
+
         shop_name = user.shop_name
 
         # Duplicate detection is now handled at the design side, so we use all designs
@@ -1373,6 +1380,12 @@ async def upload_mockup_files_to_etsy(
         is_digital = len(digital_image_paths) > 0
         current_id_number = int(current_id_number)
 
+        # DEBUG: Log mockup_data details
+        logging.info(f"🔍 DEBUG: mockup_data keys (filenames): {list(mockup_data.keys())}")
+        logging.info(f"🔍 DEBUG: mockup_data has {len(mockup_data)} entries")
+        for filename, mockup_paths in mockup_data.items():
+            logging.info(f"🔍 DEBUG: Mockup for '{filename}': {len(mockup_paths)} mockup file(s)")
+
         # Check if mockup generation failed for some designs
         designs_count = len(designs)
         mockups_generated = len(mockup_data)
@@ -1418,6 +1431,7 @@ async def upload_mockup_files_to_etsy(
         # Limit to 8 concurrent Etsy API calls to avoid rate limiting
         max_workers = min(8, len(mockup_data))
         logging.info(f"DEBUG API: Creating {len(mockup_data)} Etsy listings in parallel with {max_workers} workers")
+        logging.info(f"🔍 DEBUG: mockup_data.items() to be processed: {[(design, len(mockups)) for design, mockups in mockup_data.items()]}")
 
         successful_listings = 0
         failed_listings = 0
