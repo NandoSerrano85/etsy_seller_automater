@@ -34,6 +34,7 @@ class DesignImages(Base):
     dhash = Column(String(64), nullable=True)  # Perceptual hash for duplicate detection
     whash = Column(String(64), nullable=True)  # Perceptual hash for duplicate detection
     canvas_config_id = Column(UUID(as_uuid=True), ForeignKey('canvas_configs.id'), nullable=True)
+    platform = Column(String(20), default='etsy', nullable=False)  # 'etsy' or 'shopify'
     is_active = Column(Boolean, default=True)
     is_digital = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

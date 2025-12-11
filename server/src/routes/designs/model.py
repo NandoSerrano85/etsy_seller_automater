@@ -9,6 +9,7 @@ class DesignImageBase(BaseModel):
     description: Optional[str] = None
     canvas_config_id: Optional[UUID] = None
     size_config_id: Optional[UUID] = None
+    platform: str = 'etsy'  # 'etsy' or 'shopify'
     is_active: bool = True
     is_digital: Optional[bool] = False  # Allow None for backwards compatibility
 
@@ -19,6 +20,7 @@ class DesignImageCreate(BaseModel):
     description: Optional[str] = None
     canvas_config_id: Optional[UUID] = None
     size_config_id: Optional[UUID] = None
+    platform: str = 'etsy'  # 'etsy' or 'shopify' - will be auto-detected from template
     is_active: bool = True
     is_digital: bool = False
     filename: str = ''
@@ -30,6 +32,7 @@ class DesignImageUpdate(BaseModel):
     description: Optional[str] = None
     canvas_config_id: Optional[UUID] = None
     size_config_id: Optional[UUID] = None
+    platform: Optional[str] = None  # 'etsy' or 'shopify'
     is_active: Optional[bool] = None
     is_digital: Optional[bool] = None
 

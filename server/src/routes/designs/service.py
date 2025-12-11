@@ -1,7 +1,7 @@
 from server.src.entities.designs import DesignImages
 from server.src.entities.canvas_config import CanvasConfig
 from server.src.entities.size_config import SizeConfig
-from server.src.entities.template import EtsyProductTemplate
+from server.src.entities.template import EtsyProductTemplate, ShopifyProductTemplate
 from server.src.entities.user import User
 from server.src.message import (
     DesignNotFoundError,
@@ -344,11 +344,49 @@ def _validate_size_config(db: Session, product_template_id: UUID, size_config_id
     return size_config is not None
 
 
+def _detect_platform_from_template(db: Session, template_id: UUID) -> str:
+    """
+    Detect whether a template belongs to Etsy or Shopify platform
+
+    Args:
+        db: Database session
+        template_id: UUID of the template
+
+    Returns:
+        'etsy' or 'shopify' based on which table contains the template
+    """
+    # Check if template exists in Etsy templates
+    etsy_template = db.query(EtsyProductTemplate).filter(
+        EtsyProductTemplate.id == template_id
+    ).first()
+
+    if etsy_template:
+        return 'etsy'
+
+    # Check if template exists in Shopify templates
+    shopify_template = db.query(ShopifyProductTemplate).filter(
+        ShopifyProductTemplate.id == template_id
+    ).first()
+
+    if shopify_template:
+        return 'shopify'
+
+    # Default to 'etsy' for backward compatibility if template not found
+    logging.warning(f"Template {template_id} not found in either Etsy or Shopify tables, defaulting to 'etsy'")
+    return 'etsy'
+
+
 async def create_design(db: Session, user_id: UUID, design_data: model.DesignImageCreate, files: List[UploadFile], progress_callback=None) -> model.DesignImageListResponse:
     """
     Enhanced create_design function that integrates the new comprehensive workflow
     while maintaining backward compatibility with existing frontend
     """
+    # Auto-detect platform from template if not already set
+    if design_data.platform == 'etsy' and design_data.product_template_id:
+        detected_platform = _detect_platform_from_template(db, design_data.product_template_id)
+        design_data.platform = detected_platform
+        logging.info(f"🔍 Auto-detected platform: {detected_platform} for template {design_data.product_template_id}")
+
     # Check if we should use the new comprehensive workflow
     use_new_workflow = os.getenv('USE_COMPREHENSIVE_WORKFLOW', 'true').lower() == 'true'
 
@@ -639,7 +677,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 logging.error(f"❌ Error uploading physical image: {str(e)}")
                 return None, None, None
 
-        def check_duplicate_in_database(phash_hex: str) -> bool:
+        def check_duplicate_in_database(phash_hex: str, platform: str = 'etsy') -> bool:
             """Check if image already exists in database using indexed queries (optimized for ≤2 images)"""
             from sqlalchemy import text
             import time
@@ -647,23 +685,25 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             check_start = time.time()
             try:
                 # Use indexed query for exact match - O(log n) instead of O(n)
+                # NOW FILTERS BY PLATFORM to keep Shopify and Etsy designs separate
                 result = db.execute(text("""
                     SELECT 1 FROM design_images
                     WHERE user_id = :user_id
+                    AND platform = :platform
                     AND is_active = true
                     AND phash = :phash
                     LIMIT 1
-                """), {"user_id": str(user_id), "phash": phash_hex})
+                """), {"user_id": str(user_id), "platform": platform, "phash": phash_hex})
 
                 is_duplicate = result.fetchone() is not None
-                logging.info(f"🔍 Database duplicate check completed in {time.time() - check_start:.3f}s: {'DUPLICATE' if is_duplicate else 'UNIQUE'}")
+                logging.info(f"🔍 Database duplicate check ({platform}) completed in {time.time() - check_start:.3f}s: {'DUPLICATE' if is_duplicate else 'UNIQUE'}")
                 return is_duplicate
 
             except Exception as e:
                 logging.error(f"❌ Error checking database duplicates: {e}")
                 return False
 
-        def check_hamming_distance_in_database(phash_hex: str, threshold: int = 5) -> tuple[bool, Optional[str]]:
+        def check_hamming_distance_in_database(phash_hex: str, platform: str = 'etsy', threshold: int = 5) -> tuple[bool, Optional[str]]:
             """Check Hamming distance against recent database entries (last 1000 images only)"""
             from sqlalchemy import text
             import time
@@ -671,17 +711,19 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             check_start = time.time()
             try:
                 # Query only last 1000 images for Hamming distance check
+                # NOW FILTERS BY PLATFORM to keep Shopify and Etsy designs separate
                 result = db.execute(text("""
                     SELECT phash, filename FROM design_images
                     WHERE user_id = :user_id
+                    AND platform = :platform
                     AND is_active = true
                     AND phash IS NOT NULL
                     ORDER BY created_at DESC
                     LIMIT 1000
-                """), {"user_id": str(user_id)})
+                """), {"user_id": str(user_id), "platform": platform})
 
                 rows = result.fetchall()
-                logging.info(f"🔍 Checking Hamming distance against {len(rows)} recent images")
+                logging.info(f"🔍 Checking Hamming distance against {len(rows)} recent {platform} images")
 
                 # Convert uploaded hash to ImageHash object
                 try:
@@ -931,7 +973,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
             # 2. Check exact match in database using phash (O(log n) indexed query)
             if not is_duplicate:
-                if check_duplicate_in_database(phash):
+                if check_duplicate_in_database(phash, platform=design_data.platform):
                     logging.warning(f"⚠️ Duplicate in database (exact match): {file.filename}")
                     duplicate_count += 1
                     is_duplicate = True
@@ -939,7 +981,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
             # 3. Check Hamming distance against recent 1000 images
             if not is_duplicate:
-                is_similar, similar_filename = check_hamming_distance_in_database(phash, threshold=5)
+                is_similar, similar_filename = check_hamming_distance_in_database(phash, platform=design_data.platform, threshold=5)
                 if is_similar:
                     logging.warning(f"⚠️ Duplicate in database (similar): {file.filename} matches {similar_filename}")
                     duplicate_count += 1
@@ -1008,6 +1050,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 dhash=dhash,
                 whash=whash,
                 canvas_config_id=design_data.canvas_config_id,
+                platform=design_data.platform,  # Set platform (etsy or shopify)
                 is_active=design_data.is_active
             )
             design_results.append(design)
