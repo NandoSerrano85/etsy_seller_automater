@@ -689,12 +689,35 @@ def create_mockups_for_etsy(
     logger = logging.getLogger(__name__)
     logger.info(f"🔍 DEBUG create_mockups_for_etsy: Processing {len(designs)} design objects")
 
+    # Extract shop name from root_path for normalizing paths
+    shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+    shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+    logger.info(f"🔍 DEBUG: Extracted shop_name: {shop_name} from root_path: {root_path}")
+
     for design_image in designs:
         if hasattr(design_image, 'file_path') and design_image.file_path is not None:
-            split_path = design_image.file_path.split('/')
+            file_path = design_image.file_path
+            logger.info(f"🔍 DEBUG: Processing file_path: {file_path}")
+
+            # Normalize path: handle both full NAS paths and relative paths
+            if file_path.startswith('/share/Graphics/'):
+                # Full NAS path: /share/Graphics/ShopName/Template/filename.png
+                normalized_path = file_path
+            elif file_path.startswith(f'{shop_name}/'):
+                # Path with shop name: ShopName/Template/filename.png
+                normalized_path = f"/share/Graphics/{file_path}"
+            else:
+                # Relative path: Template/filename.png
+                normalized_path = f"/share/Graphics/{shop_name}/{file_path}"
+
+            # Extract directory (remove filename)
+            split_path = normalized_path.split('/')
             split_path.pop()  # Remove filename
-            split_path = ['/'.join(split_path)]+['/']
-            design_file_paths.add(''.join(split_path))
+            dir_path = '/'.join(split_path) + '/'
+
+            logger.info(f"🔍 DEBUG: Normalized to: {dir_path}")
+            design_file_paths.add(dir_path)
+
         if hasattr(design_image, 'filename') and design_image.filename is not None:
             design_filenames.append(design_image.filename)
             logger.info(f"🔍 DEBUG: Added filename to list: {design_image.filename}")
@@ -703,9 +726,12 @@ def create_mockups_for_etsy(
 
     logger.info(f"🔍 DEBUG: Total design_filenames collected: {len(design_filenames)}")
     logger.info(f"🔍 DEBUG: design_filenames list: {design_filenames}")
+    logger.info(f"🔍 DEBUG: Unique design_file_paths: {design_file_paths}")
 
     if len(design_file_paths) > 1:
+        logger.error(f"❌ ERROR: Found {len(design_file_paths)} different design paths: {design_file_paths}")
         raise ValueError(f"More than one design file path {design_file_paths}")
+
     design_file_paths = str(design_file_paths.pop())
 
     mockup_processor = MockupImageProcessor(mockup_file_paths, design_file_paths)
