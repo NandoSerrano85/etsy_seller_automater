@@ -426,11 +426,16 @@ def upgrade(conn):
                 continue
 
             # Prepare design data
+            # Build NAS-style file path to match current upload workflow
+            # Format: /share/Graphics/user_{user_id[:8]}/{template_name}/{filename}
+            user_shop_name = f"user_{user_id[:8]}"
+            nas_file_path = f"/share/Graphics/{user_shop_name}/{template_name}/{file_info['filename']}"
+
             design_data = {
                 'id': str(uuid.uuid4()),
                 'user_id': user_id,
                 'filename': file_info['filename'],
-                'file_path': file_info['file_path'],
+                'file_path': nas_file_path,  # Use NAS-style path instead of local path
                 'phash': hashes['phash'],
                 'ahash': hashes['ahash'],
                 'dhash': hashes['dhash'],
