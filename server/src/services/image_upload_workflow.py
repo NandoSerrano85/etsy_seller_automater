@@ -1300,8 +1300,9 @@ class ImageUploadWorkflow:
             except Exception as e:
                 logging.info(f"Could not get shop name from database: {e}")
 
-            # Fallback to user ID-based shop name
+            # Fallback to user ID-based shop name only if shop_name not found in database
             self._shop_name_cache = f"user_{self.user_id[:8]}"
+            logging.warning(f"Using fallback shop name: {self._shop_name_cache}")
             return self._shop_name_cache
 
     def _get_template_name(self, template_id: str) -> str:

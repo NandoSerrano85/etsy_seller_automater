@@ -464,10 +464,8 @@ def collect_all_files(connection) -> List[FileInfo]:
                     if file_ext not in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']:
                         continue
 
-                    # Build complete file path using user-specific format to match current upload workflow
-                    # Format: /share/Graphics/user_{user_id[:8]}/{template_name}/{filename}
-                    user_shop_name = f"user_{user_id_str[:8]}"
-                    file_path = f"{nas_storage.base_path}/{user_shop_name}/{template_name}/{filename}"
+                    # Build complete file path
+                    file_path = f"{nas_storage.base_path}/{shop_name}/{template_name}/{filename}"
 
                     all_files.append(FileInfo(
                         user_id=user_id_str,
