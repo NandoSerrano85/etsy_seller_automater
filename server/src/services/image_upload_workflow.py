@@ -1276,7 +1276,7 @@ class ImageUploadWorkflow:
             return False
 
     def _get_user_shop_name(self) -> str:
-        """Get the shop name for the current user (cached)"""
+        """Get the Etsy shop name for the current user (cached)"""
         # Check cache first
         if self._shop_name_cache:
             return self._shop_name_cache
@@ -1288,21 +1288,27 @@ class ImageUploadWorkflow:
 
             try:
                 if DEPENDENCIES_AVAILABLE:
+                    # Query etsy_stores table for the Etsy shop name (not users.shop_name which may be Shopify)
                     result = self.db_session.execute(text("""
-                        SELECT shop_name FROM users WHERE id = :user_id
+                        SELECT shop_name FROM etsy_stores
+                        WHERE user_id = :user_id
+                        AND is_active = true
+                        ORDER BY created_at DESC
+                        LIMIT 1
                     """), {"user_id": self.user_id})
 
                     row = result.fetchone()
                     if row and row[0]:
                         self._shop_name_cache = row[0]
+                        logging.info(f"Using Etsy shop name from etsy_stores: {self._shop_name_cache}")
                         return self._shop_name_cache
 
             except Exception as e:
-                logging.info(f"Could not get shop name from database: {e}")
+                logging.info(f"Could not get Etsy shop name from database: {e}")
 
-            # Fallback to user ID-based shop name only if shop_name not found in database
+            # Fallback to user ID-based shop name only if Etsy shop not found
             self._shop_name_cache = f"user_{self.user_id[:8]}"
-            logging.warning(f"Using fallback shop name: {self._shop_name_cache}")
+            logging.warning(f"Using fallback shop name (Etsy shop not found): {self._shop_name_cache}")
             return self._shop_name_cache
 
     def _get_template_name(self, template_id: str) -> str:

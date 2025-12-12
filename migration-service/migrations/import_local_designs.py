@@ -253,17 +253,18 @@ def get_user_template_mapping(conn):
     try:
         from sqlalchemy import text
 
-        # Get users
-        result = conn.execute(text("SELECT id, shop_name FROM users WHERE shop_name IS NOT NULL"))
+        # Get users from etsy_stores (not users.shop_name which may be Shopify)
+        result = conn.execute(text("SELECT user_id, shop_name FROM etsy_stores WHERE is_active = true"))
         for row in result.fetchall():
             user_mapping[row[1]] = str(row[0])  # shop_name -> user_id
 
         # Get templates
+        # Query etsy_stores for Etsy shop names (not users.shop_name which may be Shopify)
         result = conn.execute(text("""
-            SELECT t.id, t.name, t.user_id, u.shop_name
+            SELECT t.id, t.name, t.user_id, e.shop_name
             FROM etsy_product_templates t
-            JOIN users u ON t.user_id = u.id
-            WHERE u.shop_name IS NOT NULL
+            JOIN etsy_stores e ON t.user_id = e.user_id
+            WHERE e.is_active = true
         """))
         for row in result.fetchall():
             template_id, template_name, user_id, shop_name = row

@@ -3,6 +3,7 @@ from server.src.entities.canvas_config import CanvasConfig
 from server.src.entities.size_config import SizeConfig
 from server.src.entities.template import EtsyProductTemplate, ShopifyProductTemplate
 from server.src.entities.user import User
+from server.src.entities.etsy_store import EtsyStore
 from server.src.message import (
     DesignNotFoundError,
     DesignCreateError,
@@ -35,6 +36,23 @@ from server.src.utils.cropping import crop_transparent
 from server.src.utils.resizing import resize_image_by_inches
 from server.src.utils.util import find_png_files
 from server.src.utils.railway_cache import railway_cached, cache_design_list, get_cached_design_list, invalidate_user_cache
+
+
+def get_etsy_shop_name(db: Session, user_id: UUID) -> str:
+    """Get the Etsy shop name for a user from etsy_stores table (not users.shop_name which may be Shopify)"""
+    etsy_store = db.query(EtsyStore).filter(
+        EtsyStore.user_id == user_id,
+        EtsyStore.is_active == True
+    ).order_by(EtsyStore.created_at.desc()).first()
+
+    if etsy_store and etsy_store.shop_name:
+        logging.info(f"Using Etsy shop name from etsy_stores: {etsy_store.shop_name}")
+        return etsy_store.shop_name
+
+    # Fallback to user_id if no Etsy store found
+    fallback_name = f"user_{str(user_id)[:8]}"
+    logging.warning(f"No Etsy store found for user {user_id}, using fallback: {fallback_name}")
+    return fallback_name
 
 def calculate_multiple_hashes(image_path: str = None, image=None, hash_size: int = 16) -> dict:
     """
@@ -530,12 +548,15 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             EtsyProductTemplate.user_id == user_id,
         ).first()
 
+        # Get Etsy shop name from etsy_stores table (not users.shop_name which may be Shopify)
+        etsy_shop_name = get_etsy_shop_name(db, user_id)
+
         type_pattern = r"UV\s*DTF|UV"
         local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
         if design_data.is_digital:
-            designs_path = f"{local_root_path}{user.shop_name}/Digital/{template.name}/"
+            designs_path = f"{local_root_path}{etsy_shop_name}/Digital/{template.name}/"
         else:
-            designs_path = f"{local_root_path}{user.shop_name}/{template.name}/"
+            designs_path = f"{local_root_path}{etsy_shop_name}/{template.name}/"
         os.makedirs(designs_path, exist_ok=True)
         
         async def resize_and_hash_physical(file):
@@ -657,7 +678,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 relative_path = f"{template.name}/{filename}"
                 success = nas_storage.upload_file_content(
                     file_content=image_bytes,
-                    shop_name=user.shop_name,
+                    shop_name=etsy_shop_name,
                     relative_path=relative_path
                 )
                 if success:
@@ -888,7 +909,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 relative_path = f"Digital/{template.name}/{filename}"
                 success = nas_storage.upload_file_content(
                     file_content=image_bytes,
-                    shop_name=user.shop_name,
+                    shop_name=etsy_shop_name,
                     relative_path=relative_path
                 )
                 if success:
@@ -1044,8 +1065,10 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             # Build NAS file path for storage (matching nas_storage.upload_file_content format)
             # nas_storage.base_path = "/share/Graphics"
             # upload_file_content builds: {base_path}/{shop_name}/{relative_path}
-            # So actual path is: /share/Graphics/{shop_name}/{nas_relative_path}
-            nas_file_path = f"/share/Graphics/{user.shop_name}/{nas_relative_path}"
+            # So actual path is: /share/Graphics/{etsy_shop_name}/{nas_relative_path}
+            # Get Etsy shop name for this user
+            etsy_shop_name = get_etsy_shop_name(db, user_id)
+            nas_file_path = f"/share/Graphics/{etsy_shop_name}/{nas_relative_path}"
 
             design = DesignImages(
                 user_id=user_id,
@@ -1216,7 +1239,10 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
             logging.error(f"User not found with ID: {user_id}")
             raise InvalidUserToken()
 
-        logging.info(f"Found user: {user.shop_name}")
+        # Get Etsy shop name from etsy_stores table
+        etsy_shop_name = get_etsy_shop_name(db, user_id)
+
+        logging.info(f"Found user with Etsy shop: {etsy_shop_name}")
 
         mockups = []
         design_files = []
@@ -1312,8 +1338,8 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
                 logging.info(f"User org_id: {getattr(user, 'org_id', 'N/A')}")
                 logging.info(f"User attributes: {[attr for attr in dir(user) if not attr.startswith('_')]}")
 
-            if nas_storage.enabled and user.shop_name:
-                logging.info(f"NAS storage enabled, fetching design files for shop: {user.shop_name}")
+            if nas_storage.enabled and etsy_shop_name:
+                logging.info(f"NAS storage enabled, fetching design files for shop: {etsy_shop_name}")
                 for template in templates:
                     template_name = template.name
                     logging.info(f"Processing template: {template_name}")
@@ -1322,9 +1348,9 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
 
                     for template_path in template_paths:
                         try:
-                            logging.info(f"Checking NAS path: {user.shop_name}/{template_path}")
+                            logging.info(f"Checking NAS path: {etsy_shop_name}/{template_path}")
                             # List files from NAS
-                            file_list = nas_storage.list_files(user.shop_name, template_path)
+                            file_list = nas_storage.list_files(etsy_shop_name, template_path)
                             logging.info(f"NAS returned {len(file_list) if file_list else 0} items for path {template_path}")
 
                             if file_list:
@@ -1338,8 +1364,8 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
                                         if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
                                             design_file = model.DesignFile(
                                                 filename=filename,
-                                                path=f"/api/designs/nas-file/{user.shop_name}/{template_path}/{filename}",  # Use API endpoint as path
-                                                url=f"/api/designs/nas-file/{user.shop_name}/{template_path}/{filename}",  # Download endpoint
+                                                path=f"/api/designs/nas-file/{etsy_shop_name}/{template_path}/{filename}",  # Use API endpoint as path
+                                                url=f"/api/designs/nas-file/{etsy_shop_name}/{template_path}/{filename}",  # Download endpoint
                                                 template_name=template_name,
                                                 nas_path=f"{template_path}/{filename}",
                                                 file_size=file_info.get('size'),
@@ -1358,7 +1384,7 @@ async def get_design_gallery_data(db: Session, user_id: UUID) -> model.DesignGal
                             import traceback
                             logging.error(f"NAS path error traceback: {traceback.format_exc()}")
             else:
-                logging.info(f"NAS conditions not met. NAS enabled: {nas_storage.enabled}, Shop name: '{user.shop_name}'")
+                logging.info(f"NAS conditions not met. NAS enabled: {nas_storage.enabled}, Shop name: '{etsy_shop_name}'")
 
         except Exception as e:
             logging.warning(f"Failed to fetch design files from NAS for user {user_id}: {e}")

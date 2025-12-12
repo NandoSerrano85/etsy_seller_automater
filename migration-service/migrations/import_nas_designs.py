@@ -52,9 +52,10 @@ def calculate_phash_from_content(image_content: bytes, hash_size: int = 16) -> s
         raise
 
 def get_all_users_and_shops(connection):
-    """Get all users with their shop names."""
+    """Get all users with their Etsy shop names from etsy_stores table."""
+    # Query etsy_stores table for Etsy shop names (not users.shop_name which may be Shopify)
     result = connection.execute(text("""
-        SELECT id, shop_name FROM users WHERE shop_name IS NOT NULL
+        SELECT user_id, shop_name FROM etsy_stores WHERE is_active = true
     """))
     return result.fetchall()
 

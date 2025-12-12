@@ -416,8 +416,10 @@ def collect_all_files(connection) -> List[FileInfo]:
         return []
 
     # Get all users and templates
+    # Query etsy_stores table for Etsy shop names (not users.shop_name which may be Shopify)
     users_result = connection.execute(text("""
-        SELECT id, shop_name FROM users WHERE shop_name IS NOT NULL
+        SELECT user_id, shop_name FROM etsy_stores
+        WHERE is_active = true
     """))
     users = users_result.fetchall()
 
@@ -428,6 +430,7 @@ def collect_all_files(connection) -> List[FileInfo]:
 
     # Create mappings
     user_shop_mapping = {str(user[0]): user[1] for user in users}
+    logging.info(f"Found {len(user_shop_mapping)} users with Etsy stores")
     user_templates = {}
     for template in templates:
         template_id, template_name, user_id = template
