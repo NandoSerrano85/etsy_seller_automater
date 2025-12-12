@@ -728,9 +728,58 @@ def create_mockups_for_etsy(
     logger.info(f"🔍 DEBUG: design_filenames list: {design_filenames}")
     logger.info(f"🔍 DEBUG: Unique design_file_paths: {design_file_paths}")
 
+    # Handle multiple template paths by grouping designs
     if len(design_file_paths) > 1:
-        logger.error(f"❌ ERROR: Found {len(design_file_paths)} different design paths: {design_file_paths}")
-        raise ValueError(f"More than one design file path {design_file_paths}")
+        logger.warning(f"⚠️ Found designs from {len(design_file_paths)} different templates: {design_file_paths}")
+        logger.info(f"🔄 Grouping designs by template and processing separately...")
+
+        # Group designs by their template path
+        from collections import defaultdict
+        designs_by_path = defaultdict(list)
+
+        for design_image in designs:
+            if hasattr(design_image, 'file_path') and design_image.file_path is not None:
+                file_path = design_image.file_path
+
+                # Normalize path (same logic as above)
+                if file_path.startswith('/share/Graphics/'):
+                    normalized_path = file_path
+                elif file_path.startswith(f'{shop_name}/'):
+                    normalized_path = f"/share/Graphics/{file_path}"
+                else:
+                    normalized_path = f"/share/Graphics/{shop_name}/{file_path}"
+
+                # Extract directory path
+                split_path = normalized_path.split('/')
+                split_path.pop()  # Remove filename
+                dir_path = '/'.join(split_path) + '/'
+
+                designs_by_path[dir_path].append(design_image)
+
+        # Process each group separately and combine results
+        combined_mockup_data = {}
+        combined_digital_paths = []
+        last_id_number = id_number
+
+        for template_path, grouped_designs in designs_by_path.items():
+            logger.info(f"📦 Processing {len(grouped_designs)} designs from template path: {template_path}")
+
+            # Recursive call with grouped designs
+            group_id_number, group_mockup_data, group_digital_paths = create_mockups_for_etsy(
+                designs=grouped_designs,
+                mockup=mockup,
+                template_name=template_name,
+                root_path=root_path,
+                mask_data=mask_data
+            )
+
+            # Combine results
+            combined_mockup_data.update(group_mockup_data)
+            combined_digital_paths.extend(group_digital_paths)
+            last_id_number = group_id_number
+
+        logger.info(f"✅ Combined mockups from {len(designs_by_path)} templates: {len(combined_mockup_data)} total mockups")
+        return str(last_id_number).zfill(3), combined_mockup_data, combined_digital_paths
 
     design_file_paths = str(design_file_paths.pop())
 
