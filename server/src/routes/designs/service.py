@@ -4,6 +4,7 @@ from server.src.entities.size_config import SizeConfig
 from server.src.entities.template import EtsyProductTemplate, ShopifyProductTemplate
 from server.src.entities.user import User
 from server.src.entities.etsy_store import EtsyStore
+from server.src.entities.shopify_store import ShopifyStore
 from server.src.message import (
     DesignNotFoundError,
     DesignCreateError,
@@ -38,21 +39,59 @@ from server.src.utils.util import find_png_files
 from server.src.utils.railway_cache import railway_cached, cache_design_list, get_cached_design_list, invalidate_user_cache
 
 
-def get_etsy_shop_name(db: Session, user_id: UUID) -> str:
-    """Get the Etsy shop name for a user from etsy_stores table (not users.shop_name which may be Shopify)"""
-    etsy_store = db.query(EtsyStore).filter(
-        EtsyStore.user_id == user_id,
-        EtsyStore.is_active == True
-    ).order_by(EtsyStore.created_at.desc()).first()
+def get_platform_shop_name(db: Session, user_id: UUID, platform: str = 'etsy') -> str:
+    """
+    Get the shop name for a user based on platform.
+    Queries etsy_stores for Etsy or shopify_stores for Shopify.
 
-    if etsy_store and etsy_store.shop_name:
-        logging.info(f"Using Etsy shop name from etsy_stores: {etsy_store.shop_name}")
-        return etsy_store.shop_name
+    Args:
+        db: Database session
+        user_id: User UUID
+        platform: 'etsy' or 'shopify'
 
-    # Fallback to user_id if no Etsy store found
+    Returns:
+        Shop name string
+    """
+    platform = platform.lower()
+
+    if platform == 'etsy':
+        store = db.query(EtsyStore).filter(
+            EtsyStore.user_id == user_id,
+            EtsyStore.is_active == True
+        ).order_by(EtsyStore.created_at.desc()).first()
+
+        if store and store.shop_name:
+            logging.info(f"Using Etsy shop name from etsy_stores: {store.shop_name}")
+            return store.shop_name
+
+        logging.warning(f"No Etsy store found for user {user_id}")
+
+    elif platform == 'shopify':
+        store = db.query(ShopifyStore).filter(
+            ShopifyStore.user_id == user_id,
+            ShopifyStore.is_active == True
+        ).order_by(ShopifyStore.created_at.desc()).first()
+
+        if store and store.shop_name:
+            logging.info(f"Using Shopify shop name from shopify_stores: {store.shop_name}")
+            return store.shop_name
+
+        logging.warning(f"No Shopify store found for user {user_id}")
+
+    # Fallback to user_id if no store found
     fallback_name = f"user_{str(user_id)[:8]}"
-    logging.warning(f"No Etsy store found for user {user_id}, using fallback: {fallback_name}")
+    logging.warning(f"Using fallback shop name for platform '{platform}': {fallback_name}")
     return fallback_name
+
+
+def get_etsy_shop_name(db: Session, user_id: UUID) -> str:
+    """Get the Etsy shop name for a user (convenience wrapper)"""
+    return get_platform_shop_name(db, user_id, platform='etsy')
+
+
+def get_shopify_shop_name(db: Session, user_id: UUID) -> str:
+    """Get the Shopify shop name for a user (convenience wrapper)"""
+    return get_platform_shop_name(db, user_id, platform='shopify')
 
 def calculate_multiple_hashes(image_path: str = None, image=None, hash_size: int = 16) -> dict:
     """
@@ -548,15 +587,15 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             EtsyProductTemplate.user_id == user_id,
         ).first()
 
-        # Get Etsy shop name from etsy_stores table (not users.shop_name which may be Shopify)
-        etsy_shop_name = get_etsy_shop_name(db, user_id)
+        # Get shop name based on platform (etsy_stores or shopify_stores)
+        platform_shop_name = get_platform_shop_name(db, user_id, platform=design_data.platform)
 
         type_pattern = r"UV\s*DTF|UV"
         local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
         if design_data.is_digital:
-            designs_path = f"{local_root_path}{etsy_shop_name}/Digital/{template.name}/"
+            designs_path = f"{local_root_path}{platform_shop_name}/Digital/{template.name}/"
         else:
-            designs_path = f"{local_root_path}{etsy_shop_name}/{template.name}/"
+            designs_path = f"{local_root_path}{platform_shop_name}/{template.name}/"
         os.makedirs(designs_path, exist_ok=True)
         
         async def resize_and_hash_physical(file):
@@ -678,7 +717,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 relative_path = f"{template.name}/{filename}"
                 success = nas_storage.upload_file_content(
                     file_content=image_bytes,
-                    shop_name=etsy_shop_name,
+                    shop_name=platform_shop_name,
                     relative_path=relative_path
                 )
                 if success:
@@ -909,7 +948,7 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 relative_path = f"Digital/{template.name}/{filename}"
                 success = nas_storage.upload_file_content(
                     file_content=image_bytes,
-                    shop_name=etsy_shop_name,
+                    shop_name=platform_shop_name,
                     relative_path=relative_path
                 )
                 if success:
@@ -1065,10 +1104,9 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
             # Build NAS file path for storage (matching nas_storage.upload_file_content format)
             # nas_storage.base_path = "/share/Graphics"
             # upload_file_content builds: {base_path}/{shop_name}/{relative_path}
-            # So actual path is: /share/Graphics/{etsy_shop_name}/{nas_relative_path}
-            # Get Etsy shop name for this user
-            etsy_shop_name = get_etsy_shop_name(db, user_id)
-            nas_file_path = f"/share/Graphics/{etsy_shop_name}/{nas_relative_path}"
+            # Get platform-specific shop name (etsy_stores or shopify_stores)
+            platform_shop_name = get_platform_shop_name(db, user_id, platform=design_data.platform)
+            nas_file_path = f"/share/Graphics/{platform_shop_name}/{nas_relative_path}"
 
             design = DesignImages(
                 user_id=user_id,

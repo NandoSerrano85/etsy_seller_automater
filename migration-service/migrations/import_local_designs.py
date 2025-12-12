@@ -253,25 +253,46 @@ def get_user_template_mapping(conn):
     try:
         from sqlalchemy import text
 
-        # Get users from etsy_stores (not users.shop_name which may be Shopify)
-        result = conn.execute(text("SELECT user_id, shop_name FROM etsy_stores WHERE is_active = true"))
-        for row in result.fetchall():
-            user_mapping[row[1]] = str(row[0])  # shop_name -> user_id
+        # Get users from both etsy_stores and shopify_stores
+        etsy_result = conn.execute(text("SELECT user_id, shop_name, 'etsy' as platform FROM etsy_stores WHERE is_active = true"))
+        shopify_result = conn.execute(text("SELECT user_id, shop_name, 'shopify' as platform FROM shopify_stores WHERE is_active = true"))
 
-        # Get templates
-        # Query etsy_stores for Etsy shop names (not users.shop_name which may be Shopify)
+        # shop_name -> (user_id, platform)
+        for row in etsy_result.fetchall():
+            user_mapping[row[1]] = (str(row[0]), 'etsy')
+        for row in shopify_result.fetchall():
+            user_mapping[row[1]] = (str(row[0]), 'shopify')
+
+        # Get Etsy templates
         result = conn.execute(text("""
-            SELECT t.id, t.name, t.user_id, e.shop_name
+            SELECT t.id, t.name, t.user_id, e.shop_name, 'etsy' as platform
             FROM etsy_product_templates t
             JOIN etsy_stores e ON t.user_id = e.user_id
             WHERE e.is_active = true
         """))
         for row in result.fetchall():
-            template_id, template_name, user_id, shop_name = row
+            template_id, template_name, user_id, shop_name, platform = row
             key = f"{shop_name}|{template_name}"
             template_mapping[key] = {
                 'template_id': str(template_id),
-                'user_id': str(user_id)
+                'user_id': str(user_id),
+                'platform': platform
+            }
+
+        # Get Shopify templates
+        result = conn.execute(text("""
+            SELECT t.id, t.name, t.user_id, s.shop_name, 'shopify' as platform
+            FROM shopify_product_templates t
+            JOIN shopify_stores s ON t.user_id = s.user_id
+            WHERE s.is_active = true
+        """))
+        for row in result.fetchall():
+            template_id, template_name, user_id, shop_name, platform = row
+            key = f"{shop_name}|{template_name}"
+            template_mapping[key] = {
+                'template_id': str(template_id),
+                'user_id': str(user_id),
+                'platform': platform
             }
 
     except Exception as e:
@@ -400,19 +421,24 @@ def upgrade(conn):
             template_name = file_info['template_name']
 
             # Check if user and template exist
-            user_id = user_mapping.get(shop_name)
+            user_data = user_mapping.get(shop_name)
             template_key = f"{shop_name}|{template_name}"
             template_info = template_mapping.get(template_key)
 
-            if not user_id:
+            if not user_data:
                 logger.warning(f"No user found for shop: {shop_name}")
                 skipped_count += 1
                 continue
+
+            user_id, user_platform = user_data
 
             if not template_info:
                 logger.warning(f"No template found for: {shop_name}|{template_name}")
                 skipped_count += 1
                 continue
+
+            # Extract platform from template_info
+            template_platform = template_info.get('platform', 'etsy')
 
             # Process image
             hashes = process_image_file(file_info['file_path'])

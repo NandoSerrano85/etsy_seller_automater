@@ -416,40 +416,71 @@ def collect_all_files(connection) -> List[FileInfo]:
         return []
 
     # Get all users and templates
-    # Query etsy_stores table for Etsy shop names (not users.shop_name which may be Shopify)
-    users_result = connection.execute(text("""
-        SELECT user_id, shop_name FROM etsy_stores
+    # Query both etsy_stores and shopify_stores for shop names
+    etsy_users_result = connection.execute(text("""
+        SELECT user_id, shop_name, 'etsy' as platform FROM etsy_stores
         WHERE is_active = true
     """))
-    users = users_result.fetchall()
+    etsy_users = etsy_users_result.fetchall()
 
-    templates_result = connection.execute(text("""
+    shopify_users_result = connection.execute(text("""
+        SELECT user_id, shop_name, 'shopify' as platform FROM shopify_stores
+        WHERE is_active = true
+    """))
+    shopify_users = shopify_users_result.fetchall()
+
+    # Get Etsy templates
+    etsy_templates_result = connection.execute(text("""
         SELECT id, name, user_id FROM etsy_product_templates
     """))
-    templates = templates_result.fetchall()
+    etsy_templates = etsy_templates_result.fetchall()
 
-    # Create mappings
-    user_shop_mapping = {str(user[0]): user[1] for user in users}
-    logging.info(f"Found {len(user_shop_mapping)} users with Etsy stores")
+    # Get Shopify templates
+    shopify_templates_result = connection.execute(text("""
+        SELECT id, name, user_id FROM shopify_product_templates
+    """))
+    shopify_templates = shopify_templates_result.fetchall()
+
+    # Create mappings: user_id -> (shop_name, platform)
+    user_shop_mapping = {}
+    for user_id, shop_name, platform in etsy_users:
+        user_shop_mapping[str(user_id)] = (shop_name, 'etsy')
+    for user_id, shop_name, platform in shopify_users:
+        user_shop_mapping[str(user_id)] = (shop_name, 'shopify')
+
+    logging.info(f"Found {len([u for u in user_shop_mapping.values() if u[1] == 'etsy'])} Etsy stores")
+    logging.info(f"Found {len([u for u in user_shop_mapping.values() if u[1] == 'shopify'])} Shopify stores")
+
+    # Group templates by user: user_id -> [(template_id, template_name, platform), ...]
     user_templates = {}
-    for template in templates:
-        template_id, template_name, user_id = template
+
+    for template_id, template_name, user_id in etsy_templates:
         user_id_str = str(user_id)
         if user_id_str not in user_templates:
             user_templates[user_id_str] = []
-        user_templates[user_id_str].append((str(template_id), template_name))
+        user_templates[user_id_str].append((str(template_id), template_name, 'etsy'))
+
+    for template_id, template_name, user_id in shopify_templates:
+        user_id_str = str(user_id)
+        if user_id_str not in user_templates:
+            user_templates[user_id_str] = []
+        user_templates[user_id_str].append((str(template_id), template_name, 'shopify'))
 
     all_files = []
 
     # Collect file information
-    for user_id_str, shop_name in user_shop_mapping.items():
+    for user_id_str, (shop_name, platform) in user_shop_mapping.items():
         if user_id_str not in user_templates:
-            logging.info(f"No templates found for user {user_id_str} ({shop_name}), skipping")
+            logging.info(f"No templates found for user {user_id_str} ({shop_name}/{platform}), skipping")
             continue
 
-        logging.info(f"Scanning files for user {user_id_str} ({shop_name})")
+        logging.info(f"Scanning files for user {user_id_str} ({shop_name}/{platform})")
 
-        for template_id, template_name in user_templates[user_id_str]:
+        for template_id, template_name, template_platform in user_templates[user_id_str]:
+            # Skip templates that don't match this user's platform
+            if template_platform != platform:
+                continue
+
             try:
                 # List files in NAS directory
                 template_path = f"{template_name}"

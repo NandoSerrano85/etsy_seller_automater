@@ -930,7 +930,7 @@ class ImageUploadWorkflow:
                      OR ahash IN ({placeholders})
                      OR dhash IN ({placeholders})
                      OR whash IN ({placeholders}))
-                LIMIT 10
+                LIMIT 50
             """
 
             params = {"user_id": self.user_id}
@@ -1275,8 +1275,16 @@ class ImageUploadWorkflow:
             logging.error(f"Mockup service error: {e}")
             return False
 
-    def _get_user_shop_name(self) -> str:
-        """Get the Etsy shop name for the current user (cached)"""
+    def _get_user_shop_name(self, platform: Optional[str] = None) -> str:
+        """
+        Get the shop name for the current user based on platform.
+
+        Args:
+            platform: 'etsy' or 'shopify'. If None, tries Etsy first, then Shopify.
+
+        Returns:
+            Shop name string
+        """
         # Check cache first
         if self._shop_name_cache:
             return self._shop_name_cache
@@ -1288,27 +1296,46 @@ class ImageUploadWorkflow:
 
             try:
                 if DEPENDENCIES_AVAILABLE:
-                    # Query etsy_stores table for the Etsy shop name (not users.shop_name which may be Shopify)
-                    result = self.db_session.execute(text("""
-                        SELECT shop_name FROM etsy_stores
-                        WHERE user_id = :user_id
-                        AND is_active = true
-                        ORDER BY created_at DESC
-                        LIMIT 1
-                    """), {"user_id": self.user_id})
+                    # If no platform specified, try Etsy first (most common), then Shopify
+                    platforms_to_try = [platform] if platform else ['etsy', 'shopify']
 
-                    row = result.fetchone()
-                    if row and row[0]:
-                        self._shop_name_cache = row[0]
-                        logging.info(f"Using Etsy shop name from etsy_stores: {self._shop_name_cache}")
-                        return self._shop_name_cache
+                    for plt in platforms_to_try:
+                        if plt == 'etsy':
+                            result = self.db_session.execute(text("""
+                                SELECT shop_name FROM etsy_stores
+                                WHERE user_id = :user_id
+                                AND is_active = true
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                            """), {"user_id": self.user_id})
+
+                            row = result.fetchone()
+                            if row and row[0]:
+                                self._shop_name_cache = row[0]
+                                logging.info(f"Using Etsy shop name from etsy_stores: {self._shop_name_cache}")
+                                return self._shop_name_cache
+
+                        elif plt == 'shopify':
+                            result = self.db_session.execute(text("""
+                                SELECT shop_name FROM shopify_stores
+                                WHERE user_id = :user_id
+                                AND is_active = true
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                            """), {"user_id": self.user_id})
+
+                            row = result.fetchone()
+                            if row and row[0]:
+                                self._shop_name_cache = row[0]
+                                logging.info(f"Using Shopify shop name from shopify_stores: {self._shop_name_cache}")
+                                return self._shop_name_cache
 
             except Exception as e:
-                logging.info(f"Could not get Etsy shop name from database: {e}")
+                logging.info(f"Could not get shop name from database: {e}")
 
-            # Fallback to user ID-based shop name only if Etsy shop not found
+            # Fallback to user ID-based shop name if no store found
             self._shop_name_cache = f"user_{self.user_id[:8]}"
-            logging.warning(f"Using fallback shop name (Etsy shop not found): {self._shop_name_cache}")
+            logging.warning(f"Using fallback shop name (no store found for platform '{platform}'): {self._shop_name_cache}")
             return self._shop_name_cache
 
     def _get_template_name(self, template_id: str) -> str:

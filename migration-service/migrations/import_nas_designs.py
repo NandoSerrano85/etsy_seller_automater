@@ -52,12 +52,20 @@ def calculate_phash_from_content(image_content: bytes, hash_size: int = 16) -> s
         raise
 
 def get_all_users_and_shops(connection):
-    """Get all users with their Etsy shop names from etsy_stores table."""
-    # Query etsy_stores table for Etsy shop names (not users.shop_name which may be Shopify)
-    result = connection.execute(text("""
-        SELECT user_id, shop_name FROM etsy_stores WHERE is_active = true
+    """Get all users with their shop names from both etsy_stores and shopify_stores."""
+    # Query both etsy_stores and shopify_stores
+    etsy_result = connection.execute(text("""
+        SELECT user_id, shop_name, 'etsy' as platform FROM etsy_stores WHERE is_active = true
     """))
-    return result.fetchall()
+    etsy_users = etsy_result.fetchall()
+
+    shopify_result = connection.execute(text("""
+        SELECT user_id, shop_name, 'shopify' as platform FROM shopify_stores WHERE is_active = true
+    """))
+    shopify_users = shopify_result.fetchall()
+
+    # Combine both lists
+    return etsy_users + shopify_users
 
 def get_all_templates(connection):
     """Get all product templates."""
@@ -105,10 +113,10 @@ def upgrade(connection):
         users = get_all_users_and_shops(connection)
         templates = get_all_templates(connection)
 
-        # Create a mapping of user_id to shop_name
-        user_shop_mapping = {str(user[0]): user[1] for user in users}
+        # Create a mapping of user_id to (shop_name, platform)
+        user_shop_mapping = {str(user[0]): (user[1], user[2]) for user in users}
 
-        # Group templates by user
+        # Group templates by user (Etsy templates only for this migration)
         user_templates = {}
         for template in templates:
             template_id, template_name, user_id = template
@@ -122,12 +130,16 @@ def upgrade(connection):
         total_errors = 0
 
         # Process each user
-        for user_id_str, shop_name in user_shop_mapping.items():
-            if user_id_str not in user_templates:
-                logging.info(f"No templates found for user {user_id_str} ({shop_name}), skipping")
+        for user_id_str, (shop_name, platform) in user_shop_mapping.items():
+            # This migration is for Etsy templates only
+            if platform != 'etsy':
                 continue
 
-            logging.info(f"Processing user {user_id_str} ({shop_name})")
+            if user_id_str not in user_templates:
+                logging.info(f"No templates found for user {user_id_str} ({shop_name}/{platform}), skipping")
+                continue
+
+            logging.info(f"Processing user {user_id_str} ({shop_name}/{platform})")
 
             # Process each template for this user
             for template_id, template_name in user_templates[user_id_str]:
