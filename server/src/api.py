@@ -19,6 +19,10 @@ from server.src.routes.cache.controller import router as cache_router
 from server.src.routes.oauth_tokens import router as oauth_tokens_router
 from server.src.routes.packing_slip.routes import router as packing_slip_router
 from server.src.routes.ecommerce.products import router as ecommerce_products_router
+from server.src.routes.ecommerce.cart import router as ecommerce_cart_router
+from server.src.routes.ecommerce.customers import router as ecommerce_customers_router
+from server.src.routes.ecommerce.orders import router as ecommerce_orders_router
+from server.src.routes.ecommerce.checkout import router as ecommerce_checkout_router
 
 # Multi-tenant routes - conditionally imported if multi-tenant is enabled
 def get_multi_tenant_routers():
@@ -157,6 +161,10 @@ def register_routes(app: FastAPI):
     app.include_router(oauth_tokens_router)
     app.include_router(packing_slip_router, prefix="/api")
     app.include_router(ecommerce_products_router)
+    app.include_router(ecommerce_cart_router)
+    app.include_router(ecommerce_customers_router)
+    app.include_router(ecommerce_orders_router)
+    app.include_router(ecommerce_checkout_router)
 
     # Multi-tenant routes - only enabled if multi-tenant is enabled
     multi_tenant_routers = get_multi_tenant_routers()

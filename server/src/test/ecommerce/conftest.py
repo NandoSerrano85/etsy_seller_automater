@@ -318,6 +318,286 @@ def sample_customer(test_db):
     return customer
 
 
+@pytest.fixture
+def sample_customer_addresses(test_db, sample_customer):
+    """Create sample addresses for customer."""
+    addresses = []
+
+    # Default shipping address
+    shipping_address = CustomerAddress(
+        id=uuid.uuid4(),
+        customer_id=sample_customer.id,
+        first_name="John",
+        last_name="Doe",
+        address1="123 Main St",
+        address2="Apt 4B",
+        city="New York",
+        state="NY",
+        zip_code="10001",
+        country="United States",
+        phone="555-1234",
+        is_default_shipping=True,
+        is_default_billing=False
+    )
+
+    # Billing address
+    billing_address = CustomerAddress(
+        id=uuid.uuid4(),
+        customer_id=sample_customer.id,
+        first_name="John",
+        last_name="Doe",
+        address1="456 Oak Ave",
+        city="Brooklyn",
+        state="NY",
+        zip_code="11201",
+        country="United States",
+        phone="555-5678",
+        is_default_shipping=False,
+        is_default_billing=True
+    )
+
+    addresses.extend([shipping_address, billing_address])
+    test_db.add_all(addresses)
+    test_db.commit()
+
+    return addresses
+
+
+# ============================================================================
+# Shopping Cart Fixtures
+# ============================================================================
+
+@pytest.fixture
+def sample_cart(test_db, sample_customer, sample_uvdtf_cup_wrap):
+    """Create a sample shopping cart with items."""
+    cart = ShoppingCart(
+        id=uuid.uuid4(),
+        customer_id=sample_customer.id,
+        session_id=None,
+        items=[
+            {
+                "id": str(uuid.uuid4()),
+                "product_id": str(sample_uvdtf_cup_wrap.id),
+                "product_name": sample_uvdtf_cup_wrap.name,
+                "product_slug": sample_uvdtf_cup_wrap.slug,
+                "variant_id": None,
+                "variant_name": None,
+                "price": sample_uvdtf_cup_wrap.price,
+                "quantity": 2,
+                "subtotal": sample_uvdtf_cup_wrap.price * 2,
+                "image": sample_uvdtf_cup_wrap.featured_image
+            }
+        ],
+        subtotal=sample_uvdtf_cup_wrap.price * 2,
+        is_active=True
+    )
+
+    test_db.add(cart)
+    test_db.commit()
+    test_db.refresh(cart)
+
+    return cart
+
+
+@pytest.fixture
+def guest_cart(test_db, sample_dtf_square):
+    """Create a guest shopping cart (no customer)."""
+    session_id = f"guest-{uuid.uuid4()}"
+
+    cart = ShoppingCart(
+        id=uuid.uuid4(),
+        customer_id=None,
+        session_id=session_id,
+        items=[
+            {
+                "id": str(uuid.uuid4()),
+                "product_id": str(sample_dtf_square.id),
+                "product_name": sample_dtf_square.name,
+                "product_slug": sample_dtf_square.slug,
+                "variant_id": None,
+                "variant_name": None,
+                "price": sample_dtf_square.price,
+                "quantity": 1,
+                "subtotal": sample_dtf_square.price,
+                "image": sample_dtf_square.featured_image
+            }
+        ],
+        subtotal=sample_dtf_square.price,
+        is_active=True
+    )
+
+    test_db.add(cart)
+    test_db.commit()
+    test_db.refresh(cart)
+
+    return cart
+
+
+# ============================================================================
+# Order Fixtures
+# ============================================================================
+
+@pytest.fixture
+def sample_order(test_db, sample_customer, sample_uvdtf_cup_wrap):
+    """Create a sample order."""
+    order = Order(
+        id=uuid.uuid4(),
+        order_number=f"ORD-TEST-{uuid.uuid4().hex[:8].upper()}",
+        customer_id=sample_customer.id,
+        guest_email=None,
+        subtotal=25.98,
+        tax=2.08,
+        shipping=5.99,
+        discount=0,
+        total=34.05,
+        shipping_address={
+            "first_name": "John",
+            "last_name": "Doe",
+            "address1": "123 Main St",
+            "city": "New York",
+            "state": "NY",
+            "zip_code": "10001",
+            "country": "United States"
+        },
+        billing_address={
+            "first_name": "John",
+            "last_name": "Doe",
+            "address1": "123 Main St",
+            "city": "New York",
+            "state": "NY",
+            "zip_code": "10001",
+            "country": "United States"
+        },
+        payment_status="paid",
+        payment_method="stripe",
+        payment_id="pi_test_123456",
+        fulfillment_status="unfulfilled",
+        status="processing"
+    )
+
+    test_db.add(order)
+    test_db.flush()
+
+    # Add order item
+    order_item = OrderItem(
+        id=uuid.uuid4(),
+        order_id=order.id,
+        product_id=sample_uvdtf_cup_wrap.id,
+        variant_id=None,
+        product_name=sample_uvdtf_cup_wrap.name,
+        variant_name=None,
+        sku="UVDTF-001",
+        price=12.99,
+        quantity=2,
+        total=25.98,
+        is_fulfilled=False
+    )
+
+    test_db.add(order_item)
+    test_db.commit()
+    test_db.refresh(order)
+
+    return order
+
+
+@pytest.fixture
+def guest_order(test_db, sample_dtf_square):
+    """Create a guest order (no customer account)."""
+    order = Order(
+        id=uuid.uuid4(),
+        order_number=f"ORD-GUEST-{uuid.uuid4().hex[:8].upper()}",
+        customer_id=None,
+        guest_email="guest@example.com",
+        subtotal=8.99,
+        tax=0.72,
+        shipping=5.99,
+        discount=0,
+        total=15.70,
+        shipping_address={
+            "first_name": "Guest",
+            "last_name": "User",
+            "address1": "789 Guest St",
+            "city": "Los Angeles",
+            "state": "CA",
+            "zip_code": "90001",
+            "country": "United States"
+        },
+        billing_address={
+            "first_name": "Guest",
+            "last_name": "User",
+            "address1": "789 Guest St",
+            "city": "Los Angeles",
+            "state": "CA",
+            "zip_code": "90001",
+            "country": "United States"
+        },
+        payment_status="paid",
+        payment_method="stripe",
+        payment_id="pi_guest_123456",
+        fulfillment_status="unfulfilled",
+        status="processing"
+    )
+
+    test_db.add(order)
+    test_db.flush()
+
+    # Add order item
+    order_item = OrderItem(
+        id=uuid.uuid4(),
+        order_id=order.id,
+        product_id=sample_dtf_square.id,
+        variant_id=None,
+        product_name=sample_dtf_square.name,
+        variant_name=None,
+        sku="DTF-001",
+        price=8.99,
+        quantity=1,
+        total=8.99,
+        is_fulfilled=False
+    )
+
+    test_db.add(order_item)
+    test_db.commit()
+    test_db.refresh(order)
+
+    return order
+
+
+# ============================================================================
+# Authentication Fixtures
+# ============================================================================
+
+@pytest.fixture
+def auth_token(sample_customer):
+    """Generate a JWT token for authenticated requests."""
+    import jwt
+    from datetime import datetime, timedelta
+    import os
+
+    SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'test-secret-key')
+
+    expires_delta = timedelta(minutes=60)
+    expire = datetime.utcnow() + expires_delta
+
+    to_encode = {
+        "sub": str(sample_customer.id),
+        "email": sample_customer.email,
+        "exp": expire,
+        "type": "ecommerce_customer"
+    }
+
+    token = jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
+    return token
+
+
+@pytest.fixture
+def auth_headers(auth_token):
+    """Generate authorization headers for authenticated requests."""
+    return {
+        "Authorization": f"Bearer {auth_token}"
+    }
+
+
 # ============================================================================
 # Utility Functions
 # ============================================================================
@@ -343,3 +623,27 @@ def create_test_product(test_db, **kwargs):
     test_db.refresh(product)
 
     return product
+
+
+def create_test_customer(test_db, **kwargs):
+    """Helper function to create a test customer with custom fields."""
+    import bcrypt
+
+    defaults = {
+        "id": uuid.uuid4(),
+        "email": f"test-{uuid.uuid4().hex[:8]}@example.com",
+        "password_hash": bcrypt.hashpw("password123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8'),
+        "first_name": "Test",
+        "last_name": "User",
+        "is_active": True,
+        "email_verified": True
+    }
+
+    defaults.update(kwargs)
+    customer = Customer(**defaults)
+
+    test_db.add(customer)
+    test_db.commit()
+    test_db.refresh(customer)
+
+    return customer
