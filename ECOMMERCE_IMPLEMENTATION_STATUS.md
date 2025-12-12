@@ -196,28 +196,27 @@ Add these to your `.env` file:
 JWT_SECRET_KEY=your-secret-key-here-change-in-production
 
 # Stripe Configuration
-STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
-
-# Optional: Stripe Public Key (for frontend)
+STRIPE_API_KEY=sk_test_your_stripe_secret_key
 STRIPE_PUBLIC_KEY=pk_test_your_stripe_public_key
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 ```
+
+**Note:** The code supports both `STRIPE_API_KEY` (preferred) and `STRIPE_SECRET_KEY` (legacy) for backwards compatibility.
 
 ### Dependencies
 
-Install Stripe SDK:
+All required dependencies have been added to `requirements.txt`:
 
 ```bash
-pip install stripe bcrypt pyjwt
+pip install -r requirements.txt
 ```
 
-Add to `requirements.txt`:
+Key ecommerce dependencies:
 
-```
-stripe>=7.0.0
-bcrypt>=4.0.0
-PyJWT>=2.8.0
-```
+- `stripe>=8.0.0` - Payment processing
+- `bcrypt>=3.2.2` - Password hashing
+- `PyJWT>=2.10.1` - JWT authentication
+- `pytest-cov>=4.0.0` - Test coverage reporting
 
 ---
 

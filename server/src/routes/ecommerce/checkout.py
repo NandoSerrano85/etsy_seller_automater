@@ -14,22 +14,69 @@ from server.src.entities.ecommerce.cart import ShoppingCart
 from server.src.entities.ecommerce.order import Order, OrderItem
 from server.src.entities.ecommerce.customer import Customer
 from server.src.entities.ecommerce.product import Product, ProductVariant
-from server.src.routes.ecommerce.customers import get_current_customer
 
 # Stripe SDK - Install with: pip install stripe
 try:
     import stripe
-    stripe.api_key = os.getenv('STRIPE_SECRET_KEY')
+    stripe.api_key = os.getenv('STRIPE_API_KEY', os.getenv('STRIPE_SECRET_KEY'))
+    STRIPE_PUBLIC_KEY = os.getenv('STRIPE_PUBLIC_KEY')
     STRIPE_AVAILABLE = True
 except ImportError:
     STRIPE_AVAILABLE = False
+    STRIPE_PUBLIC_KEY = None
     logging.warning("Stripe SDK not installed. Install with: pip install stripe")
+
+# JWT Authentication imports
+import jwt
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import status
+
+security = HTTPBearer(auto_error=False)
 
 
 router = APIRouter(
     prefix='/api/storefront/checkout',
     tags=['Storefront - Checkout']
 )
+
+
+# ============================================================================
+# Authentication Helpers
+# ============================================================================
+
+def get_current_customer_optional(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Optional[Customer]:
+    """
+    Get current authenticated customer from JWT token.
+
+    Returns None if no token provided or token is invalid (for guest checkout).
+    Does not raise errors - allows optional authentication.
+    """
+    if not credentials:
+        return None
+
+    try:
+        SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-secret-key-here-change-in-production')
+        ALGORITHM = "HS256"
+
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        customer_id: str = payload.get("sub")
+        token_type: str = payload.get("type")
+
+        if customer_id is None or token_type != "ecommerce_customer":
+            return None
+
+        # Get customer from database
+        customer = db.query(Customer).filter(Customer.id == uuid.UUID(customer_id)).first()
+        return customer
+
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, ValueError):
+        # Token is invalid - allow guest checkout
+        return None
 
 
 # ============================================================================
@@ -165,11 +212,35 @@ def get_cart_by_session(db: Session, session_id: str, customer_id: Optional[str]
 # Checkout Endpoints
 # ============================================================================
 
+@router.get('/config')
+async def get_stripe_config():
+    """
+    Get Stripe public configuration for frontend.
+
+    Returns the Stripe publishable key needed for client-side payment processing.
+    """
+    if not STRIPE_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Stripe integration not configured"
+        )
+
+    if not STRIPE_PUBLIC_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="STRIPE_PUBLIC_KEY not configured in environment"
+        )
+
+    return {
+        "stripe_public_key": STRIPE_PUBLIC_KEY
+    }
+
+
 @router.post('/init', response_model=CheckoutResponse)
 async def initialize_checkout(
     checkout_data: CheckoutInitRequest,
     x_session_id: Optional[str] = Header(None),
-    current_customer: Optional[Customer] = None,  # Optional - guest checkout allowed
+    current_customer: Optional[Customer] = Depends(get_current_customer_optional),
     db: Session = Depends(get_db)
 ):
     """
@@ -305,7 +376,7 @@ async def complete_checkout(
     customer_note: Optional[str] = None,
     guest_email: Optional[EmailStr] = None,
     x_session_id: Optional[str] = Header(None),
-    current_customer: Optional[Customer] = None,
+    current_customer: Optional[Customer] = Depends(get_current_customer_optional),
     db: Session = Depends(get_db)
 ):
     """
