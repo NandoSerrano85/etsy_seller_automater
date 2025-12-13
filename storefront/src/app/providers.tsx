@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { customerApi } from "@/lib/api";
+import { BrandingProvider } from "@/contexts/BrandingContext";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const { setCustomer, fetchCart } = useStore();
@@ -18,5 +19,5 @@ export function Providers({ children }: { children: React.ReactNode }) {
     fetchCart();
   }, [setCustomer, fetchCart]);
 
-  return <>{children}</>;
+  return <BrandingProvider>{children}</BrandingProvider>;
 }

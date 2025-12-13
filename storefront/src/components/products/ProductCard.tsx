@@ -5,6 +5,7 @@ import { ShoppingCart } from 'lucide-react';
 import { Product } from '@/types';
 import { formatPrice, formatPrintMethod, getImageUrl } from '@/lib/utils';
 import { useStore } from '@/store/useStore';
+import { useBranding } from '@/contexts/BrandingContext';
 import toast from 'react-hot-toast';
 
 interface ProductCardProps {
@@ -13,6 +14,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const { addToCart } = useStore();
+  const { settings } = useBranding();
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -45,7 +47,10 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Badges */}
         <div className="absolute top-2 left-2 flex flex-col gap-2">
           {product.is_featured && (
-            <span className="bg-primary-600 text-white text-xs px-2 py-1 rounded">
+            <span
+              className="text-white text-xs px-2 py-1 rounded"
+              style={{ backgroundColor: settings.primary_color }}
+            >
               Featured
             </span>
           )}
@@ -59,7 +64,18 @@ export function ProductCard({ product }: ProductCardProps) {
         {/* Quick Add Button */}
         <button
           onClick={handleAddToCart}
-          className="absolute bottom-2 right-2 bg-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-600 hover:text-white"
+          className="absolute bottom-2 right-2 bg-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{
+            ['--hover-bg' as any]: settings.primary_color
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = settings.primary_color;
+            e.currentTarget.style.color = 'white';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'white';
+            e.currentTarget.style.color = 'black';
+          }}
           aria-label="Add to cart"
         >
           <ShoppingCart className="w-5 h-5" />
@@ -72,7 +88,18 @@ export function ProductCard({ product }: ProductCardProps) {
           {formatPrintMethod(product.print_method)}
         </div>
 
-        <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors line-clamp-2 mb-2">
+        <h3
+          className="font-semibold text-gray-900 transition-colors line-clamp-2 mb-2"
+          style={{
+            ['--hover-color' as any]: settings.primary_color
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = settings.primary_color;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = '#111827';
+          }}
+        >
           {product.name}
         </h3>
 

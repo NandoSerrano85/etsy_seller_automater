@@ -1,31 +1,44 @@
-'use client';
+"use client";
 
-import { X, Minus, Plus, Trash2 } from 'lucide-react';
-import { useStore } from '@/store/useStore';
-import { formatPrice } from '@/lib/utils';
-import Link from 'next/link';
-import toast from 'react-hot-toast';
+import { X, Minus, Plus, Trash2 } from "lucide-react";
+import { useStore } from "@/store/useStore";
+import { useBranding } from "@/contexts/BrandingContext";
+import { formatPrice } from "@/lib/utils";
+import Link from "next/link";
+import toast from "react-hot-toast";
 
 export function CartSidebar() {
-  const { cart, isCartOpen, setCartOpen, updateCartItem, removeFromCart, isLoadingCart } = useStore();
+  const {
+    cart,
+    isCartOpen,
+    setCartOpen,
+    updateCartItem,
+    removeFromCart,
+    isLoadingCart,
+  } = useStore();
+  const { settings } = useBranding();
 
-  const handleUpdateQuantity = async (itemId: string, currentQuantity: number, delta: number) => {
+  const handleUpdateQuantity = async (
+    itemId: string,
+    currentQuantity: number,
+    delta: number,
+  ) => {
     const newQuantity = currentQuantity + delta;
     if (newQuantity < 1) return;
 
     try {
       await updateCartItem(itemId, newQuantity);
     } catch (error) {
-      toast.error('Failed to update quantity');
+      toast.error("Failed to update quantity");
     }
   };
 
   const handleRemove = async (itemId: string) => {
     try {
       await removeFromCart(itemId);
-      toast.success('Item removed from cart');
+      toast.success("Item removed from cart");
     } catch (error) {
-      toast.error('Failed to remove item');
+      toast.error("Failed to remove item");
     }
   };
 
@@ -64,7 +77,14 @@ export function CartSidebar() {
               <Link
                 href="/products"
                 onClick={() => setCartOpen(false)}
-                className="text-primary-600 hover:text-primary-700 font-medium"
+                className="font-medium"
+                style={{ color: settings.primary_color }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = settings.secondary_color;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = settings.primary_color;
+                }}
               >
                 Continue Shopping
               </Link>
@@ -73,7 +93,7 @@ export function CartSidebar() {
             <div className="space-y-4">
               {cartItems.map((item) => {
                 // Extract item ID from product_id (simplified - adjust based on your cart structure)
-                const itemId = `${item.product_id}${item.variant_id ? `-${item.variant_id}` : ''}`;
+                const itemId = `${item.product_id}${item.variant_id ? `-${item.variant_id}` : ""}`;
 
                 return (
                   <div key={itemId} className="flex gap-4 border-b pb-4">
@@ -90,24 +110,36 @@ export function CartSidebar() {
 
                     {/* Product Info */}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm truncate">{item.product_name}</h3>
+                      <h3 className="font-medium text-sm truncate">
+                        {item.product_name}
+                      </h3>
                       {item.variant_name && (
-                        <p className="text-xs text-gray-500">{item.variant_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {item.variant_name}
+                        </p>
                       )}
-                      <p className="text-sm font-semibold mt-1">{formatPrice(item.price)}</p>
+                      <p className="text-sm font-semibold mt-1">
+                        {formatPrice(item.price)}
+                      </p>
 
                       {/* Quantity Controls */}
                       <div className="flex items-center gap-2 mt-2">
                         <button
-                          onClick={() => handleUpdateQuantity(itemId, item.quantity, -1)}
+                          onClick={() =>
+                            handleUpdateQuantity(itemId, item.quantity, -1)
+                          }
                           disabled={isLoadingCart || item.quantity <= 1}
                           className="p-1 rounded border hover:bg-gray-50 disabled:opacity-50"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
-                        <span className="text-sm w-8 text-center">{item.quantity}</span>
+                        <span className="text-sm w-8 text-center">
+                          {item.quantity}
+                        </span>
                         <button
-                          onClick={() => handleUpdateQuantity(itemId, item.quantity, 1)}
+                          onClick={() =>
+                            handleUpdateQuantity(itemId, item.quantity, 1)
+                          }
                           disabled={isLoadingCart}
                           className="p-1 rounded border hover:bg-gray-50 disabled:opacity-50"
                         >
@@ -126,7 +158,9 @@ export function CartSidebar() {
 
                     {/* Item Total */}
                     <div className="text-right">
-                      <p className="font-semibold">{formatPrice(item.subtotal)}</p>
+                      <p className="font-semibold">
+                        {formatPrice(item.subtotal)}
+                      </p>
                     </div>
                   </div>
                 );
@@ -148,7 +182,15 @@ export function CartSidebar() {
             <Link
               href="/checkout"
               onClick={() => setCartOpen(false)}
-              className="block w-full bg-primary-600 text-white text-center py-3 px-4 rounded-lg font-semibold hover:bg-primary-700 transition-colors"
+              className="block w-full text-white text-center py-3 px-4 rounded-lg font-semibold transition-colors"
+              style={{ backgroundColor: settings.primary_color }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor =
+                  settings.secondary_color;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = settings.primary_color;
+              }}
             >
               Proceed to Checkout
             </Link>

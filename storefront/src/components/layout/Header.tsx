@@ -1,23 +1,34 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { ShoppingCart, User, Menu, X, Search } from 'lucide-react';
-import { useStore } from '@/store/useStore';
-import { useState } from 'react';
-import { cn } from '@/lib/utils';
+import Link from "next/link";
+import { ShoppingCart, User, Menu, X, Search } from "lucide-react";
+import { useStore } from "@/store/useStore";
+import { useBranding } from "@/contexts/BrandingContext";
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import Image from "next/image";
 
 export function Header() {
-  const { cart, isAuthenticated, customer, isMobileMenuOpen, setMobileMenuOpen, setCartOpen } = useStore();
-  const [searchQuery, setSearchQuery] = useState('');
+  const {
+    cart,
+    isAuthenticated,
+    customer,
+    isMobileMenuOpen,
+    setMobileMenuOpen,
+    setCartOpen,
+  } = useStore();
+  const { settings } = useBranding();
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const cartItemCount = cart?.items.reduce((sum, item) => sum + item.quantity, 0) || 0;
+  const cartItemCount =
+    cart?.items.reduce((sum, item) => sum + item.quantity, 0) || 0;
 
   const navigation = [
-    { name: 'Home', href: '/' },
-    { name: 'Shop', href: '/products' },
-    { name: 'UVDTF', href: '/products?print_method=uvdtf' },
-    { name: 'DTF', href: '/products?print_method=dtf' },
-    { name: 'Sublimation', href: '/products?print_method=sublimation' },
+    { name: "Home", href: "/" },
+    { name: "Shop", href: "/products" },
+    { name: "UVDTF", href: "/products?print_method=uvdtf" },
+    { name: "DTF", href: "/products?print_method=dtf" },
+    { name: "Sublimation", href: "/products?print_method=sublimation" },
   ];
 
   const handleSearch = (e: React.FormEvent) => {
@@ -33,8 +44,23 @@ export function Header() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link href="/" className="text-2xl font-bold text-primary-600">
-              YourStore
+            <Link href="/" className="flex items-center space-x-3">
+              {settings.logo_url ? (
+                <div className="relative w-10 h-10">
+                  <Image
+                    src={settings.logo_url}
+                    alt={settings.store_name}
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              ) : null}
+              <span
+                className="text-2xl font-bold"
+                style={{ color: settings.primary_color }}
+              >
+                {settings.store_name}
+              </span>
             </Link>
           </div>
 
@@ -74,9 +100,9 @@ export function Header() {
           <div className="flex items-center space-x-4">
             {/* Account */}
             <Link
-              href={isAuthenticated ? '/account' : '/login'}
+              href={isAuthenticated ? "/account" : "/login"}
               className="text-gray-700 hover:text-primary-600 transition-colors"
-              title={isAuthenticated ? customer?.first_name : 'Sign in'}
+              title={isAuthenticated ? customer?.first_name : "Sign in"}
             >
               <User className="w-6 h-6" />
             </Link>
@@ -113,8 +139,8 @@ export function Header() {
         {/* Mobile Navigation */}
         <div
           className={cn(
-            'md:hidden overflow-hidden transition-all duration-300',
-            isMobileMenuOpen ? 'max-h-96 pb-4' : 'max-h-0'
+            "md:hidden overflow-hidden transition-all duration-300",
+            isMobileMenuOpen ? "max-h-96 pb-4" : "max-h-0",
           )}
         >
           <div className="flex flex-col space-y-2 pt-2">

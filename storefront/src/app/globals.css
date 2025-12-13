@@ -4,6 +4,14 @@
 
 @layer base {
   :root {
+    /* Branding colors - dynamically set by BrandingContext */
+    --color-primary: #10b981;
+    --color-secondary: #059669;
+    --color-accent: #34d399;
+    --color-text: #111827;
+    --color-background: #ffffff;
+
+    /* Tailwind/Shadcn theme colors */
     --foreground: 222.2 84% 4.9%;
     --background: 0 0% 100%;
     --card: 0 0% 100%;
@@ -41,5 +49,42 @@
 @layer utilities {
   .container {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Branding color utilities */
+  .bg-brand-primary {
+    background-color: var(--color-primary);
+  }
+
+  .bg-brand-secondary {
+    background-color: var(--color-secondary);
+  }
+
+  .bg-brand-accent {
+    background-color: var(--color-accent);
+  }
+
+  .text-brand-primary {
+    color: var(--color-primary);
+  }
+
+  .text-brand-secondary {
+    color: var(--color-secondary);
+  }
+
+  .text-brand-accent {
+    color: var(--color-accent);
+  }
+
+  .border-brand-primary {
+    border-color: var(--color-primary);
+  }
+
+  .hover\:bg-brand-primary:hover {
+    background-color: var(--color-primary);
+  }
+
+  .hover\:text-brand-primary:hover {
+    color: var(--color-primary);
   }
 }
