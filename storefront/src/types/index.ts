@@ -1,7 +1,17 @@
 // Product Types
-export type PrintMethod = 'uvdtf' | 'dtf' | 'sublimation' | 'vinyl' | 'other' | 'digital';
-export type ProductCategory = 'cup_wraps' | 'single_square' | 'single_rectangle' | 'other';
-export type ProductType = 'physical' | 'digital';
+export type PrintMethod =
+  | "uvdtf"
+  | "dtf"
+  | "sublimation"
+  | "vinyl"
+  | "other"
+  | "digital";
+export type ProductCategory =
+  | "cup_wraps"
+  | "single_square"
+  | "single_rectangle"
+  | "other";
+export type ProductType = "physical" | "digital";
 
 export interface ProductVariant {
   id: string;
@@ -95,6 +105,23 @@ export interface CustomerAddress {
   is_default_billing: boolean;
 }
 
+// Alias for address management pages
+export interface Address {
+  id: number;
+  customer_id?: string;
+  first_name: string;
+  last_name: string;
+  company?: string;
+  address1: string;
+  address2?: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  country: string;
+  phone?: string;
+  is_default: boolean;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
@@ -102,9 +129,17 @@ export interface AuthResponse {
 }
 
 // Order Types
-export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
-export type FulfillmentStatus = 'unfulfilled' | 'fulfilled' | 'partially_fulfilled';
+export type OrderStatus =
+  | "pending"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled";
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
+export type FulfillmentStatus =
+  | "unfulfilled"
+  | "fulfilled"
+  | "partially_fulfilled";
 
 export interface OrderItem {
   id: string;
