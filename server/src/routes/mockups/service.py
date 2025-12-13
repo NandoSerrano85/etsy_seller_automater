@@ -698,12 +698,15 @@ def create_mockup_image(db: Session, mockup_id: UUID, user_id: UUID, image_data:
             except Exception as file_err:
                 logging.error(f"Failed to copy image file: {file_err}")
                 raise MockupImageCreateError()
-        # 7. Create the MockupImage DB entry
+        # 7. Get default watermark if not provided
+        default_watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
+
+        # 8. Create the MockupImage DB entry
         mockup_image = MockupImage(
             mockups_id=mockup_id,
             filename=os.path.basename(dest_path),
             file_path=dest_path,
-            watermark_path=None,
+            watermark_path=default_watermark_path if os.path.exists(default_watermark_path) else None,
             image_type=template_name
         )
         db.add(mockup_image)
