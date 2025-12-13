@@ -1,6 +1,6 @@
 {
   "name": "craftflow-frontend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "React frontend for CraftFlow",
   "private": true,
   "dependencies": {
