@@ -170,6 +170,7 @@ export interface Order {
   payment_status: PaymentStatus;
   payment_method: string;
   payment_id?: string;
+  payment_intent_id?: string;
   fulfillment_status: FulfillmentStatus;
   tracking_number?: string;
   customer_note?: string;

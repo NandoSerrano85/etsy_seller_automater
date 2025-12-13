@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle, Package, Mail, ArrowRight } from "lucide-react";
@@ -8,7 +8,7 @@ import { ordersApi } from "@/lib/api";
 import { Order } from "@/types";
 import { formatPrice, formatDate } from "@/lib/utils";
 
-export default function CheckoutSuccessPage() {
+function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderNumber = searchParams.get("order_number");
@@ -260,5 +260,13 @@ export default function CheckoutSuccessPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CheckoutSuccessPage() {
+  return (
+    <Suspense fallback={<div className="container py-8">Loading...</div>}>
+      <CheckoutSuccessContent />
+    </Suspense>
   );
 }
