@@ -152,6 +152,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   total: number;
+  digital_file_url?: string;
 }
 
 export interface Order {
