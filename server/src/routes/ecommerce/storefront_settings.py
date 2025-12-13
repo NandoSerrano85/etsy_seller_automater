@@ -7,7 +7,7 @@ from typing import Optional
 
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
-from server.src.utils.authentication import get_current_user
+from server.src.routes.auth.service import get_current_user_db as get_current_user
 from server.src.entities.user import User
 
 
