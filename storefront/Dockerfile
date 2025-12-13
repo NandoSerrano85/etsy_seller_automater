@@ -19,8 +19,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Accept build arguments with defaults
+ARG NEXT_PUBLIC_API_URL=https://printer-automation-backend-production.up.railway.app
+ARG NEXT_PUBLIC_STRIPE_PUBLIC_KEY
+
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_STRIPE_PUBLIC_KEY=${NEXT_PUBLIC_STRIPE_PUBLIC_KEY}
 
 # Build the application
 RUN npm run build
