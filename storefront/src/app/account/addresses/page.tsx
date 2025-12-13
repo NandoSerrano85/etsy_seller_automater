@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { customerApi } from "@/lib/api";
-import { Address } from "@/types";
+import { CustomerAddress } from "@/types";
 import toast from "react-hot-toast";
 import { Plus, MapPin, Edit2, Trash2, Check, X } from "lucide-react";
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<Partial<Address>>({
+  const [formData, setFormData] = useState<Partial<CustomerAddress>>({
     first_name: "",
     last_name: "",
     address1: "",
@@ -22,7 +22,8 @@ export default function AddressesPage() {
     zip_code: "",
     country: "United States",
     phone: "",
-    is_default: false,
+    is_default_shipping: false,
+    is_default_billing: false,
   });
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function AddressesPage() {
     try {
       if (editingId) {
         // Update existing address
-        await customerApi.updateAddress(String(editingId), formData);
+        await customerApi.updateAddress(editingId, formData);
         toast.success("Address updated successfully!");
       } else {
         // Create new address
@@ -77,19 +78,19 @@ export default function AddressesPage() {
     }
   };
 
-  const handleEdit = (address: Address) => {
+  const handleEdit = (address: CustomerAddress) => {
     setFormData(address);
     setEditingId(address.id);
     setIsEditing(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this address?")) {
       return;
     }
 
     try {
-      await customerApi.deleteAddress(String(id));
+      await customerApi.deleteAddress(id);
       toast.success("Address deleted successfully!");
       await fetchAddresses();
     } catch (error: any) {
@@ -100,10 +101,13 @@ export default function AddressesPage() {
     }
   };
 
-  const handleSetDefault = async (id: number) => {
+  const handleSetDefault = async (id: string) => {
     try {
-      // Set default by updating the address with is_default: true
-      await customerApi.updateAddress(String(id), { is_default: true });
+      // Set as default for both shipping and billing
+      await customerApi.updateAddress(id, {
+        is_default_shipping: true,
+        is_default_billing: true,
+      });
       toast.success("Default address updated!");
       await fetchAddresses();
     } catch (error: any) {
@@ -125,7 +129,8 @@ export default function AddressesPage() {
       zip_code: "",
       country: "United States",
       phone: "",
-      is_default: false,
+      is_default_shipping: false,
+      is_default_billing: false,
     });
     setEditingId(null);
     setIsEditing(false);
@@ -279,8 +284,17 @@ export default function AddressesPage() {
                 <input
                   type="checkbox"
                   name="is_default"
-                  checked={formData.is_default}
-                  onChange={handleChange}
+                  checked={
+                    formData.is_default_shipping || formData.is_default_billing
+                  }
+                  onChange={(e) => {
+                    const isDefault = e.target.checked;
+                    setFormData((prev) => ({
+                      ...prev,
+                      is_default_shipping: isDefault,
+                      is_default_billing: isDefault,
+                    }));
+                  }}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <span className="text-sm text-gray-700">
@@ -330,66 +344,74 @@ export default function AddressesPage() {
             )}
           </div>
         ) : (
-          addresses.map((address) => (
-            <div
-              key={address.id}
-              className="bg-white rounded-lg shadow-sm p-6 relative border-2 border-transparent hover:border-primary-200 transition-colors"
-            >
-              {address.is_default && (
-                <div className="absolute top-4 right-4">
-                  <span className="inline-flex items-center gap-1 bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-xs font-medium">
-                    <Check className="w-3 h-3" />
-                    Default
-                  </span>
+          addresses.map((address) => {
+            const isDefault =
+              address.is_default_shipping || address.is_default_billing;
+            return (
+              <div
+                key={address.id}
+                className="bg-white rounded-lg shadow-sm p-6 relative border-2 border-transparent hover:border-primary-200 transition-colors"
+              >
+                {isDefault && (
+                  <div className="absolute top-4 right-4">
+                    <span className="inline-flex items-center gap-1 bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-xs font-medium">
+                      <Check className="w-3 h-3" />
+                      Default
+                    </span>
+                  </div>
+                )}
+
+                <div className="mb-4">
+                  <p className="font-medium text-gray-900">
+                    {address.first_name} {address.last_name}
+                  </p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {address.address1}
+                  </p>
+                  {address.address2 && (
+                    <p className="text-sm text-gray-600">{address.address2}</p>
+                  )}
+                  <p className="text-sm text-gray-600">
+                    {address.city}, {address.state} {address.zip_code}
+                  </p>
+                  <p className="text-sm text-gray-600">{address.country}</p>
+                  {address.phone && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {address.phone}
+                    </p>
+                  )}
                 </div>
-              )}
 
-              <div className="mb-4">
-                <p className="font-medium text-gray-900">
-                  {address.first_name} {address.last_name}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">{address.address1}</p>
-                {address.address2 && (
-                  <p className="text-sm text-gray-600">{address.address2}</p>
-                )}
-                <p className="text-sm text-gray-600">
-                  {address.city}, {address.state} {address.zip_code}
-                </p>
-                <p className="text-sm text-gray-600">{address.country}</p>
-                {address.phone && (
-                  <p className="text-sm text-gray-600 mt-1">{address.phone}</p>
-                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(address)}
+                    className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Edit
+                  </button>
+                  {!isDefault && (
+                    <>
+                      <button
+                        onClick={() => handleSetDefault(address.id)}
+                        className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 font-medium"
+                      >
+                        <Check className="w-4 h-4" />
+                        Set Default
+                      </button>
+                      <button
+                        onClick={() => handleDelete(address.id)}
+                        className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleEdit(address)}
-                  className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-700 font-medium"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Edit
-                </button>
-                {!address.is_default && (
-                  <>
-                    <button
-                      onClick={() => handleSetDefault(address.id)}
-                      className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 font-medium"
-                    >
-                      <Check className="w-4 h-4" />
-                      Set Default
-                    </button>
-                    <button
-                      onClick={() => handleDelete(address.id)}
-                      className="flex items-center gap-1 text-sm text-red-600 hover:text-red-700 font-medium"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Delete
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
