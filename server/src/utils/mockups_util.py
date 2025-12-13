@@ -377,70 +377,68 @@ class MockupImageProcessor:
         return result
 
     def add_watermark(self, image, watermark_path, points_list, mask_points_list, image_type, opacity=0.5):
-        """Add watermark to the mockup image"""
+        """Add watermark to the mockup image - centered on the entire image"""
         if not os.path.exists(watermark_path):
             return image
-        
+
         watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
         if watermark is None:
             return image
-        
+
         if watermark.shape[2] == 3:
             watermark = cv2.cvtColor(watermark, cv2.COLOR_BGR2BGRA)
-        
-        # Use first mask for watermark placement
-        if not mask_points_list or not points_list:
-            return image
-        
-        mask_points = mask_points_list[0]
-        points = points_list[0]
-        
-        if not mask_points or len(mask_points) < 3:
-            return image
-        
-        points_array = np.array(mask_points, dtype=np.int32)
-        mask = np.zeros(image.shape[:2], dtype=np.uint8)
-        cv2.fillPoly(mask, [points_array], (255,))
-        
-        # Find mask bounds
-        mask_indices = np.argwhere(mask)
-        if len(mask_indices) == 0:
-            return image
-        
-        y_min, x_min = mask_indices.min(axis=0)
-        y_max, x_max = mask_indices.max(axis=0)
-        
-        # Resize watermark to fit mask
-        mask_width = x_max - x_min
-        mask_height = y_max - y_min
-        
-        watermark_resized = cv2.resize(watermark, (mask_width, mask_height), interpolation=cv2.INTER_LANCZOS4)
-        
-        # Place watermark at mask position
-        y_start = max(y_min, 0)
-        y_end = min(y_max, image.shape[0])
-        x_start = max(x_min, 0)
-        x_end = min(x_max, image.shape[1])
-        
-        w_y_start = y_start - y_min
-        w_x_start = x_start - x_min
+
+        # Get image dimensions
+        img_height, img_width = image.shape[:2]
+
+        # Scale watermark to be 60% of the image width while maintaining aspect ratio
+        watermark_scale = 0.6
+        target_width = int(img_width * watermark_scale)
+        watermark_aspect = watermark.shape[1] / watermark.shape[0]
+        target_height = int(target_width / watermark_aspect)
+
+        # Resize watermark
+        watermark_resized = cv2.resize(
+            watermark,
+            (target_width, target_height),
+            interpolation=cv2.INTER_LANCZOS4
+        )
+
+        # Center the watermark on the image
+        y_offset = (img_height - target_height) // 2
+        x_offset = (img_width - target_width) // 2
+
+        # Ensure watermark fits within image bounds
+        y_start = max(0, y_offset)
+        y_end = min(img_height, y_offset + target_height)
+        x_start = max(0, x_offset)
+        x_end = min(img_width, x_offset + target_width)
+
+        # Adjust watermark region if needed
+        w_y_start = max(0, -y_offset)
         w_y_end = w_y_start + (y_end - y_start)
+        w_x_start = max(0, -x_offset)
         w_x_end = w_x_start + (x_end - x_start)
-        
-        # Get design alpha channel
-        design_alpha = image[y_start:y_end, x_start:x_end, 3] / 255.0
-        visible_mask = (design_alpha > 0) & (mask[y_start:y_end, x_start:x_end] > 0)
-        
-        # Watermark alpha
-        alpha = watermark_resized[w_y_start:w_y_end, w_x_start:w_x_end, 3] / 255.0 * opacity
-        alpha = alpha * visible_mask
-        
+
+        # Get watermark region
+        watermark_region = watermark_resized[w_y_start:w_y_end, w_x_start:w_x_end]
+
+        # Get alpha channel from watermark
+        if watermark_region.shape[2] == 4:
+            alpha = watermark_region[:, :, 3] / 255.0 * opacity
+        else:
+            alpha = np.ones((watermark_region.shape[0], watermark_region.shape[1])) * opacity
+
+        # Create 3-channel alpha for blending
+        alpha_3channel = np.stack([alpha] * 3, axis=2)
+
+        # Blend watermark with image
         for c in range(3):
             image[y_start:y_end, x_start:x_end, c] = (
-                watermark_resized[w_y_start:w_y_end, w_x_start:w_x_end, c] * alpha +
+                watermark_region[:, :, c] * alpha +
                 image[y_start:y_end, x_start:x_end, c] * (1.0 - alpha)
-            )
-        
+            ).astype(np.uint8)
+
         return image
 
 def process_design_image(design_file_path: str, template_name: str) -> Tuple[np.ndarray, str]:
