@@ -61,8 +61,10 @@ export default function AddressesPage() {
         await customerApi.updateAddress(editingId, formData);
         toast.success("Address updated successfully!");
       } else {
-        // Create new address
-        await customerApi.addAddress(formData);
+        // Create new address - type assertion since form validation ensures required fields
+        await customerApi.addAddress(
+          formData as Omit<CustomerAddress, "id" | "customer_id">,
+        );
         toast.success("Address added successfully!");
       }
 
