@@ -37,7 +37,6 @@ class Customer(Base):
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     addresses = relationship("CustomerAddress", back_populates="customer", cascade="all, delete-orphan")
