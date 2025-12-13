@@ -104,7 +104,7 @@ export default function OrderDetailPage({
         </div>
 
         {/* Order Progress */}
-        {order.fulfillment_status !== "cancelled" && (
+        {order.status !== "cancelled" && (
           <div className="mt-6">
             <div className="flex items-center justify-between">
               <div className="flex flex-col items-center flex-1">
@@ -123,8 +123,9 @@ export default function OrderDetailPage({
               <div className="flex-1 h-1 bg-gray-200">
                 <div
                   className={`h-full transition-all ${
-                    order.fulfillment_status === "processing" ||
-                    order.fulfillment_status === "fulfilled"
+                    order.status === "processing" ||
+                    order.status === "shipped" ||
+                    order.status === "delivered"
                       ? "bg-green-600"
                       : "bg-gray-200"
                   }`}
@@ -134,8 +135,9 @@ export default function OrderDetailPage({
               <div className="flex flex-col items-center flex-1">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    order.fulfillment_status === "processing" ||
-                    order.fulfillment_status === "fulfilled"
+                    order.status === "processing" ||
+                    order.status === "shipped" ||
+                    order.status === "delivered"
                       ? "bg-green-600 text-white"
                       : "bg-gray-200 text-gray-600"
                   }`}
@@ -148,7 +150,7 @@ export default function OrderDetailPage({
               <div className="flex-1 h-1 bg-gray-200">
                 <div
                   className={`h-full transition-all ${
-                    order.fulfillment_status === "fulfilled"
+                    order.status === "shipped" || order.status === "delivered"
                       ? "bg-green-600"
                       : "bg-gray-200"
                   }`}
@@ -158,7 +160,7 @@ export default function OrderDetailPage({
               <div className="flex flex-col items-center flex-1">
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    order.fulfillment_status === "fulfilled"
+                    order.status === "delivered"
                       ? "bg-green-600 text-white"
                       : "bg-gray-200 text-gray-600"
                   }`}

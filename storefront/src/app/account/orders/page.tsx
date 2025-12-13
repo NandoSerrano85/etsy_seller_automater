@@ -37,8 +37,10 @@ export default function OrdersPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "fulfilled":
+      case "delivered":
         return "bg-green-100 text-green-800";
+      case "shipped":
+        return "bg-blue-100 text-blue-800";
       case "processing":
         return "bg-blue-100 text-blue-800";
       case "pending":
@@ -123,10 +125,10 @@ export default function OrdersPage() {
                       <div className="flex gap-2 mt-1">
                         <span
                           className={`inline-block px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusColor(
-                            order.fulfillment_status,
+                            order.status,
                           )}`}
                         >
-                          {order.fulfillment_status}
+                          {order.status}
                         </span>
                         <span
                           className={`inline-block px-2 py-1 text-xs font-medium rounded-full capitalize ${getPaymentStatusColor(
