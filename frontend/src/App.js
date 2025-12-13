@@ -34,6 +34,13 @@ const ShopifyProductCreator = React.lazy(() => import('./pages/ShopifyProductCre
 const ShopifyBulkProductCreator = React.lazy(() => import('./pages/ShopifyBulkProductCreator'));
 const ShopifyTemplateCreator = React.lazy(() => import('./pages/ShopifyTemplateCreator'));
 
+// CraftFlow Commerce components (lazy loaded)
+const CraftFlowDashboard = React.lazy(() => import('./pages/CraftFlowDashboard'));
+const CraftFlowProducts = React.lazy(() => import('./pages/CraftFlowProducts'));
+const CraftFlowProductCreator = React.lazy(() => import('./pages/CraftFlowProductCreator'));
+const CraftFlowOrders = React.lazy(() => import('./pages/CraftFlowOrders'));
+const CraftFlowCustomers = React.lazy(() => import('./pages/CraftFlowCustomers'));
+
 // Template components (lazy loaded)
 const TemplateCreator = React.lazy(() => import('./pages/TemplateCreator'));
 
@@ -293,6 +300,56 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ShopifyDashboard />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* CraftFlow Commerce Routes */}
+            <Route
+              path="/craftflow/dashboard"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/products"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowProducts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/products/create"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowProductCreator />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/products/edit/:id"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowProductCreator />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/orders"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowOrders />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/customers"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowCustomers />
                 </ProtectedRoute>
               }
             />
