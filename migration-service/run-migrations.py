@@ -117,6 +117,9 @@ def discover_migrations():
         "import_local_designs",           # Import local designs with all hash calculations
         "run_canvas_size_migration",      # Canvas size updates
         "migration_add_printers_and_canvas_updates", # Printer and canvas updates
+
+        # Ecommerce migrations
+        "create_ecommerce_tables",        # Creates all ecommerce tables for storefront
     ]
 
     # Exclude certain files
