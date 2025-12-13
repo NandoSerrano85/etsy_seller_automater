@@ -35,10 +35,10 @@ const CraftFlowDashboard = () => {
 
       // Fetch dashboard stats
       const [productsRes, ordersRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/api/ecommerce/products/`, {
+        axios.get(`${API_BASE_URL}/api/ecommerce/admin/products/`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        axios.get(`${API_BASE_URL}/api/ecommerce/orders/`, {
+        axios.get(`${API_BASE_URL}/api/ecommerce/admin/orders/`, {
           headers: { Authorization: `Bearer ${token}` },
           params: { page_size: 5 },
         }),

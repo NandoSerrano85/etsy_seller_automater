@@ -47,7 +47,7 @@ const CraftFlowProductCreator = () => {
   const loadProduct = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/products/${id}`, {
+      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/products/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -177,12 +177,12 @@ const CraftFlowProductCreator = () => {
 
       let response;
       if (id) {
-        response = await axios.put(`${API_BASE_URL}/api/ecommerce/products/${id}`, productData, {
+        response = await axios.put(`${API_BASE_URL}/api/ecommerce/admin/products/${id}`, productData, {
           headers: { Authorization: `Bearer ${token}` },
         });
         addNotification('success', 'Product updated successfully');
       } else {
-        response = await axios.post(`${API_BASE_URL}/api/ecommerce/products/`, productData, {
+        response = await axios.post(`${API_BASE_URL}/api/ecommerce/admin/products/`, productData, {
           headers: { Authorization: `Bearer ${token}` },
         });
         addNotification('success', 'Product created successfully');

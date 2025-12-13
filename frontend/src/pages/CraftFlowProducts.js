@@ -35,7 +35,7 @@ const CraftFlowProducts = () => {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/products/`, {
+      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/products/`, {
         headers: { Authorization: `Bearer ${token}` },
         params: { page_size: 100 },
       });
@@ -55,7 +55,7 @@ const CraftFlowProducts = () => {
     }
 
     try {
-      await axios.delete(`${API_BASE_URL}/api/ecommerce/products/${productId}`, {
+      await axios.delete(`${API_BASE_URL}/api/ecommerce/admin/products/${productId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -70,7 +70,7 @@ const CraftFlowProducts = () => {
   const handleToggleActive = async (productId, currentStatus) => {
     try {
       await axios.put(
-        `${API_BASE_URL}/api/ecommerce/products/${productId}`,
+        `${API_BASE_URL}/api/ecommerce/admin/products/${productId}`,
         { is_active: !currentStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );

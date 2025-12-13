@@ -33,7 +33,7 @@ const CraftFlowStorefrontSettings = () => {
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/storefront-settings/`, {
+      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/storefront-settings/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -94,7 +94,7 @@ const CraftFlowStorefrontSettings = () => {
     try {
       setSaving(true);
 
-      await axios.post(`${API_BASE_URL}/api/ecommerce/storefront-settings/`, settings, {
+      await axios.post(`${API_BASE_URL}/api/ecommerce/admin/storefront-settings/`, settings, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

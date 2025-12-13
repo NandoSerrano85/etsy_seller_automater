@@ -32,7 +32,7 @@ const CraftFlowOrders = () => {
   const loadOrders = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/orders/`, {
+      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/orders/`, {
         headers: { Authorization: `Bearer ${token}` },
         params: { page_size: 100 },
       });
@@ -49,7 +49,7 @@ const CraftFlowOrders = () => {
   const handleUpdateStatus = async (orderId, newStatus) => {
     try {
       await axios.put(
-        `${API_BASE_URL}/api/ecommerce/orders/${orderId}`,
+        `${API_BASE_URL}/api/ecommerce/admin/orders/${orderId}`,
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );

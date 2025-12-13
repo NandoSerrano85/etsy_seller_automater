@@ -12,7 +12,7 @@ from server.src.entities.user import User
 
 
 router = APIRouter(
-    prefix='/api/ecommerce/storefront-settings',
+    prefix='/api/ecommerce/admin/storefront-settings',
     tags=['Ecommerce - Storefront Settings']
 )
 

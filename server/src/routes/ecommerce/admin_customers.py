@@ -15,7 +15,7 @@ from server.src.entities.user import User
 
 
 router = APIRouter(
-    prefix='/api/ecommerce/customers',
+    prefix='/api/ecommerce/admin/customers',
     tags=['Ecommerce Admin - Customers']
 )
 

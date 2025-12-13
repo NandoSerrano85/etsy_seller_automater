@@ -23,7 +23,7 @@ const CraftFlowCustomers = () => {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/customers/`, {
+      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/customers/`, {
         headers: { Authorization: `Bearer ${token}` },
         params: { page_size: 100 },
       });
