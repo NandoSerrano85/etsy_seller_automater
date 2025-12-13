@@ -494,6 +494,50 @@ def upgrade(connection):
         else:
             logging.info("ecommerce_product_reviews table already exists")
 
+        # ====================================================================
+        # 9. Create ecommerce_storefront_settings table
+        # ====================================================================
+        result = connection.execute(text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_name = 'ecommerce_storefront_settings'
+        """))
+
+        if not result.fetchone():
+            logging.info("Creating ecommerce_storefront_settings table...")
+            connection.execute(text("""
+                CREATE TABLE ecommerce_storefront_settings (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL UNIQUE,
+
+                    -- Store Information
+                    store_name VARCHAR(255),
+                    store_description TEXT,
+
+                    -- Branding Assets
+                    logo_url VARCHAR(512),
+
+                    -- Color Scheme (hex color codes)
+                    primary_color VARCHAR(7) DEFAULT '#10b981',
+                    secondary_color VARCHAR(7) DEFAULT '#059669',
+                    accent_color VARCHAR(7) DEFAULT '#34d399',
+                    text_color VARCHAR(7) DEFAULT '#111827',
+                    background_color VARCHAR(7) DEFAULT '#ffffff',
+
+                    -- Timestamps
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+            connection.execute(text("""
+                CREATE INDEX idx_storefront_settings_user_id ON ecommerce_storefront_settings(user_id)
+            """))
+
+            logging.info("✅ Created ecommerce_storefront_settings table")
+        else:
+            logging.info("ecommerce_storefront_settings table already exists")
+
         # Analyze all tables for better query performance
         connection.execute(text("""
             ANALYZE ecommerce_products,
@@ -503,7 +547,8 @@ def upgrade(connection):
                     ecommerce_orders,
                     ecommerce_order_items,
                     ecommerce_shopping_carts,
-                    ecommerce_product_reviews
+                    ecommerce_product_reviews,
+                    ecommerce_storefront_settings
         """))
 
         logging.info("✅ Successfully completed ecommerce tables migration")
@@ -520,6 +565,7 @@ def downgrade(connection):
         logging.info("Dropping ecommerce tables...")
 
         # Drop in reverse order to respect foreign key constraints
+        connection.execute(text("DROP TABLE IF EXISTS ecommerce_storefront_settings CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS ecommerce_product_reviews CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS ecommerce_shopping_carts CASCADE"))
         connection.execute(text("DROP TABLE IF EXISTS ecommerce_order_items CASCADE"))
