@@ -6,7 +6,7 @@ import axios from 'axios';
 import { UserGroupIcon, MagnifyingGlassIcon, EyeIcon, EnvelopeIcon, CalendarIcon } from '@heroicons/react/24/outline';
 
 const CraftFlowCustomers = () => {
-  const { token } = useAuth();
+  const { userToken: token } = useAuth();
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 

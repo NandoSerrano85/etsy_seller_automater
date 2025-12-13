@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 const CraftFlowProducts = () => {
-  const { token } = useAuth();
+  const { userToken: token } = useAuth();
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 

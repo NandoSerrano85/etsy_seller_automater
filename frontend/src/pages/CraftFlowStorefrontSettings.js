@@ -6,7 +6,7 @@ import axios from 'axios';
 import { PaintBrushIcon, PhotoIcon, CheckCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 
 const CraftFlowStorefrontSettings = () => {
-  const { token, user } = useAuth();
+  const { userToken: token, user } = useAuth();
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
 

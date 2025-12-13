@@ -6,7 +6,7 @@ import axios from 'axios';
 import { CubeIcon, PhotoIcon, PlusIcon, XMarkIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 const CraftFlowProductCreator = () => {
-  const { token } = useAuth();
+  const { userToken: token } = useAuth();
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
   const { id } = useParams();
