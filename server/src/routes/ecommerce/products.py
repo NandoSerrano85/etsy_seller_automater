@@ -1,7 +1,7 @@
 """Product API endpoints for ecommerce storefront."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload
 from sqlalchemy import or_, and_
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -170,7 +170,7 @@ async def list_products(
 
     Returns paginated list of products with basic info.
     """
-    query = db.query(Product).filter(Product.is_active == True)
+    query = db.query(Product).filter(Product.is_active == True).options(noload(Product.reviews))
 
     # Filter by print method (HOW it's made)
     if print_method:
@@ -211,8 +211,14 @@ async def list_products(
     # Paginate
     products = query.offset(offset).limit(page_size).all()
 
+    # Convert to response models
+    items = [
+        ProductListResponse.model_validate(product)
+        for product in products
+    ]
+
     return ProductListPaginatedResponse(
-        items=products,
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
