@@ -6,6 +6,7 @@ from sqlalchemy import or_, and_
 from typing import List, Optional
 from pydantic import BaseModel, Field
 import uuid
+from uuid import UUID
 
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.product import (
@@ -29,7 +30,7 @@ router = APIRouter(
 
 class ProductVariantResponse(BaseModel):
     """Product variant response model."""
-    id: str
+    id: UUID
     name: str
     sku: Optional[str] = None
     price: Optional[float] = None
@@ -45,7 +46,7 @@ class ProductVariantResponse(BaseModel):
 
 class ProductListResponse(BaseModel):
     """Product list response model."""
-    id: str
+    id: UUID
     name: str
     slug: str
     short_description: Optional[str] = None
@@ -65,7 +66,7 @@ class ProductListResponse(BaseModel):
 
 class ProductDetailResponse(BaseModel):
     """Product detail response model."""
-    id: str
+    id: UUID
     name: str
     slug: str
     description: Optional[str] = None
@@ -215,7 +216,7 @@ async def list_products(
     items = []
     for product in products:
         items.append(ProductListResponse(
-            id=str(product.id),
+            id=product.id,
             name=product.name,
             slug=product.slug,
             short_description=product.short_description,
