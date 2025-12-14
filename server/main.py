@@ -187,10 +187,13 @@ app.add_middleware(
     allow_origins=[
         "https://comforting-cocada-88dd8c.netlify.app",
         "https://printer-automater.netlify.app",
-        "https://printer-automation-frontend-production.up.railway.app",  # Specific Railway frontend URL
+        "https://printer-automation-frontend-production.up.railway.app",  # Admin frontend
+        "https://store-front-production-bddf.up.railway.app",  # Storefront (Next.js)
         frontend_url,  # Dynamic frontend URL from environment
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://localhost:3000",  # Admin frontend local
+        "http://localhost:3001",  # Storefront local
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
@@ -200,9 +203,11 @@ app.add_middleware(
 )
 
 print("🌐 CORS middleware configured with the following origins:")
-print(f"   - https://printer-automation-frontend-production.up.railway.app")
-print(f"   - {frontend_url}")
-print(f"   - Any *.railway.app subdomain")
+print(f"   - Admin Frontend: https://printer-automation-frontend-production.up.railway.app")
+print(f"   - Storefront: https://store-front-production-bddf.up.railway.app")
+print(f"   - Dynamic Frontend URL: {frontend_url}")
+print(f"   - Local: http://localhost:3000 (admin) & http://localhost:3001 (storefront)")
+print(f"   - Any *.railway.app subdomain (regex)")
 print("🔧 CORS allows all methods and headers")
 print("🚀 Backend fixes for CORS and 500 errors applied")
 
