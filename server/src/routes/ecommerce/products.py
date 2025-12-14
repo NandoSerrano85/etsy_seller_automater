@@ -140,18 +140,27 @@ class ProductCreateRequest(BaseModel):
 # API Endpoints
 # ============================================================================
 
-@router.get('/', response_model=List[ProductListResponse])
+class ProductListPaginatedResponse(BaseModel):
+    """Paginated product list response for storefront."""
+    items: List[ProductListResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+@router.get('/', response_model=ProductListPaginatedResponse)
 async def list_products(
     print_method: Optional[str] = Query(None, description="Filter by print method"),
     category: Optional[str] = Query(None, description="Filter by product category"),
     featured: Optional[bool] = Query(None, description="Filter featured products"),
     search: Optional[str] = Query(None, min_length=2, description="Search in name and description"),
-    limit: int = Query(20, le=100, ge=1),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, le=100, ge=1, description="Items per page"),
     db: Session = Depends(get_db)
 ):
     """
-    Get list of products for storefront.
+    Get paginated list of products for storefront.
 
     Filters:
     - print_method: uvdtf, dtf, sublimation, vinyl, other, digital
@@ -159,7 +168,7 @@ async def list_products(
     - featured: true/false
     - search: search term for name/description
 
-    Returns list of products with basic info.
+    Returns paginated list of products with basic info.
     """
     query = db.query(Product).filter(Product.is_active == True)
 
@@ -186,16 +195,29 @@ async def list_products(
             )
         )
 
+    # Get total count before pagination
+    total = query.count()
+
     # Order by featured first, then by created date
     query = query.order_by(
         Product.is_featured.desc(),
         Product.created_at.desc()
     )
 
-    # Paginate
-    products = query.offset(offset).limit(limit).all()
+    # Calculate pagination
+    offset = (page - 1) * page_size
+    total_pages = (total + page_size - 1) // page_size
 
-    return products
+    # Paginate
+    products = query.offset(offset).limit(page_size).all()
+
+    return ProductListPaginatedResponse(
+        items=products,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages
+    )
 
 
 @router.get('/print-method/{method}', response_model=List[ProductListResponse])

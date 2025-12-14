@@ -92,7 +92,7 @@ export const productsApi = {
 
   getFeatured: async (): Promise<Product[]> => {
     const { data } = await api.get("/api/storefront/products", {
-      params: { page_size: 8, is_featured: true },
+      params: { page_size: 8, featured: true },
     });
     return data.items || [];
   },
