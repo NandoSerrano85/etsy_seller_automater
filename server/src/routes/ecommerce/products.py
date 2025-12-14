@@ -211,11 +211,24 @@ async def list_products(
     # Paginate
     products = query.offset(offset).limit(page_size).all()
 
-    # Convert to response models
-    items = [
-        ProductListResponse.model_validate(product)
-        for product in products
-    ]
+    # Convert to response models (convert UUID to string)
+    items = []
+    for product in products:
+        items.append(ProductListResponse(
+            id=str(product.id),
+            name=product.name,
+            slug=product.slug,
+            short_description=product.short_description,
+            price=product.price,
+            compare_at_price=product.compare_at_price,
+            featured_image=product.featured_image,
+            print_method=product.print_method,
+            category=product.category,
+            product_type=product.product_type,
+            is_featured=product.is_featured,
+            inventory_quantity=product.inventory_quantity,
+            track_inventory=product.track_inventory
+        ))
 
     return ProductListPaginatedResponse(
         items=items,
