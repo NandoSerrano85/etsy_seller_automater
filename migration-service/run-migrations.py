@@ -120,6 +120,7 @@ def discover_migrations():
 
         # Ecommerce migrations
         "create_ecommerce_tables",        # Creates all ecommerce tables for storefront
+        "fix_storefront_settings_user_id_type",  # Fixes user_id column type from INTEGER to UUID
     ]
 
     # Exclude certain files

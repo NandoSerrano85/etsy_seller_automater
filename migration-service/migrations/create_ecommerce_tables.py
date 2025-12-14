@@ -508,7 +508,7 @@ def upgrade(connection):
             connection.execute(text("""
                 CREATE TABLE ecommerce_storefront_settings (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL UNIQUE,
+                    user_id UUID NOT NULL UNIQUE,
 
                     -- Store Information
                     store_name VARCHAR(255),
