@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import Optional
+from datetime import datetime
+from uuid import UUID
 
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
@@ -36,7 +38,7 @@ class StorefrontSettingsRequest(BaseModel):
 class StorefrontSettingsResponse(BaseModel):
     """Storefront settings response model."""
     id: int
-    user_id: int
+    user_id: UUID
     store_name: Optional[str] = None
     store_description: Optional[str] = None
     logo_url: Optional[str] = None
@@ -45,8 +47,8 @@ class StorefrontSettingsResponse(BaseModel):
     accent_color: str
     text_color: str
     background_color: str
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -143,7 +145,7 @@ async def delete_storefront_settings(
 
 @router.get('/public/{user_id}', response_model=StorefrontSettingsResponse)
 async def get_public_storefront_settings(
-    user_id: int,
+    user_id: str,
     db: Session = Depends(get_db)
 ):
     """
@@ -151,16 +153,26 @@ async def get_public_storefront_settings(
 
     This endpoint is public and doesn't require authentication.
     Used by the storefront to fetch branding settings.
+
+    If user_id is "1" or invalid UUID, returns the first user's settings or defaults.
     """
-    settings = db.query(StorefrontSettings).filter(
-        StorefrontSettings.user_id == user_id
-    ).first()
+    # Try to convert string UUID to UUID object
+    try:
+        user_uuid = UUID(user_id)
+        settings = db.query(StorefrontSettings).filter(
+            StorefrontSettings.user_id == user_uuid
+        ).first()
+    except ValueError:
+        # If not a valid UUID (e.g., "1"), try to get the first available settings
+        settings = db.query(StorefrontSettings).first()
 
     if not settings:
         # Return default settings if none exist
+        # Use a dummy UUID for the response
+        from uuid import uuid4
         return StorefrontSettingsResponse(
             id=0,
-            user_id=user_id,
+            user_id=uuid4(),
             store_name=None,
             store_description=None,
             logo_url=None,
