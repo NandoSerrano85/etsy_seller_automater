@@ -258,13 +258,21 @@ if os.path.exists(frontend_public_dir):
         return {"error": "Favicon not found"}
 
 # Handle webpack hot reload files - return 404 gracefully
+# IMPORTANT: Only match files that don't start with 'api/' to avoid catching API routes
 @app.get("/{filename:path}")
 async def catch_webpack_files(filename: str):
     from fastapi.responses import JSONResponse
     from fastapi import status
-    
+
+    # Don't catch API routes - let them 404 properly through FastAPI
+    if filename.startswith('api/'):
+        # This shouldn't happen as API routers are registered first,
+        # but if we get here, pass through to FastAPI's normal 404 handling
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
+
     # If this is a webpack hot-reload file, return empty response to avoid console errors
-    if (filename.endswith('.hot-update.json') or 
+    if (filename.endswith('.hot-update.json') or
         filename.endswith('.hot-update.js') or
         filename.startswith('__webpack_hmr') or
         filename.endswith('.map')):
@@ -272,7 +280,7 @@ async def catch_webpack_files(filename: str):
             status_code=status.HTTP_404_NOT_FOUND,
             content={"detail": "Webpack development file not found"}
         )
-    
+
     # For other files, return standard 404
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,
