@@ -476,7 +476,8 @@ def upgrade(connection):
                     -- Moderation
                     is_approved BOOLEAN DEFAULT FALSE,
 
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """))
 
