@@ -76,7 +76,7 @@ export const productsApi = {
     category?: string;
     search?: string;
   }): Promise<PaginatedResponse<Product>> => {
-    const { data } = await api.get("/api/storefront/products", { params });
+    const { data } = await api.get("/api/storefront/products/", { params });
     return data;
   },
 
@@ -126,7 +126,7 @@ export const productsApi = {
 // Cart API
 export const cartApi = {
   get: async (): Promise<Cart> => {
-    const { data } = await api.get("/api/storefront/cart");
+    const { data } = await api.get("/api/storefront/cart/");
     return data;
   },
 
