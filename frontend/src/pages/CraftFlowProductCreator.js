@@ -15,6 +15,7 @@ const CraftFlowProductCreator = () => {
   const [saving, setSaving] = useState(false);
   const [designs, setDesigns] = useState([]);
   const [imageUrls, setImageUrls] = useState(['']);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -142,6 +143,59 @@ const CraftFlowProductCreator = () => {
       if (design.image_url && !imageUrls.includes(design.image_url)) {
         setImageUrls([design.image_url, ...imageUrls.filter(url => url)]);
       }
+    }
+  };
+
+  const handleImageUpload = async e => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    // Validate file types
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+    const invalidFiles = files.filter(f => !validTypes.includes(f.type));
+    if (invalidFiles.length > 0) {
+      addNotification('error', 'Only JPG, PNG, WEBP and GIF images are allowed');
+      return;
+    }
+
+    // Validate file sizes (max 10MB each)
+    const maxSize = 10 * 1024 * 1024;
+    const oversizedFiles = files.filter(f => f.size > maxSize);
+    if (oversizedFiles.length > 0) {
+      addNotification('error', 'Images must be less than 10MB');
+      return;
+    }
+
+    setUploadingImages(true);
+    try {
+      const uploadPromises = files.map(async file => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await axios.post(`${API_BASE_URL}/api/ecommerce/admin/product-images/upload`, formData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        return response.data.url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+
+      // Add uploaded URLs to image list, filtering out empty ones
+      setImageUrls(prev => [...prev.filter(url => url), ...uploadedUrls]);
+
+      addNotification('success', `Uploaded ${uploadedUrls.length} image(s) successfully`);
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to upload images';
+      addNotification('error', errorMessage);
+    } finally {
+      setUploadingImages(false);
+      // Reset file input
+      e.target.value = '';
     }
   };
 
@@ -487,17 +541,41 @@ const CraftFlowProductCreator = () => {
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-between">
               <span className="flex items-center">
                 <PhotoIcon className="w-5 h-5 mr-2" />
-                Product Images
+                Product Images (Mockups)
               </span>
-              <button
-                type="button"
-                onClick={addImageUrl}
-                className="flex items-center px-3 py-1 text-sm bg-sage-600 text-white rounded-md hover:bg-sage-700"
-              >
-                <PlusIcon className="w-4 h-4 mr-1" />
-                Add Image
-              </button>
+              <div className="flex items-center space-x-2">
+                <label
+                  htmlFor="image-upload"
+                  className={`flex items-center px-3 py-1 text-sm bg-blue-600 text-white rounded-md cursor-pointer ${
+                    uploadingImages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-700'
+                  }`}
+                >
+                  <PhotoIcon className="w-4 h-4 mr-1" />
+                  {uploadingImages ? 'Uploading...' : 'Upload Images'}
+                </label>
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                  multiple
+                  onChange={handleImageUpload}
+                  disabled={uploadingImages}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={addImageUrl}
+                  className="flex items-center px-3 py-1 text-sm bg-sage-600 text-white rounded-md hover:bg-sage-700"
+                >
+                  <PlusIcon className="w-4 h-4 mr-1" />
+                  Add URL
+                </button>
+              </div>
             </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Upload mockup images (JPG, PNG, WEBP, GIF - max 10MB each) or add URLs manually. First image will be the
+              featured image.
+            </p>
 
             <div className="space-y-3">
               {imageUrls.map((url, index) => (
