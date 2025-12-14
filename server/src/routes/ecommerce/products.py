@@ -88,9 +88,25 @@ class ProductDetailResponse(BaseModel):
     meta_description: Optional[str] = None
     is_featured: bool = False
     template_name: Optional[str] = None
+    long_description: Optional[str] = None  # Alias for description for storefront compatibility
+    image_url: Optional[str] = None  # Alias for featured_image for storefront compatibility
+    image_gallery: Optional[List[str]] = []  # Alias for images for storefront compatibility
+    sku: Optional[str] = None  # Added for storefront display
 
     class Config:
         from_attributes = True
+
+    def model_post_init(self, __context) -> None:
+        """Set aliases after initialization."""
+        # Set long_description as alias for description
+        if self.description and not self.long_description:
+            object.__setattr__(self, 'long_description', self.description)
+        # Set image_url as alias for featured_image
+        if self.featured_image and not self.image_url:
+            object.__setattr__(self, 'image_url', self.featured_image)
+        # Set image_gallery as alias for images
+        if self.images and not self.image_gallery:
+            object.__setattr__(self, 'image_gallery', self.images)
 
 
 class ProductCreateRequest(BaseModel):
