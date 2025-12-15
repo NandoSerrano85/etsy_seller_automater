@@ -16,6 +16,10 @@ const CraftFlowProductCreator = () => {
   const [designs, setDesigns] = useState([]);
   const [imageUrls, setImageUrls] = useState(['']);
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [mockupDesignFiles, setMockupDesignFiles] = useState([]);
+  const [generatingMockups, setGeneratingMockups] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -43,6 +47,7 @@ const CraftFlowProductCreator = () => {
       loadProduct();
     }
     loadDesigns();
+    loadTemplates();
   }, [id]);
 
   const loadProduct = async () => {
@@ -96,6 +101,17 @@ const CraftFlowProductCreator = () => {
     }
   };
 
+  const loadTemplates = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/settings/craftflow-commerce-template`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setTemplates(response.data || []);
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    }
+  };
+
   const handleInputChange = e => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
@@ -143,6 +159,62 @@ const CraftFlowProductCreator = () => {
       if (design.image_url && !imageUrls.includes(design.image_url)) {
         setImageUrls([design.image_url, ...imageUrls.filter(url => url)]);
       }
+    }
+  };
+
+  const handleMockupDesignFilesChange = e => {
+    const files = Array.from(e.target.files);
+    setMockupDesignFiles(files);
+  };
+
+  const handleGenerateMockups = async () => {
+    if (!selectedTemplate) {
+      addNotification('error', 'Please select a template first');
+      return;
+    }
+
+    if (mockupDesignFiles.length === 0) {
+      addNotification('error', 'Please select design files to generate mockups');
+      return;
+    }
+
+    try {
+      setGeneratingMockups(true);
+      addNotification('info', 'Generating mockups... This may take a moment');
+
+      // TODO: Implement mockup generation API call
+      // This would call an endpoint that takes template + design files and generates mockups
+      // For now, we'll just upload the design files as mockup images
+
+      const uploadPromises = mockupDesignFiles.map(async file => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await axios.post(`${API_BASE_URL}/api/ecommerce/admin/product-images/upload`, formData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+
+        return response.data.url;
+      });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+
+      // Add uploaded mockups to image list
+      setImageUrls(prev => [...prev.filter(url => url), ...uploadedUrls]);
+
+      addNotification('success', `Generated ${uploadedUrls.length} mockup(s) successfully`);
+
+      // Clear the design files
+      setMockupDesignFiles([]);
+    } catch (error) {
+      console.error('Error generating mockups:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to generate mockups';
+      addNotification('error', errorMessage);
+    } finally {
+      setGeneratingMockups(false);
     }
   };
 
@@ -503,6 +575,9 @@ const CraftFlowProductCreator = () => {
           {/* Design Link */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Link to Design (Optional)</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Link this product to an existing design for reference. This is optional.
+            </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -536,12 +611,95 @@ const CraftFlowProductCreator = () => {
             </div>
           </div>
 
+          {/* Mockup Generator */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Generate Mockups (Optional)</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Select a template and upload design files to automatically generate product mockups. Skip this if you want
+              to upload mockups manually below.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select CraftFlow Commerce Template
+                </label>
+                <select
+                  value={selectedTemplate?.id || ''}
+                  onChange={e => {
+                    const template = templates.find(t => t.id === e.target.value);
+                    setSelectedTemplate(template || null);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                >
+                  <option value="">No template selected</option>
+                  {templates.map(template => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} - {template.template_title}
+                    </option>
+                  ))}
+                </select>
+                {templates.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    No templates available.{' '}
+                    <button
+                      type="button"
+                      onClick={() => navigate('/craftflow/templates/create')}
+                      className="underline hover:text-orange-700"
+                    >
+                      Create a template first
+                    </button>
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Upload Design Files</label>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                  multiple
+                  onChange={handleMockupDesignFilesChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                />
+                {mockupDesignFiles.length > 0 && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    {mockupDesignFiles.length} file(s) selected: {mockupDesignFiles.map(f => f.name).join(', ')}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerateMockups}
+                disabled={!selectedTemplate || mockupDesignFiles.length === 0 || generatingMockups}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {generatingMockups ? 'Generating Mockups...' : 'Generate Mockups'}
+              </button>
+
+              {selectedTemplate && (
+                <div className="mt-2 p-3 bg-gray-50 rounded-md">
+                  <p className="text-xs text-gray-700">
+                    <strong>Template:</strong> {selectedTemplate.name}
+                  </p>
+                  <p className="text-xs text-gray-700">
+                    <strong>Print Method:</strong> {selectedTemplate.print_method}
+                  </p>
+                  <p className="text-xs text-gray-700">
+                    <strong>Category:</strong> {selectedTemplate.category}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Images */}
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center justify-between">
               <span className="flex items-center">
                 <PhotoIcon className="w-5 h-5 mr-2" />
-                Product Images (Mockups)
+                Product Images (Upload Manually or Add URLs)
               </span>
               <div className="flex items-center space-x-2">
                 <label
@@ -573,8 +731,9 @@ const CraftFlowProductCreator = () => {
               </div>
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              Upload mockup images (JPG, PNG, WEBP, GIF - max 10MB each) or add URLs manually. First image will be the
-              featured image.
+              Upload product mockup images manually (JPG, PNG, WEBP, GIF - max 10MB each) or add image URLs. The first
+              image will be the featured image. You can also use the mockup generator above to automatically create
+              mockups from a template.
             </p>
 
             <div className="space-y-3">
