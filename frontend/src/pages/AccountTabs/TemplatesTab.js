@@ -6,6 +6,7 @@ const TemplatesTab = () => {
   const api = useApi();
   const [etsyTemplates, setEtsyTemplates] = useState([]);
   const [shopifyTemplates, setShopifyTemplates] = useState([]);
+  const [craftflowTemplates, setCraftflowTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTypeSelectionModal, setShowTypeSelectionModal] = useState(false);
@@ -20,12 +21,14 @@ const TemplatesTab = () => {
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const [etsyResponse, shopifyResponse] = await Promise.all([
+      const [etsyResponse, shopifyResponse, craftflowResponse] = await Promise.all([
         api.get('/settings/product-template'),
         api.get('/settings/shopify-product-template'),
+        api.get('/settings/craftflow-commerce-template'),
       ]);
       setEtsyTemplates(etsyResponse);
       setShopifyTemplates(shopifyResponse);
+      setCraftflowTemplates(craftflowResponse);
       setMessage('');
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -69,7 +72,7 @@ const TemplatesTab = () => {
         processing_max: 3,
         return_policy_id: null,
       });
-    } else {
+    } else if (type === 'shopify') {
       // Shopify template defaults
       setEditingTemplate({
         name: '',
@@ -107,6 +110,29 @@ const TemplatesTab = () => {
         template_suffix: '',
         variant_configs: [],
       });
+    } else if (type === 'craftflow') {
+      // CraftFlow Commerce template defaults
+      setEditingTemplate({
+        name: '',
+        template_title: '',
+        description: '',
+        short_description: '',
+        product_type: 'physical',
+        print_method: 'uvdtf',
+        category: 'cup_wraps',
+        price: 0.0,
+        compare_at_price: null,
+        cost: null,
+        track_inventory: false,
+        inventory_quantity: 0,
+        allow_backorder: false,
+        digital_file_url: '',
+        download_limit: 3,
+        meta_title: '',
+        meta_description: '',
+        is_active: true,
+        is_featured: false,
+      });
     }
     setShowEditModal(true);
   };
@@ -119,7 +145,7 @@ const TemplatesTab = () => {
         materials: template.materials ? template.materials.split(',') : [],
         tags: template.tags ? template.tags.split(',') : [],
       });
-    } else {
+    } else if (type === 'shopify') {
       setEditingTemplate({
         ...template,
         tags: template.tags ? template.tags.split(',') : [],
@@ -127,6 +153,10 @@ const TemplatesTab = () => {
         option2_values: template.option2_values ? template.option2_values.split(',') : [],
         option3_values: template.option3_values ? template.option3_values.split(',') : [],
         variant_configs: template.variant_configs || [],
+      });
+    } else if (type === 'craftflow') {
+      setEditingTemplate({
+        ...template,
       });
     }
     setShowEditModal(true);
@@ -138,7 +168,12 @@ const TemplatesTab = () => {
     }
 
     try {
-      const endpoint = type === 'etsy' ? 'product-template' : 'shopify-product-template';
+      const endpoint =
+        type === 'etsy'
+          ? 'product-template'
+          : type === 'shopify'
+            ? 'shopify-product-template'
+            : 'craftflow-commerce-template';
       await api.delete(`/settings/${endpoint}/${templateId}`);
       setMessage('Template deleted successfully');
       fetchTemplates();
@@ -163,7 +198,12 @@ const TemplatesTab = () => {
 
   const handleSaveTemplate = async templateData => {
     try {
-      const endpoint = selectedTemplateType === 'etsy' ? 'product-template' : 'shopify-product-template';
+      const endpoint =
+        selectedTemplateType === 'etsy'
+          ? 'product-template'
+          : selectedTemplateType === 'shopify'
+            ? 'shopify-product-template'
+            : 'craftflow-commerce-template';
 
       if (editingTemplate.id) {
         // Update existing template
@@ -195,7 +235,7 @@ const TemplatesTab = () => {
     }
   };
 
-  const allTemplates = [...etsyTemplates, ...shopifyTemplates];
+  const allTemplates = [...etsyTemplates, ...shopifyTemplates, ...craftflowTemplates];
 
   return (
     <div className="space-y-8 mt-0">
@@ -300,7 +340,7 @@ const TemplatesTab = () => {
             </div>
 
             {/* Shopify Templates Section */}
-            <div>
+            <div className="mb-8">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Shopify Templates</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {shopifyTemplates.length === 0 ? (
@@ -350,6 +390,68 @@ const TemplatesTab = () => {
                         </button>
                         <button
                           onClick={() => handleDeleteTemplate(template.id, 'shopify')}
+                          className="px-3 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* CraftFlow Commerce Templates Section */}
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">CraftFlow Commerce Templates</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {craftflowTemplates.length === 0 ? (
+                  <div className="col-span-full text-center py-8 bg-gray-50 rounded-lg">
+                    <p className="text-gray-600">No CraftFlow Commerce templates found</p>
+                  </div>
+                ) : (
+                  craftflowTemplates.map(template => (
+                    <div
+                      key={template.id}
+                      className="bg-white border rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900">
+                            {template.template_title || template.name}
+                          </h3>
+                          <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full">CraftFlow</span>
+                        </div>
+                      </div>
+
+                      <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                        {template.short_description || template.description || 'No description set'}
+                      </p>
+
+                      <div className="space-y-2 mb-4">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Price:</span>
+                          <span className="font-medium">${template.price || 0}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Category:</span>
+                          <span className="font-medium capitalize">{(template.category || '').replace(/_/g, ' ')}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Print Method:</span>
+                          <span className="font-medium uppercase">{template.print_method || 'N/A'}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleEditTemplate(template, 'craftflow')}
+                          className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteTemplate(template.id, 'craftflow')}
                           className="px-3 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition-colors"
                         >
                           Delete
@@ -424,6 +526,21 @@ const TemplateTypeSelectionModal = ({ onSelect, onClose }) => {
                 <p className="text-sm text-gray-600">Create a template for Shopify products</p>
               </div>
               <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onSelect('craftflow')}
+            className="w-full p-6 bg-blue-50 border-2 border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all"
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-left">
+                <h3 className="text-lg font-semibold text-gray-900">CraftFlow Commerce Template</h3>
+                <p className="text-sm text-gray-600">Create a template for CraftFlow Commerce products</p>
+              </div>
+              <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </div>
@@ -604,7 +721,8 @@ const TemplateEditModal = ({ template, templateType, onSave, onReauthorize, onCl
       <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
-            {template.id ? 'Edit' : 'Create'} {templateType === 'etsy' ? 'Etsy' : 'Shopify'} Template
+            {template.id ? 'Edit' : 'Create'}{' '}
+            {templateType === 'etsy' ? 'Etsy' : templateType === 'shopify' ? 'Shopify' : 'CraftFlow Commerce'} Template
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -624,7 +742,7 @@ const TemplateEditModal = ({ template, templateType, onSave, onReauthorize, onCl
               taxonomies={taxonomies}
               shopSections={shopSections}
             />
-          ) : (
+          ) : templateType === 'shopify' ? (
             <ShopifyTemplateForm
               formData={formData}
               handleInputChange={handleInputChange}
@@ -641,6 +759,8 @@ const TemplateEditModal = ({ template, templateType, onSave, onReauthorize, onCl
               themePermissionWarning={themePermissionWarning}
               onReauthorize={onReauthorize}
             />
+          ) : (
+            <CraftFlowTemplateForm formData={formData} handleInputChange={handleInputChange} />
           )}
 
           {/* Action Buttons */}
@@ -1970,6 +2090,320 @@ const ShopifyTemplateForm = ({
           </div>
         </div>
       )}
+    </>
+  );
+};
+
+// CraftFlow Template Form Component
+const CraftFlowTemplateForm = ({ formData, handleInputChange }) => {
+  const productTypes = [
+    { value: 'physical', label: 'Physical Product' },
+    { value: 'digital', label: 'Digital Product' },
+  ];
+
+  const printMethods = [
+    { value: 'uvdtf', label: 'UV DTF' },
+    { value: 'dtf', label: 'DTF' },
+    { value: 'sublimation', label: 'Sublimation' },
+    { value: 'vinyl', label: 'Vinyl' },
+    { value: 'other', label: 'Other' },
+    { value: 'digital', label: 'Digital' },
+  ];
+
+  const categories = [
+    { value: 'cup_wraps', label: 'Cup Wraps' },
+    { value: 'single_square', label: 'Single Square' },
+    { value: 'single_rectangle', label: 'Single Rectangle' },
+    { value: 'other_custom', label: 'Other Custom' },
+  ];
+
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Basic Information */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Template Name *</label>
+            <input
+              type="text"
+              value={formData.name || ''}
+              onChange={e => handleInputChange('name', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              placeholder="e.g., 16oz Cup Wrap Template"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Product Title Template *</label>
+            <input
+              type="text"
+              value={formData.template_title || ''}
+              onChange={e => handleInputChange('template_title', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              placeholder="e.g., {design_name} - 16oz Cup Wrap"
+            />
+            <p className="text-sm text-gray-500 mt-1">Use {'{design_name}'} as a placeholder for the design name</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea
+              value={formData.description || ''}
+              onChange={e => handleInputChange('description', e.target.value)}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Full product description"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Short Description</label>
+            <textarea
+              value={formData.short_description || ''}
+              onChange={e => handleInputChange('short_description', e.target.value)}
+              rows={2}
+              maxLength={500}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Brief product description (max 500 characters)"
+            />
+          </div>
+        </div>
+
+        {/* Product Categorization */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Product Categorization</h3>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Product Type *</label>
+            <select
+              value={formData.product_type || 'physical'}
+              onChange={e => handleInputChange('product_type', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              {productTypes.map(type => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Print Method *</label>
+            <select
+              value={formData.print_method || 'uvdtf'}
+              onChange={e => handleInputChange('print_method', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              {printMethods.map(method => (
+                <option key={method.value} value={method.value}>
+                  {method.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+            <select
+              value={formData.category || 'cup_wraps'}
+              onChange={e => handleInputChange('category', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              {categories.map(cat => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Pricing */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Pricing</h3>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Price *</label>
+            <input
+              type="number"
+              value={formData.price || ''}
+              onChange={e => handleInputChange('price', parseFloat(e.target.value))}
+              required
+              step="0.01"
+              min="0"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="24.99"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Compare At Price</label>
+            <input
+              type="number"
+              value={formData.compare_at_price || ''}
+              onChange={e => handleInputChange('compare_at_price', parseFloat(e.target.value) || null)}
+              step="0.01"
+              min="0"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="29.99"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Cost Per Item</label>
+            <input
+              type="number"
+              value={formData.cost || ''}
+              onChange={e => handleInputChange('cost', parseFloat(e.target.value) || null)}
+              step="0.01"
+              min="0"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="5.00"
+            />
+          </div>
+        </div>
+
+        {/* Inventory */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Inventory</h3>
+
+          <div>
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={formData.track_inventory || false}
+                onChange={e => handleInputChange('track_inventory', e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Track inventory</span>
+            </label>
+          </div>
+
+          {formData.track_inventory && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Inventory Quantity</label>
+                <input
+                  type="number"
+                  value={formData.inventory_quantity || ''}
+                  onChange={e => handleInputChange('inventory_quantity', parseInt(e.target.value))}
+                  min="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.allow_backorder || false}
+                    onChange={e => handleInputChange('allow_backorder', e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Allow backorder</span>
+                </label>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* SEO */}
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">SEO</h3>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Meta Title</label>
+            <input
+              type="text"
+              value={formData.meta_title || ''}
+              onChange={e => handleInputChange('meta_title', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="SEO title"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Meta Description</label>
+            <textarea
+              value={formData.meta_description || ''}
+              onChange={e => handleInputChange('meta_description', e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="SEO meta description"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Digital Product Settings */}
+      {formData.product_type === 'digital' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Digital Product Settings</h3>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Digital File URL</label>
+              <input
+                type="url"
+                value={formData.digital_file_url || ''}
+                onChange={e => handleInputChange('digital_file_url', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="https://..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Download Limit</label>
+              <input
+                type="number"
+                value={formData.download_limit || ''}
+                onChange={e => handleInputChange('download_limit', parseInt(e.target.value))}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Status */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-gray-900">Status</h3>
+
+          <div className="flex items-center space-x-6">
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={formData.is_active || false}
+                onChange={e => handleInputChange('is_active', e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Active</span>
+            </label>
+
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={formData.is_featured || false}
+                onChange={e => handleInputChange('is_featured', e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <span className="text-sm font-medium text-gray-700">Featured</span>
+            </label>
+          </div>
+        </div>
+      </div>
     </>
   );
 };
