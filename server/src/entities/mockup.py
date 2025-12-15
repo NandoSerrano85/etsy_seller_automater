@@ -46,19 +46,24 @@ class Mockups(Base):
     """This table holds the base mockup information."""
     __tablename__ = 'mockups'
     __table_args__ = {'extend_existing': True}
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
-    product_template_id = Column(UUID(as_uuid=True), ForeignKey('etsy_product_templates.id'), nullable=False)
-    
+
+    # Template source and references
+    template_source = Column(String, nullable=False, default='etsy')  # etsy, shopify, or craftflow
+    product_template_id = Column(UUID(as_uuid=True), ForeignKey('etsy_product_templates.id'), nullable=True)  # Etsy template
+    shopify_template_id = Column(UUID(as_uuid=True), ForeignKey('shopify_product_templates.id'), nullable=True)  # Shopify template
+    craftflow_template_id = Column(UUID(as_uuid=True), ForeignKey('craftflow_commerce_templates.id'), nullable=True)  # CraftFlow template
+
     # Multi-tenant support - conditionally add org_id
     if MULTI_TENANT_ENABLED:
         org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
     starting_name = Column(Integer, default=100)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    # Relationships (temporarily simplified to avoid circular dependencies)  
+    # Relationships (temporarily simplified to avoid circular dependencies)
     # organization = relationship('Organization', back_populates='mockups')
     user = relationship('User', back_populates='mockups')
     mockup_images = relationship('MockupImage', back_populates='mockups', cascade='all, delete-orphan')

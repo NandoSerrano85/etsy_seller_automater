@@ -40,6 +40,7 @@ class User(Base):
     third_party_tokens = relationship('ThirdPartyOAuthToken', back_populates='user')
     etsy_product_templates = relationship('EtsyProductTemplate', order_by='EtsyProductTemplate.id', back_populates='user')
     shopify_product_templates = relationship('ShopifyProductTemplate', order_by='ShopifyProductTemplate.id', back_populates='user')
+    craftflow_commerce_templates = relationship('CraftFlowCommerceTemplate', order_by='CraftFlowCommerceTemplate.id', back_populates='user')
     mockups = relationship('Mockups', order_by='Mockups.id', back_populates='user')
     design_images = relationship('DesignImages', order_by='DesignImages.id', back_populates='user')
 

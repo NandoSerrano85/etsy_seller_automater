@@ -93,3 +93,39 @@ class ShopifyProductTemplateResponse(ShopifyProductTemplateCreate):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# CraftFlow Commerce Template Models
+class CraftFlowCommerceTemplateCreate(BaseModel):
+    name: str
+    template_title: str
+    description: Optional[str] = None
+    short_description: Optional[str] = None
+    product_type: str  # physical or digital
+    print_method: str  # uvdtf, dtf, sublimation, vinyl, other, digital
+    category: str  # cup_wraps, single_square, single_rectangle, other_custom
+    price: float
+    compare_at_price: Optional[float] = None
+    cost: Optional[float] = None
+    track_inventory: Optional[bool] = False
+    inventory_quantity: Optional[int] = 0
+    allow_backorder: Optional[bool] = False
+    digital_file_url: Optional[str] = None
+    download_limit: Optional[int] = 3
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    is_active: Optional[bool] = True
+    is_featured: Optional[bool] = False
+
+
+class CraftFlowCommerceTemplateUpdate(CraftFlowCommerceTemplateCreate):
+    pass
+
+
+class CraftFlowCommerceTemplateResponse(CraftFlowCommerceTemplateCreate):
+    id: UUID
+    user_id: UUID
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

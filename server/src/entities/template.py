@@ -176,3 +176,91 @@ class ShopifyProductTemplate(Base):
             'created_at': self.created_at.isoformat() if self.created_at is not None else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at is not None else None,
         }
+
+
+class CraftFlowCommerceTemplate(Base):
+    __tablename__ = 'craftflow_commerce_templates'
+    __table_args__ = {'extend_existing': True}
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+
+    # Multi-tenant support - conditionally add org_id
+    if MULTI_TENANT_ENABLED:
+        org_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id', ondelete='CASCADE'), nullable=True)
+
+    # Template metadata
+    name = Column(String, nullable=False)  # Internal template name
+
+    # Product details
+    template_title = Column(String, nullable=False)  # Product title template (can include {design_name} placeholder)
+    description = Column(Text, nullable=True)  # Product description
+    short_description = Column(String(500), nullable=True)  # Short description
+
+    # Product categorization
+    product_type = Column(String, nullable=False)  # physical or digital
+    print_method = Column(String, nullable=False)  # uvdtf, dtf, sublimation, vinyl, other, digital
+    category = Column(String, nullable=False)  # cup_wraps, single_square, single_rectangle, other_custom
+
+    # Pricing
+    price = Column(Float, nullable=False)  # Base price
+    compare_at_price = Column(Float, nullable=True)  # Compare at price (for sales)
+    cost = Column(Float, nullable=True)  # Cost per item
+
+    # Inventory & Shipping
+    track_inventory = Column(Boolean, default=False)  # Track inventory
+    inventory_quantity = Column(Integer, default=0)  # Default inventory quantity
+    allow_backorder = Column(Boolean, default=False)  # Allow backorder
+
+    # Digital product settings
+    digital_file_url = Column(String, nullable=True)  # URL to digital file
+    download_limit = Column(Integer, default=3)  # Number of downloads allowed
+
+    # SEO
+    meta_title = Column(String, nullable=True)  # SEO title
+    meta_description = Column(Text, nullable=True)  # SEO meta description
+
+    # Status
+    is_active = Column(Boolean, default=True)  # Is template active
+    is_featured = Column(Boolean, default=False)  # Is template featured
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Relationships
+    user = relationship('User', back_populates='craftflow_commerce_templates')
+
+    def to_dict(self):
+        """Convert template to dictionary"""
+        # Get org_id value - will be None if not multi-tenant or not set
+        org_id_value = None
+        if hasattr(self, 'org_id'):
+            org_id_value = str(self.org_id) if self.org_id is not None else None
+
+        return {
+            'id': str(self.id),
+            'user_id': str(self.user_id),
+            'org_id': org_id_value,
+            'name': self.name,
+            'template_title': self.template_title,
+            'description': self.description,
+            'short_description': self.short_description,
+            'product_type': self.product_type,
+            'print_method': self.print_method,
+            'category': self.category,
+            'price': self.price,
+            'compare_at_price': self.compare_at_price,
+            'cost': self.cost,
+            'track_inventory': self.track_inventory,
+            'inventory_quantity': self.inventory_quantity,
+            'allow_backorder': self.allow_backorder,
+            'digital_file_url': self.digital_file_url,
+            'download_limit': self.download_limit,
+            'meta_title': self.meta_title,
+            'meta_description': self.meta_description,
+            'is_active': self.is_active,
+            'is_featured': self.is_featured,
+            'created_at': self.created_at.isoformat() if self.created_at is not None else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None else None,
+        }

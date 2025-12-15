@@ -54,6 +54,63 @@ async def get_all_product_templates(current_user: CurrentUser, db: Session = Dep
 
     return await get_all_product_templates_threaded()
 
+
+@router.get('/all-templates', response_model=List[dict])
+async def get_all_templates_from_all_sources(current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Get all templates from all sources (Etsy, Shopify, CraftFlow Commerce) with source indicators"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def get_all_templates_threaded():
+        # Get templates from all sources
+        etsy_templates = service.get_etsy_product_templates(user_id, db)
+        shopify_templates = service.get_shopify_product_templates(user_id, db)
+        craftflow_templates = service.get_craftflow_commerce_templates(user_id, db)
+
+        # Format all templates with source indicator
+        all_templates = []
+
+        for template in etsy_templates:
+            all_templates.append({
+                'id': str(template.id),
+                'name': template.name,
+                'template_title': template.title or template.name,
+                'source': 'etsy',
+                'price': template.price,
+                'created_at': template.created_at.isoformat() if template.created_at else None
+            })
+
+        for template in shopify_templates:
+            all_templates.append({
+                'id': str(template.id),
+                'name': template.name,
+                'template_title': template.template_title,
+                'source': 'shopify',
+                'price': template.price,
+                'created_at': template.created_at.isoformat() if template.created_at else None
+            })
+
+        for template in craftflow_templates:
+            all_templates.append({
+                'id': str(template.id),
+                'name': template.name,
+                'template_title': template.template_title,
+                'source': 'craftflow',
+                'price': template.price,
+                'print_method': template.print_method,
+                'category': template.category,
+                'created_at': template.created_at.isoformat() if template.created_at else None
+            })
+
+        # Sort by created_at descending
+        all_templates.sort(key=lambda x: x['created_at'] or '', reverse=True)
+
+        return all_templates
+
+    return await get_all_templates_threaded()
+
 @router.get('/product-template/taxonomies', response_model=List[dict])
 async def get_etsy_taxonomies(current_user: CurrentUser, db: Session = Depends(get_db)):
     """Get Etsy taxonomies (threaded)"""
@@ -186,3 +243,74 @@ async def delete_shopify_product_template_by_id(product_template_id: UUID, curre
         return service.delete_shopify_product_template(user_id, product_template_id, db)
 
     await delete_shopify_product_template_by_id_threaded()
+
+
+# CraftFlow Commerce Template Endpoints
+@router.post('/craftflow-commerce-template', response_model=model.CraftFlowCommerceTemplateResponse, status_code=status.HTTP_201_CREATED)
+async def create_craftflow_commerce_template(product_template: model.CraftFlowCommerceTemplateCreate, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Create CraftFlow Commerce product template (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def create_craftflow_commerce_template_threaded():
+        return service.create_craftflow_commerce_template(product_template, user_id, db)
+
+    return await create_craftflow_commerce_template_threaded()
+
+
+@router.get('/craftflow-commerce-template', response_model=List[model.CraftFlowCommerceTemplateResponse])
+async def get_all_craftflow_commerce_templates(current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Get all CraftFlow Commerce product templates (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def get_all_craftflow_commerce_templates_threaded():
+        return service.get_craftflow_commerce_templates(user_id, db)
+
+    return await get_all_craftflow_commerce_templates_threaded()
+
+
+@router.get('/craftflow-commerce-template/{product_template_id}', response_model=model.CraftFlowCommerceTemplateResponse)
+async def get_craftflow_commerce_template_by_id(product_template_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Get CraftFlow Commerce product template by ID (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def get_craftflow_commerce_template_by_id_threaded():
+        return service.get_craftflow_commerce_template_by_id(product_template_id, user_id, db)
+
+    return await get_craftflow_commerce_template_by_id_threaded()
+
+
+@router.put('/craftflow-commerce-template/{product_template_id}', response_model=model.CraftFlowCommerceTemplateResponse)
+async def update_craftflow_commerce_template_by_id(product_template: model.CraftFlowCommerceTemplateUpdate, product_template_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Update CraftFlow Commerce product template by ID (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def update_craftflow_commerce_template_by_id_threaded():
+        return service.update_craftflow_commerce_template(product_template, user_id, product_template_id, db)
+
+    return await update_craftflow_commerce_template_by_id_threaded()
+
+
+@router.delete('/craftflow-commerce-template/{product_template_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_craftflow_commerce_template_by_id(product_template_id: UUID, current_user: CurrentUser, db: Session = Depends(get_db)):
+    """Delete CraftFlow Commerce product template by ID (threaded)"""
+    user_id = current_user.get_uuid()
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="User not authenticated")
+
+    @run_in_thread
+    def delete_craftflow_commerce_template_by_id_threaded():
+        return service.delete_craftflow_commerce_template(user_id, product_template_id, db)
+
+    await delete_craftflow_commerce_template_by_id_threaded()
