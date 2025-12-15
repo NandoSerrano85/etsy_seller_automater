@@ -37,6 +37,7 @@ const ShopifyTemplateCreator = React.lazy(() => import('./pages/ShopifyTemplateC
 // CraftFlow Commerce components (lazy loaded)
 const CraftFlowDashboard = React.lazy(() => import('./pages/CraftFlowDashboard'));
 const CraftFlowProducts = React.lazy(() => import('./pages/CraftFlowProducts'));
+const CraftFlowTemplateCreator = React.lazy(() => import('./pages/CraftFlowTemplateCreator'));
 const CraftFlowProductCreator = React.lazy(() => import('./pages/CraftFlowProductCreator'));
 const CraftFlowOrders = React.lazy(() => import('./pages/CraftFlowOrders'));
 const CraftFlowCustomers = React.lazy(() => import('./pages/CraftFlowCustomers'));
@@ -285,6 +286,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ShopifyTemplateCreator />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/templates/create"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowTemplateCreator />
                 </ProtectedRoute>
               }
             />

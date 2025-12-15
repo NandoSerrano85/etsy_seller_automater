@@ -23,6 +23,14 @@ const TemplateCreator = () => {
       color: 'green',
       route: '/shopify/templates/create',
     },
+    {
+      id: 'craftflow',
+      name: 'CraftFlow Commerce',
+      description: 'Create templates for CraftFlow Commerce products',
+      icon: ShoppingBagIcon,
+      color: 'blue',
+      route: '/craftflow/templates/create',
+    },
   ];
 
   const handlePlatformSelect = platform => {
@@ -42,7 +50,7 @@ const TemplateCreator = () => {
         </div>
 
         {/* Platform Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {platforms.map(platform => (
             <button
               key={platform.id}

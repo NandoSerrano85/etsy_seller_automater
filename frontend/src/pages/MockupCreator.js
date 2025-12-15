@@ -17,7 +17,9 @@ const MockupCreator = () => {
 
   // Step 1: Template Selection
   const [templates, setTemplates] = useState([]);
+  const [filteredTemplates, setFilteredTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [templateSourceFilter, setTemplateSourceFilter] = useState('all'); // all, etsy, shopify, craftflow
 
   // Step 2: Image Selection
   const [selectedImages, setSelectedImages] = useState([]);
@@ -74,13 +76,23 @@ const MockupCreator = () => {
 
   const loadTemplates = async () => {
     try {
-      const response = await api.get('/settings/product-template');
+      const response = await api.get('/settings/all-templates');
       setTemplates(response);
+      setFilteredTemplates(response);
     } catch (error) {
       console.error('Error loading templates:', error);
       setMessage('Failed to load templates');
     }
   };
+
+  // Filter templates when source filter changes
+  useEffect(() => {
+    if (templateSourceFilter === 'all') {
+      setFilteredTemplates(templates);
+    } else {
+      setFilteredTemplates(templates.filter(t => t.source === templateSourceFilter));
+    }
+  }, [templateSourceFilter, templates]);
 
   const loadExistingMockups = async () => {
     try {
@@ -496,26 +508,62 @@ const MockupCreator = () => {
       <h3 className="text-xl font-semibold text-gray-900">Step 1: Select Template</h3>
       <p className="text-gray-600">Choose the template that will be associated with your mockups.</p>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {templates.map(template => (
-          <div
-            key={template.id}
-            onClick={() => setSelectedTemplate(template)}
-            className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-              selectedTemplate?.id === template.id
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <h4 className="font-semibold text-gray-900">{template.name}</h4>
-            {template.template_title && <p className="text-sm text-gray-600">{template.template_title}</p>}
-            <div className="text-xs text-gray-500 mt-2">
-              <div>Price: ${template.price || 0}</div>
-              <div>Type: {template.type || 'N/A'}</div>
-            </div>
-          </div>
-        ))}
+      {/* Template Source Filter */}
+      <div className="flex items-center space-x-2">
+        <label className="text-sm font-medium text-gray-700">Filter by source:</label>
+        <select
+          value={templateSourceFilter}
+          onChange={e => setTemplateSourceFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        >
+          <option value="all">All Sources</option>
+          <option value="etsy">Etsy</option>
+          <option value="shopify">Shopify</option>
+          <option value="craftflow">CraftFlow Commerce</option>
+        </select>
+        <span className="text-sm text-gray-500">
+          ({filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''})
+        </span>
       </div>
+
+      {filteredTemplates.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">No templates found for the selected source.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredTemplates.map(template => (
+            <div
+              key={template.id}
+              onClick={() => setSelectedTemplate(template)}
+              className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                selectedTemplate?.id === template.id
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <h4 className="font-semibold text-gray-900">{template.name}</h4>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    template.source === 'etsy'
+                      ? 'bg-orange-100 text-orange-800'
+                      : template.source === 'shopify'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-blue-100 text-blue-800'
+                  }`}
+                >
+                  {template.source === 'etsy' ? 'Etsy' : template.source === 'shopify' ? 'Shopify' : 'CraftFlow'}
+                </span>
+              </div>
+              {template.template_title && <p className="text-sm text-gray-600 mb-2">{template.template_title}</p>}
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>Price: ${template.price || 0}</div>
+                {template.print_method && <div>Print Method: {template.print_method}</div>}
+                {template.category && <div>Category: {template.category.replace(/_/g, ' ')}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
