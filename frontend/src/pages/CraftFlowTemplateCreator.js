@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
-import { API_BASE_URL } from '../config';
 
 const CraftFlowTemplateCreator = () => {
   const navigate = useNavigate();
   const api = useApi();
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
 
   const [templateData, setTemplateData] = useState({
     name: '',
