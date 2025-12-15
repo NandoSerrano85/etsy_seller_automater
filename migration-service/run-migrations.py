@@ -108,6 +108,7 @@ def discover_migrations():
         "add_shopify_product_templates",  # Adds Shopify product templates table
         "add_org_id_to_shopify_templates", # Adds org_id column to shopify templates if missing
         "add_variant_configs_to_shopify_templates", # Adds variant_configs JSON column for nested variants
+        "add_craftflow_commerce_templates", # Adds CraftFlow Commerce templates table and mockups support
 
         # Design-related migrations
         "add_phash_to_designs",           # Adds phash column to designs
