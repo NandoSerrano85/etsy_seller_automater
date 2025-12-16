@@ -44,7 +44,6 @@ def upgrade(connection):
     try:
         from server.src.entities.mockup import Mockups, MockupImage
         from server.src.entities.designs import DesignImages
-        from server.src.entities.user import User
         from server.src.utils.mockups_util import create_mockups_for_etsy
         from sqlalchemy.orm import Session
     except ImportError as e:
@@ -83,14 +82,18 @@ def upgrade(connection):
                     logging.warning(f"⚠️  No designs found for mockup {mockup.id}, skipping")
                     continue
 
-                # Get user for root path
-                user = db.query(User).filter(User.id == mockup.user_id).first()
-                if not user:
+                # Get user shop_name for root path (using raw SQL to avoid circular imports)
+                user_result = connection.execute(
+                    text("SELECT shop_name FROM users WHERE id = :user_id"),
+                    {"user_id": str(mockup.user_id)}
+                )
+                user_row = user_result.fetchone()
+                if not user_row:
                     logging.warning(f"⚠️  No user found for mockup {mockup.id}, skipping")
                     continue
 
                 # Determine root path
-                shop_name = user.shop_name or 'DefaultShop'
+                shop_name = user_row[0] or 'DefaultShop'
                 root_path = f"/share/Graphics/{shop_name}/"
 
                 # Get template name
