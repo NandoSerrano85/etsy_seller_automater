@@ -43,7 +43,7 @@ def upgrade(connection):
         """))
 
         logging.info("✅ Successfully added updated_at column to ecommerce_product_reviews")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error adding updated_at column to product reviews: {e}")
@@ -61,7 +61,7 @@ def downgrade(connection):
         """))
 
         logging.info("✅ Successfully removed updated_at column from ecommerce_product_reviews")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error removing updated_at column: {e}")

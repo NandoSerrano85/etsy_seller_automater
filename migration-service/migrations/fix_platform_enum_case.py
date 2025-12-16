@@ -88,11 +88,11 @@ def run_migration():
         logger.error(f"Migration failed: {e}")
         raise
 
-def upgrade():
+def upgrade(connection):
     """Alembic upgrade function"""
     run_migration()
 
-def downgrade():
+def downgrade(connection):
     """Alembic downgrade function - convert back to lowercase"""
     logger.info("Starting platform enum case downgrade migration")
 

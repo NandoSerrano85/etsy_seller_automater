@@ -21,6 +21,8 @@ python-dotenv==1.0.0
 # FastAPI dependencies (needed by server imports)
 fastapi==0.104.1
 pydantic==2.5.0
+pydantic[email]
+email-validator==2.1.0
 starlette==0.27.0
 
 # Auth dependencies (used by server code)

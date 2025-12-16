@@ -91,9 +91,13 @@ def clear_design_images():
             raise
 
 
-def upgrade():
+def upgrade(connection):
     """Main upgrade function."""
     clear_design_images()
+
+def downgrade(connection):
+    """This migration cannot be downgraded."""
+    pass
 
 
 if __name__ == '__main__':

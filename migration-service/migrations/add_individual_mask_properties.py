@@ -48,8 +48,7 @@ def upgrade(connection):
         else:
             logging.info("ℹ️  alignment_list column already exists")
 
-        # Commit the changes
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
         # Verify the columns were added
         result = connection.execute(text("""
@@ -115,12 +114,11 @@ def downgrade(connection):
         except Exception as e:
             logging.warning(f"⚠️  Could not remove alignment_list column: {e}")
 
-        # Commit the changes
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
         logging.info("✅ Individual mask properties downgrade completed")
 
     except Exception as e:
         logging.error(f"❌ Error removing individual mask properties columns: {e}")
-        connection.rollback()
+        # Note: Transaction is managed by migration runner, don't rollback here
         raise

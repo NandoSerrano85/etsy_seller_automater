@@ -115,7 +115,7 @@ def upgrade(connection):
         logging.info("✅ Made product_template_id nullable")
 
         logging.info("✅ Successfully added CraftFlow Commerce templates support")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error adding CraftFlow Commerce templates: {e}")
@@ -147,7 +147,7 @@ def downgrade(connection):
         """))
 
         logging.info("✅ Successfully removed CraftFlow Commerce templates support")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error removing CraftFlow Commerce templates: {e}")

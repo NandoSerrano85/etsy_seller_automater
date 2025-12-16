@@ -53,7 +53,7 @@ def upgrade(connection):
         else:
             logging.info(f"user_id column is already correct type: {row[0] if row else 'not found'}")
 
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error in storefront settings user_id type migration: {e}")
@@ -76,7 +76,7 @@ def downgrade(connection):
         """))
 
         logging.info("✅ Successfully reverted user_id to INTEGER type")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error reverting storefront settings user_id type: {e}")

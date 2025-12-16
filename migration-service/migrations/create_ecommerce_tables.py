@@ -553,7 +553,7 @@ def upgrade(connection):
         """))
 
         logging.info("✅ Successfully completed ecommerce tables migration")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error in ecommerce tables migration: {e}")
@@ -577,7 +577,7 @@ def downgrade(connection):
         connection.execute(text("DROP TABLE IF EXISTS ecommerce_products CASCADE"))
 
         logging.info("✅ Successfully dropped all ecommerce tables")
-        connection.commit()
+        # Note: Transaction is managed by migration runner, don't commit here
 
     except Exception as e:
         logging.error(f"Error dropping ecommerce tables: {e}")
