@@ -32,15 +32,25 @@ REGENERATE_ETSY_MOCKUPS=true
 WATERMARK_PATH=/share/Graphics/FunnyBunny/Mockups/BaseMockups/Watermarks/Rectangle Watermark.png
 ```
 
+**Dependencies**:
+
+The migration requires the following dependencies to be installed in the migration service:
+
+- `opencv-python-headless==4.8.1.78` - For image processing and watermark application
+- `numpy==1.24.3` - For numerical operations on images
+
+These are included in `migration-service/migration-requirements.txt`.
+
 **What It Does**:
 
-1. Finds all Etsy mockups in the database (where `template_source = 'etsy'` or NULL)
-2. For each mockup:
+1. Checks for required dependencies (cv2, numpy) and gracefully skips if not available
+2. Finds all Etsy mockups in the database (where `template_source = 'etsy'` or NULL)
+3. For each mockup:
    - Retrieves associated designs
    - Loads the proper template configuration
    - Regenerates all mockup images with the watermark applied
    - Updates the `mockup_images` table with watermark paths
-3. Provides detailed logging of success/failure for each mockup
+4. Provides detailed logging of success/failure for each mockup
 
 **Usage**:
 

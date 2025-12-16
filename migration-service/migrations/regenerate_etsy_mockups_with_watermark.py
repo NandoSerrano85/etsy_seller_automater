@@ -27,6 +27,16 @@ def upgrade(connection):
     logging.info("🔄 Starting Etsy mockup regeneration with watermarks...")
 
     try:
+        # Check for required dependencies first
+        try:
+            import cv2
+            import numpy
+        except ImportError as e:
+            logging.error(f"❌ Missing required dependencies for mockup regeneration: {e}")
+            logging.error("📦 Please add opencv-python and numpy to migration-requirements.txt")
+            logging.error("⏭️  Skipping mockup regeneration - run this after dependencies are installed")
+            return
+
         # Import necessary modules
         import sys
         sys.path.insert(0, '/app/server')
