@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
 import axios from 'axios';
@@ -10,6 +10,7 @@ const CraftFlowProductCreator = () => {
   const { addNotification } = useNotifications();
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -20,6 +21,7 @@ const CraftFlowProductCreator = () => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [mockupDesignFiles, setMockupDesignFiles] = useState([]);
   const [generatingMockups, setGeneratingMockups] = useState(false);
+  const [showTemplateSection, setShowTemplateSection] = useState(searchParams.get('useTemplate') === 'true');
   const [formData, setFormData] = useState({
     name: '',
     slug: '',
@@ -613,85 +615,99 @@ const CraftFlowProductCreator = () => {
 
           {/* Mockup Generator */}
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Generate Mockups (Optional)</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Select a template and upload design files to automatically generate product mockups. Skip this if you want
-              to upload mockups manually below.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select CraftFlow Commerce Template
-                </label>
-                <select
-                  value={selectedTemplate?.id || ''}
-                  onChange={e => {
-                    const template = templates.find(t => t.id === e.target.value);
-                    setSelectedTemplate(template || null);
-                  }}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
-                >
-                  <option value="">No template selected</option>
-                  {templates.map(template => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} - {template.template_title}
-                    </option>
-                  ))}
-                </select>
-                {templates.length === 0 && (
-                  <p className="text-xs text-orange-600 mt-1">
-                    No templates available.{' '}
-                    <button
-                      type="button"
-                      onClick={() => navigate('/craftflow/templates/create')}
-                      className="underline hover:text-orange-700"
-                    >
-                      Create a template first
-                    </button>
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Upload Design Files</label>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
-                  multiple
-                  onChange={handleMockupDesignFilesChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
-                />
-                {mockupDesignFiles.length > 0 && (
-                  <p className="text-xs text-gray-600 mt-1">
-                    {mockupDesignFiles.length} file(s) selected: {mockupDesignFiles.map(f => f.name).join(', ')}
-                  </p>
-                )}
-              </div>
-
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Generate Mockups with Template (Optional)</h2>
               <button
                 type="button"
-                onClick={handleGenerateMockups}
-                disabled={!selectedTemplate || mockupDesignFiles.length === 0 || generatingMockups}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setShowTemplateSection(!showTemplateSection)}
+                className="text-sm text-sage-600 hover:text-sage-700 font-medium"
               >
-                {generatingMockups ? 'Generating Mockups...' : 'Generate Mockups'}
+                {showTemplateSection ? 'Hide' : 'Show'}
               </button>
-
-              {selectedTemplate && (
-                <div className="mt-2 p-3 bg-gray-50 rounded-md">
-                  <p className="text-xs text-gray-700">
-                    <strong>Template:</strong> {selectedTemplate.name}
-                  </p>
-                  <p className="text-xs text-gray-700">
-                    <strong>Print Method:</strong> {selectedTemplate.print_method}
-                  </p>
-                  <p className="text-xs text-gray-700">
-                    <strong>Category:</strong> {selectedTemplate.category}
-                  </p>
-                </div>
-              )}
             </div>
+
+            {showTemplateSection && (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  Select a template and upload design files to automatically generate product mockups. Skip this if you
+                  want to upload mockups manually below.
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select CraftFlow Commerce Template
+                    </label>
+                    <select
+                      value={selectedTemplate?.id || ''}
+                      onChange={e => {
+                        const template = templates.find(t => t.id === e.target.value);
+                        setSelectedTemplate(template || null);
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                    >
+                      <option value="">No template selected</option>
+                      {templates.map(template => (
+                        <option key={template.id} value={template.id}>
+                          {template.name} - {template.template_title}
+                        </option>
+                      ))}
+                    </select>
+                    {templates.length === 0 && (
+                      <p className="text-xs text-orange-600 mt-1">
+                        No templates available.{' '}
+                        <button
+                          type="button"
+                          onClick={() => navigate('/craftflow/templates/create')}
+                          className="underline hover:text-orange-700"
+                        >
+                          Create a template first
+                        </button>
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Upload Design Files</label>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                      multiple
+                      onChange={handleMockupDesignFilesChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                    />
+                    {mockupDesignFiles.length > 0 && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        {mockupDesignFiles.length} file(s) selected: {mockupDesignFiles.map(f => f.name).join(', ')}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateMockups}
+                    disabled={!selectedTemplate || mockupDesignFiles.length === 0 || generatingMockups}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {generatingMockups ? 'Generating Mockups...' : 'Generate Mockups'}
+                  </button>
+
+                  {selectedTemplate && (
+                    <div className="mt-2 p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-700">
+                        <strong>Template:</strong> {selectedTemplate.name}
+                      </p>
+                      <p className="text-xs text-gray-700">
+                        <strong>Print Method:</strong> {selectedTemplate.print_method}
+                      </p>
+                      <p className="text-xs text-gray-700">
+                        <strong>Category:</strong> {selectedTemplate.category}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           {/* Images */}

@@ -123,13 +123,22 @@ const CraftFlowProducts = () => {
             <p className="text-gray-600">{filteredProducts.length} products</p>
           </div>
 
-          <button
-            onClick={() => navigate('/craftflow/products/create')}
-            className="flex items-center px-4 py-2 bg-sage-600 text-white rounded-md hover:bg-sage-700"
-          >
-            <PlusIcon className="w-4 h-4 mr-2" />
-            Add Product
-          </button>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => navigate('/craftflow/products/create?useTemplate=true')}
+              className="flex items-center px-4 py-2 bg-white text-sage-600 border-2 border-sage-600 rounded-md hover:bg-sage-50"
+            >
+              <PlusIcon className="w-4 h-4 mr-2" />
+              Add Product with Template
+            </button>
+            <button
+              onClick={() => navigate('/craftflow/products/create')}
+              className="flex items-center px-4 py-2 bg-sage-600 text-white rounded-md hover:bg-sage-700"
+            >
+              <PlusIcon className="w-4 h-4 mr-2" />
+              Add Product
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
