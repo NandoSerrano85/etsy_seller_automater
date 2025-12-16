@@ -123,6 +123,9 @@ def discover_migrations():
         "create_ecommerce_tables",        # Creates all ecommerce tables for storefront
         "fix_storefront_settings_user_id_type",  # Fixes user_id column type from INTEGER to UUID
         "add_updated_at_to_product_reviews",  # Adds missing updated_at column to product reviews
+
+        # Data migrations (triggered by env vars)
+        "regenerate_etsy_mockups_with_watermark",  # Regenerates Etsy mockups with watermarks (REGENERATE_ETSY_MOCKUPS=true)
     ]
 
     # Exclude certain files

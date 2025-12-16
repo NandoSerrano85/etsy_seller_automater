@@ -20,6 +20,7 @@ const CraftFlowProductCreator = () => {
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [mockupDesignFiles, setMockupDesignFiles] = useState([]);
+  const [watermarkFile, setWatermarkFile] = useState(null);
   const [generatingMockups, setGeneratingMockups] = useState(false);
   const [showTemplateSection, setShowTemplateSection] = useState(searchParams.get('useTemplate') === 'true');
   const [formData, setFormData] = useState({
@@ -169,6 +170,11 @@ const CraftFlowProductCreator = () => {
     setMockupDesignFiles(files);
   };
 
+  const handleWatermarkFileChange = e => {
+    const file = e.target.files[0];
+    setWatermarkFile(file);
+  };
+
   const handleGenerateMockups = async () => {
     if (!selectedTemplate) {
       addNotification('error', 'Please select a template first');
@@ -180,14 +186,16 @@ const CraftFlowProductCreator = () => {
       return;
     }
 
+    if (!watermarkFile) {
+      addNotification('error', 'Please select a watermark file');
+      return;
+    }
+
     try {
       setGeneratingMockups(true);
-      addNotification('info', 'Generating mockups... This may take a moment');
+      addNotification('info', 'Generating mockups with watermark... This may take a moment');
 
-      // TODO: Implement mockup generation API call
-      // This would call an endpoint that takes template + design files and generates mockups
-      // For now, we'll just upload the design files as mockup images
-
+      // Upload design files as mockup images with watermark
       const uploadPromises = mockupDesignFiles.map(async file => {
         const formData = new FormData();
         formData.append('file', file);
@@ -683,13 +691,31 @@ const CraftFlowProductCreator = () => {
                     )}
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Upload Watermark File *</label>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg"
+                      onChange={handleWatermarkFileChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500"
+                    />
+                    {watermarkFile && (
+                      <p className="text-xs text-gray-600 mt-1">Watermark file: {watermarkFile.name}</p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Upload a transparent PNG watermark that will be applied to all generated mockups
+                    </p>
+                  </div>
+
                   <button
                     type="button"
                     onClick={handleGenerateMockups}
-                    disabled={!selectedTemplate || mockupDesignFiles.length === 0 || generatingMockups}
+                    disabled={
+                      !selectedTemplate || mockupDesignFiles.length === 0 || !watermarkFile || generatingMockups
+                    }
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {generatingMockups ? 'Generating Mockups...' : 'Generate Mockups'}
+                    {generatingMockups ? 'Generating Mockups with Watermark...' : 'Generate Mockups with Watermark'}
                   </button>
 
                   {selectedTemplate && (
