@@ -11,6 +11,7 @@ from server.src.database.core import get_db
 from server.src.entities.ecommerce.customer import Customer
 from server.src.entities.ecommerce.order import Order
 from server.src.routes.auth.service import get_current_user_db as get_current_user
+from server.src.routes.auth.plan_access import require_pro_plan
 from server.src.entities.user import User
 
 
@@ -65,12 +66,15 @@ async def list_customers(
     search: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Get paginated list of customers for admin management.
+
+    Requires: Pro plan or higher
     """
-    query = db.query(Customer)
+    # Filter by current user's customers only (data isolation)
+    query = db.query(Customer).filter(Customer.user_id == current_user.id)
 
     # Apply filters
     if search:
@@ -136,15 +140,23 @@ async def list_customers(
 async def get_customer(
     customer_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Get single customer by ID."""
+    """
+    Get single customer by ID.
+
+    Requires: Pro plan or higher
+    """
     try:
         customer_uuid = uuid.UUID(customer_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid customer ID format")
 
-    customer = db.query(Customer).filter(Customer.id == customer_uuid).first()
+    # Filter by user_id for data isolation
+    customer = db.query(Customer).filter(
+        Customer.id == customer_uuid,
+        Customer.user_id == current_user.id
+    ).first()
 
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")

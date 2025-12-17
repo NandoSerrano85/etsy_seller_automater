@@ -31,7 +31,10 @@ class User(Base):
     
     # User status
     is_active = Column(Boolean, default=True)
-    
+
+    # Subscription plan: 'free', 'basic', 'pro', 'enterprise'
+    subscription_plan = Column(String, nullable=False, default='free')
+
     # Audit fields
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -71,6 +74,7 @@ class User(Base):
             'shop_name': self.shop_name,
             'etsy_shop_id': self.etsy_shop_id,
             'is_active': self.is_active,
+            'subscription_plan': self.subscription_plan,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

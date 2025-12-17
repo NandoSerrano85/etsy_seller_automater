@@ -124,6 +124,12 @@ def discover_migrations():
         "fix_storefront_settings_user_id_type",  # Fixes user_id column type from INTEGER to UUID
         "add_updated_at_to_product_reviews",  # Adds missing updated_at column to product reviews
 
+        # User and subscription migrations
+        "add_subscription_plan_to_users",      # Adds subscription_plan column to users table
+        "add_user_id_to_ecommerce_products",   # Adds user_id column for multi-tenant isolation
+        "add_user_id_to_ecommerce_customers",  # Adds user_id column to customers table
+        "add_user_id_to_ecommerce_orders",     # Adds user_id column to orders table
+
         # Data migrations (triggered by env vars)
         "regenerate_etsy_mockups_with_watermark",  # Regenerates Etsy mockups with watermarks (REGENERATE_ETSY_MOCKUPS=true)
     ]

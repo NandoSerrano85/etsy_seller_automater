@@ -10,6 +10,7 @@ from uuid import UUID
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
 from server.src.routes.auth.service import get_current_user_db as get_current_user
+from server.src.routes.auth.plan_access import require_pro_plan
 from server.src.entities.user import User
 
 
@@ -61,13 +62,15 @@ class StorefrontSettingsResponse(BaseModel):
 @router.get('/', response_model=StorefrontSettingsResponse)
 async def get_storefront_settings(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Get storefront settings for the current user.
 
     Returns the user's storefront branding and appearance settings.
     If settings don't exist, returns 404.
+
+    Requires: Pro plan or higher
     """
     settings = db.query(StorefrontSettings).filter(
         StorefrontSettings.user_id == current_user.id
@@ -83,13 +86,15 @@ async def get_storefront_settings(
 async def upsert_storefront_settings(
     settings_data: StorefrontSettingsRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Create or update storefront settings for the current user.
 
     If settings already exist, they will be updated.
     If they don't exist, new settings will be created.
+
+    Requires: Pro plan or higher
     """
     # Check if settings already exist
     settings = db.query(StorefrontSettings).filter(
@@ -120,12 +125,14 @@ async def upsert_storefront_settings(
 @router.delete('/')
 async def delete_storefront_settings(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Delete storefront settings for the current user.
 
     Resets settings to defaults by deleting the record.
+
+    Requires: Pro plan or higher
     """
     settings = db.query(StorefrontSettings).filter(
         StorefrontSettings.user_id == current_user.id

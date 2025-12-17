@@ -10,6 +10,7 @@ import uuid
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.product import Product, ProductType, PrintMethod, ProductCategory
 from server.src.routes.auth.service import get_current_user_db as get_current_user
+from server.src.routes.auth.plan_access import require_pro_plan
 from server.src.entities.user import User
 
 
@@ -99,12 +100,15 @@ async def list_products(
     category: Optional[str] = Query(None),
     is_active: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Get paginated list of products for admin management.
+
+    Requires: Pro plan or higher
     """
-    query = db.query(Product)
+    # Filter by current user's products only (data isolation)
+    query = db.query(Product).filter(Product.user_id == current_user.id)
 
     # Apply filters
     if search:
@@ -176,15 +180,23 @@ async def list_products(
 async def get_product(
     product_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Get single product by ID."""
+    """
+    Get single product by ID.
+
+    Requires: Pro plan or higher
+    """
     try:
         product_uuid = uuid.UUID(product_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid product ID format")
 
-    product = db.query(Product).filter(Product.id == product_uuid).first()
+    # Filter by user_id for data isolation
+    product = db.query(Product).filter(
+        Product.id == product_uuid,
+        Product.user_id == current_user.id
+    ).first()
 
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -220,11 +232,18 @@ async def get_product(
 async def create_product(
     product_data: ProductCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Create a new product."""
-    # Check if slug already exists
-    existing = db.query(Product).filter(Product.slug == product_data.slug).first()
+    """
+    Create a new product.
+
+    Requires: Pro plan or higher
+    """
+    # Check if slug already exists for this user
+    existing = db.query(Product).filter(
+        Product.slug == product_data.slug,
+        Product.user_id == current_user.id
+    ).first()
     if existing:
         raise HTTPException(status_code=400, detail="Product with this slug already exists")
 
@@ -238,9 +257,10 @@ async def create_product(
     if product_data.category not in [e.value for e in ProductCategory]:
         raise HTTPException(status_code=400, detail=f"Invalid category: {product_data.category}")
 
-    # Create product
+    # Create product with user_id for isolation
     product = Product(
         id=uuid.uuid4(),
+        user_id=current_user.id,
         name=product_data.name,
         slug=product_data.slug,
         description=product_data.description,
@@ -299,15 +319,23 @@ async def update_product(
     product_id: str,
     product_data: ProductCreateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Update an existing product."""
+    """
+    Update an existing product.
+
+    Requires: Pro plan or higher
+    """
     try:
         product_uuid = uuid.UUID(product_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid product ID format")
 
-    product = db.query(Product).filter(Product.id == product_uuid).first()
+    # Filter by user_id for data isolation
+    product = db.query(Product).filter(
+        Product.id == product_uuid,
+        Product.user_id == current_user.id
+    ).first()
 
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -316,6 +344,7 @@ async def update_product(
     if product_data.slug != product.slug:
         existing = db.query(Product).filter(
             Product.slug == product_data.slug,
+            Product.user_id == current_user.id,
             Product.id != product_uuid
         ).first()
         if existing:
@@ -381,15 +410,23 @@ async def update_product(
 async def delete_product(
     product_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Delete a product permanently."""
+    """
+    Delete a product permanently.
+
+    Requires: Pro plan or higher
+    """
     try:
         product_uuid = uuid.UUID(product_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid product ID format")
 
-    product = db.query(Product).filter(Product.id == product_uuid).first()
+    # Filter by user_id for data isolation
+    product = db.query(Product).filter(
+        Product.id == product_uuid,
+        Product.user_id == current_user.id
+    ).first()
 
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from server.src.database.core import get_db
 from server.src.routes.auth.service import get_current_user_db as get_current_user
+from server.src.routes.auth.plan_access import require_pro_plan
 from server.src.entities.user import User
 
 
@@ -30,13 +31,15 @@ class ImageUploadResponse(BaseModel):
 async def upload_product_image(
     file: UploadFile = FastAPIFile(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Upload a product mockup image.
 
     Stores the image and returns a URL that can be used in the product images array.
     In production, this should store to NAS. For now, stores locally.
+
+    Requires: Pro plan or higher
     """
     # Validate file type
     allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif']
@@ -109,12 +112,14 @@ def _store_locally(content: bytes, filename: str) -> str:
 async def upload_multiple_product_images(
     files: List[UploadFile] = FastAPIFile(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Upload multiple product mockup images at once.
 
     Maximum 10 images per request.
+
+    Requires: Pro plan or higher
     """
     if len(files) > 10:
         raise HTTPException(status_code=400, detail="Maximum 10 images per upload")

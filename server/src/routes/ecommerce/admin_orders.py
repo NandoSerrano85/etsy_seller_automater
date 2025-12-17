@@ -11,6 +11,7 @@ from datetime import datetime
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.order import Order, OrderItem
 from server.src.routes.auth.service import get_current_user_db as get_current_user
+from server.src.routes.auth.plan_access import require_pro_plan
 from server.src.entities.user import User
 
 
@@ -98,12 +99,15 @@ async def list_orders(
     status: Optional[str] = Query(None),
     payment_status: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
     """
     Get paginated list of orders for admin management.
+
+    Requires: Pro plan or higher
     """
-    query = db.query(Order)
+    # Filter by current user's orders only (data isolation)
+    query = db.query(Order).filter(Order.user_id == current_user.id)
 
     # Apply filters
     if search:
@@ -192,15 +196,23 @@ async def list_orders(
 async def get_order(
     order_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Get single order by ID."""
+    """
+    Get single order by ID.
+
+    Requires: Pro plan or higher
+    """
     try:
         order_uuid = uuid.UUID(order_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid order ID format")
 
-    order = db.query(Order).filter(Order.id == order_uuid).first()
+    # Filter by user_id for data isolation
+    order = db.query(Order).filter(
+        Order.id == order_uuid,
+        Order.user_id == current_user.id
+    ).first()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -257,15 +269,23 @@ async def update_order(
     order_id: str,
     order_data: OrderUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_pro_plan)
 ):
-    """Update order status and tracking information."""
+    """
+    Update order status and tracking information.
+
+    Requires: Pro plan or higher
+    """
     try:
         order_uuid = uuid.UUID(order_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid order ID format")
 
-    order = db.query(Order).filter(Order.id == order_uuid).first()
+    # Filter by user_id for data isolation
+    order = db.query(Order).filter(
+        Order.id == order_uuid,
+        Order.user_id == current_user.id
+    ).first()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

@@ -16,6 +16,9 @@ class Customer(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    # Owner/Isolation
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # For multi-tenant isolation
+
     # Basic Info
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255))

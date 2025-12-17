@@ -17,6 +17,9 @@ class Order(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     order_number = Column(String(50), unique=True, nullable=False, index=True)
 
+    # Owner/Isolation
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # For multi-tenant isolation
+
     customer_id = Column(UUID(as_uuid=True), ForeignKey('ecommerce_customers.id'))
 
     # Guest Checkout Info (if customer_id is null)
