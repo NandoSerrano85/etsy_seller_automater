@@ -186,6 +186,21 @@ The migration is designed to be resilient:
 - Provides summary of successful vs failed mockups
 - Idempotent - can be run multiple times safely
 
+### Known Limitations
+
+**Circular Import Issue**: The migration currently has a circular import issue with the `PlatformConnection` entity when running in the migration service context. This causes the migration to skip with the following error:
+
+```
+❌ Circular import issue with server entities: When initializing mapper Mapper[User(users)], expression 'PlatformConnection' failed to locate a name
+⏭️  Skipping mockup regeneration - run this migration separately if needed
+```
+
+**Workaround**: If you need to regenerate mockups with watermarks, you can:
+
+1. Run the mockup generation manually through the CraftFlow Product Creator UI
+2. Wait for a fix to the circular import issue in the server entities
+3. Run a custom script that regenerates mockups in the server context (where entities are properly loaded)
+
 ## Performance
 
 - **Sequential Processing**: Used for ≤10 designs (simpler, easier to debug)

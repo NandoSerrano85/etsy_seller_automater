@@ -133,7 +133,10 @@ def discover_migrations():
         "__init__.py",
         "__pycache__",
         "import_nas_designs.py",         # Replaced by batched version
-        "import_nas_designs_batched.py"  # Handled separately as NAS migration
+        "import_nas_designs_batched.py", # Handled separately as NAS migration
+        "clear_design_images.py",        # Manual cleanup script with user input
+        "import_funnybunny_designs.py",  # Manual import script
+        "import_shopify_template_designs.py"  # Manual import script
     ]
 
     # Add migrations directory to Python path for imports

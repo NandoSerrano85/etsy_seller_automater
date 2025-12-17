@@ -47,8 +47,18 @@ def upgrade(connection):
         from server.src.utils.mockups_util import create_mockups_for_etsy
         from sqlalchemy.orm import Session
     except ImportError as e:
-        logging.error(f"❌ Failed to import server modules (likely missing cv2/numpy): {e}")
-        logging.error("⏭️  Skipping mockup regeneration")
+        error_msg = str(e)
+        if "PlatformConnection" in error_msg:
+            logging.error(f"❌ Circular import issue with server entities: {error_msg}")
+            logging.error("⚠️  This migration requires running from the main server context")
+            logging.error("⏭️  Skipping mockup regeneration - run this migration separately if needed")
+        elif "cv2" in error_msg or "numpy" in error_msg:
+            logging.error(f"❌ Missing required dependencies for mockup regeneration: {error_msg}")
+            logging.error("📦 Please add opencv-python and numpy to migration-requirements.txt")
+            logging.error("⏭️  Skipping mockup regeneration")
+        else:
+            logging.error(f"❌ Failed to import server modules: {error_msg}")
+            logging.error("⏭️  Skipping mockup regeneration")
         return
 
     # Create session

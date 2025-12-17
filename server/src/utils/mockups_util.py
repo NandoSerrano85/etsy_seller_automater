@@ -378,11 +378,55 @@ class MockupImageProcessor:
 
     def add_watermark(self, image, watermark_path, points_list, mask_points_list, image_type, opacity=0.5):
         """Add watermark to the mockup image - centered on the entire image"""
-        if not os.path.exists(watermark_path):
-            return image
+        import logging
+        logger = logging.getLogger(__name__)
 
-        watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
+        logger.info(f"🖼️  Applying watermark from: {watermark_path}")
+
+        # Check if we're in production (Railway/Docker)
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+        logger.info(f"🔍 Production mode: {is_production}")
+
+        watermark = None
+
+        if is_production:
+            # In production, watermark is on NAS - download it to memory
+            from server.src.utils.nas_storage import nas_storage
+            import numpy as np
+
+            # Extract shop name and relative path from watermark_path
+            # Expected format: /share/Graphics/{shop_name}/Mockups/BaseMockups/Watermarks/{filename}
+            if watermark_path.startswith('/share/Graphics/'):
+                parts = watermark_path.replace('/share/Graphics/', '').split('/', 1)
+                if len(parts) == 2:
+                    shop_name = parts[0]
+                    relative_path = parts[1]  # Mockups/BaseMockups/Watermarks/{filename}
+
+                    # Download watermark from NAS
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        # Convert bytes to CV2 image
+                        nparr = np.frombuffer(file_content, np.uint8)
+                        watermark = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+                    else:
+                        logging.warning(f"Failed to download watermark from NAS: {watermark_path}")
+                        return image
+                else:
+                    logging.warning(f"Invalid watermark path format: {watermark_path}")
+                    return image
+            else:
+                logging.warning(f"Watermark path doesn't start with /share/Graphics/: {watermark_path}")
+                return image
+        else:
+            # Local mode - use regular file path
+            if not os.path.exists(watermark_path):
+                logging.warning(f"Watermark file not found: {watermark_path}")
+                return image
+
+            watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
+
         if watermark is None:
+            logging.warning(f"Failed to load watermark image from: {watermark_path}")
             return image
 
         if watermark.shape[2] == 3:
@@ -439,6 +483,7 @@ class MockupImageProcessor:
                 image[y_start:y_end, x_start:x_end, c] * (1.0 - alpha)
             ).astype(np.uint8)
 
+        logger.info(f"✅ Watermark successfully applied with {opacity*100}% opacity")
         return image
 
 def process_design_image(design_file_path: str, template_name: str) -> Tuple[np.ndarray, str]:
