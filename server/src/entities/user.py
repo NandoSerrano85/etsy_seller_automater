@@ -48,11 +48,10 @@ class User(Base):
     design_images = relationship('DesignImages', order_by='DesignImages.id', back_populates='user')
 
     # Platform connections and stores (new architecture)
-    # TODO: Uncomment after these entity classes are created
-    # platform_connections = relationship('PlatformConnection', back_populates='user')
-    # etsy_stores = relationship('EtsyStore', back_populates='user')
-    # shopify_stores = relationship('ShopifyStore', back_populates='user')
-    # shopify_products = relationship('ShopifyProduct', back_populates='user')
+    platform_connections = relationship('PlatformConnection', back_populates='user')
+    etsy_stores = relationship('EtsyStore', back_populates='user')
+    shopify_stores = relationship('ShopifyStore', back_populates='user')
+    shopify_products = relationship('ShopifyProduct', back_populates='user')
     
     # Multi-tenant relationships - temporarily disabled to resolve join condition issues
     # TODO: Re-enable after Organization relationships are stable
