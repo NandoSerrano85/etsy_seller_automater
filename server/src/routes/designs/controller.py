@@ -221,6 +221,100 @@ async def get_design(
 
     return await get_design_threaded()
 
+@router.get('/search-by-tags', response_model=model.DesignImageListResponse)
+async def search_designs_by_tags(
+    tags: str = Query(..., description="Comma-separated list of tags to search"),
+    match_all: bool = Query(False, description="Match ALL tags (AND) vs ANY tag (OR)"),
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """
+    Search designs by tags
+
+    Example: /designs/search-by-tags?tags=dinosaur,umbrella&match_all=false
+    """
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+
+    # Parse tags from comma-separated string
+    tag_list = [tag.strip() for tag in tags.split(',') if tag.strip()]
+
+    if not tag_list:
+        raise HTTPException(status_code=400, detail="At least one tag required")
+
+    @run_in_thread
+    def search_threaded():
+        return service.search_designs_by_tags(
+            db, user_id, tag_list, match_all, skip, limit
+        )
+
+    return await search_threaded()
+
+@router.post('/regenerate-tags/{design_id}', response_model=model.DesignImageResponse)
+async def regenerate_tags_for_design(
+    design_id: UUID,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually regenerate tags for a specific design
+
+    Useful for:
+    - Updating tags after prompt improvements
+    - Fixing incorrect tags
+    - Backfilling historical images
+    """
+    import os
+    from server.src.utils.nas_storage import nas_storage
+    from server.src.services.ai_tagging_service import ai_tagging_service
+
+    user_id = current_user.get_uuid()
+    if not user_id:
+        raise InvalidUserToken()
+
+    @run_in_thread
+    def regenerate_threaded():
+        # Get design
+        design = service.get_design_by_id(db, design_id, user_id)
+
+        # Extract shop/path from file_path: "/share/Graphics/{shop}/{template}/{file}"
+        try:
+            parts = design.file_path.split('/')
+            if len(parts) < 5:
+                raise HTTPException(status_code=400, detail=f"Invalid file path format: {design.file_path}")
+
+            shop_name = parts[3]
+            relative_path = '/'.join(parts[4:])
+
+            # Download image from NAS
+            image_bytes = nas_storage.download_file_to_memory(shop_name, relative_path)
+
+            if not image_bytes:
+                raise HTTPException(status_code=404, detail="Image file not found on NAS")
+
+            # Generate new tags
+            tags_result = ai_tagging_service.generate_tags(image_bytes, design.filename)
+
+            # Update design
+            design.tags = tags_result['tags']
+            design.tags_metadata = tags_result.get('metadata')
+            db.commit()
+            db.refresh(design)
+
+            logging.info(f"Regenerated {len(tags_result['tags'])} tags for {design.filename}")
+
+            return model.DesignImageResponse.model_validate(design)
+
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Failed to regenerate tags for design {design_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to regenerate tags: {str(e)}")
+
+    return await regenerate_threaded()
+
 @router.put('/update/{design_id}', response_model=model.DesignImageResponse)
 async def update_design(
     design_id: UUID,

@@ -26,6 +26,7 @@ import uuid
 import logging
 import threading
 import tempfile
+import json
 import cv2
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -112,6 +113,7 @@ class ProcessedImage:
     nas_uploaded: bool = False
     db_updated: bool = False
     mockup_generated: bool = False
+    tags_result: Optional[Dict[str, Any]] = None  # AI-generated tags result
 
 
 @dataclass
@@ -677,6 +679,25 @@ class ImageUploadWorkflow:
             processed.final_filename = final_filename
             processed.processing_time = time.time() - start_time
 
+            # Generate AI tags if enabled (non-blocking)
+            tags_result = None
+            if os.getenv('ENABLE_AI_TAGGING', 'true').lower() == 'true':
+                try:
+                    from server.src.services.ai_tagging_service import ai_tagging_service
+                    tags_result = ai_tagging_service.generate_tags(
+                        resized_content,
+                        image.original_filename
+                    )
+                    logging.info(
+                        f"Generated {len(tags_result.get('tags', []))} tags for {image.original_filename}"
+                    )
+                except Exception as e:
+                    # Non-blocking: log error but continue workflow
+                    logging.warning(f"AI tagging failed (non-blocking): {e}")
+                    tags_result = {'tags': [], 'metadata': {'error': str(e)}}
+
+            processed.tags_result = tags_result
+
             logging.info(f"Processed {image.original_filename}: {raw_image.shape} → {resized_image.shape}, phash: {processed.phash[:12]}...")
 
             return processed
@@ -1121,7 +1142,9 @@ class ImageUploadWorkflow:
                         "is_active": True,
                         "is_digital": False,
                         "created_at": now,
-                        "updated_at": now
+                        "updated_at": now,
+                        "tags": json.dumps(image.tags_result['tags']) if image.tags_result else json.dumps([]),
+                        "tags_metadata": json.dumps(image.tags_result.get('metadata')) if image.tags_result else None
                     }
 
                     if multi_tenant:
@@ -1139,11 +1162,11 @@ class ImageUploadWorkflow:
                 try:
                     # Build bulk INSERT query
                     if multi_tenant:
-                        columns = "id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at"
-                        placeholders = ":id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at"
+                        columns = "id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at, tags, tags_metadata"
+                        placeholders = ":id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at, :tags::jsonb, :tags_metadata::jsonb"
                     else:
-                        columns = "id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at"
-                        placeholders = ":id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at"
+                        columns = "id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at, tags, tags_metadata"
+                        placeholders = ":id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at, :tags::jsonb, :tags_metadata::jsonb"
 
                     # Use executemany for bulk insert (much faster than individual inserts)
                     self.db_session.execute(text(f"""

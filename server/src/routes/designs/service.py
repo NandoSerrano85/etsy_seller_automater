@@ -1101,6 +1101,20 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
 
             logging.info(f"🔐 Using hashes: phash={phash[:8]}..., ahash={ahash[:8]}..., dhash={dhash[:8]}..., whash={whash[:8]}...")
 
+            # Generate AI tags if enabled (non-blocking)
+            tags = []
+            tags_metadata = None
+            if os.getenv('ENABLE_AI_TAGGING', 'true').lower() == 'true':
+                try:
+                    from server.src.services.ai_tagging_service import ai_tagging_service
+                    tags_result = ai_tagging_service.generate_tags(image_bytes, filename)
+                    tags = tags_result.get('tags', [])
+                    tags_metadata = tags_result.get('metadata')
+                    logging.info(f"🏷️ Generated {len(tags)} tags for {filename}")
+                except Exception as e:
+                    logging.warning(f"AI tagging failed (non-blocking): {e}")
+                    tags_metadata = {'error': str(e)}
+
             # Build NAS file path for storage (matching nas_storage.upload_file_content format)
             # nas_storage.base_path = "/share/Graphics"
             # upload_file_content builds: {base_path}/{shop_name}/{relative_path}
@@ -1119,7 +1133,9 @@ async def _create_design_original(db: Session, user_id: UUID, design_data: model
                 whash=whash,
                 canvas_config_id=design_data.canvas_config_id,
                 platform=design_data.platform,  # Set platform (etsy or shopify)
-                is_active=design_data.is_active
+                is_active=design_data.is_active,
+                tags=tags,  # AI-generated tags
+                tags_metadata=tags_metadata  # Tag generation metadata
             )
             design_results.append(design)
             db.add(design)
@@ -1190,7 +1206,7 @@ def get_design_by_id(db: Session, design_id: UUID, user_id: UUID) -> model.Desig
         if not design:
             logging.warning(f"Design not found with ID: {design_id} for user: {user_id}")
             raise DesignNotFoundError(design_id)
-        
+
         logging.info(f"Successfully retrieved design with ID: {design_id}")
         return design
     except Exception as e:
@@ -1198,6 +1214,67 @@ def get_design_by_id(db: Session, design_id: UUID, user_id: UUID) -> model.Desig
             raise e
         logging.error(f"Error getting design with ID: {design_id}. Error: {e}")
         raise DesignGetByIdError(design_id)
+
+
+def search_designs_by_tags(
+    db: Session,
+    user_id: UUID,
+    tags: List[str],
+    match_all: bool = False,
+    skip: int = 0,
+    limit: int = 100
+) -> model.DesignImageListResponse:
+    """
+    Search designs by tags using PostgreSQL JSONB operators
+
+    Args:
+        db: Database session
+        user_id: User ID to filter by
+        tags: List of tags to search for
+        match_all: If True, design must have ALL tags (AND); if False, ANY tag (OR)
+        skip: Pagination offset
+        limit: Max results
+
+    Returns:
+        DesignImageListResponse with matching designs
+    """
+    try:
+        from sqlalchemy import cast, String
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        # Normalize tags: lowercase
+        tags = [tag.lower().strip() for tag in tags]
+
+        # Build base query
+        query = db.query(DesignImages).filter(
+            DesignImages.user_id == user_id,
+            DesignImages.is_active == True
+        )
+
+        if match_all:
+            # Design must contain ALL provided tags
+            # PostgreSQL: tags @> '["tag1", "tag2"]'
+            query = query.filter(DesignImages.tags.contains(tags))
+        else:
+            # Design must contain AT LEAST ONE tag
+            # PostgreSQL: tags && '["tag1", "tag2"]'
+            query = query.filter(DesignImages.tags.op('&&')(cast(tags, JSONB)))
+
+        # Get paginated results
+        designs = query.offset(skip).limit(limit).all()
+
+        # Get total count
+        total = query.count()
+
+        logging.info(f"Tag search: found {total} designs matching {tags} (match_all={match_all}) for user {user_id}")
+
+        # Convert to Pydantic models
+        design_responses = [model.DesignImageResponse.model_validate(design) for design in designs]
+        return model.DesignImageListResponse(designs=design_responses, total=total)
+
+    except Exception as e:
+        logging.error(f"Tag search failed for user {user_id} with tags {tags}: {e}")
+        raise DesignGetAllError()
 
 
 def update_design(db: Session, design_id: UUID, user_id: UUID, design_data: model.DesignImageUpdate) -> model.DesignImageResponse:

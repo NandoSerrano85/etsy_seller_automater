@@ -3,7 +3,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, func, ForeignKey, Tabl
 from sqlalchemy.orm import relationship
 from server.src.database.core import Base
 import uuid
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 # Check if multi-tenant is enabled
 MULTI_TENANT_ENABLED = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
@@ -33,6 +33,8 @@ class DesignImages(Base):
     ahash = Column(String(64), nullable=True)  # Perceptual hash for duplicate detection
     dhash = Column(String(64), nullable=True)  # Perceptual hash for duplicate detection
     whash = Column(String(64), nullable=True)  # Perceptual hash for duplicate detection
+    tags = Column(JSONB, nullable=True, default=list)  # AI-generated tags for searchability
+    tags_metadata = Column(JSONB, nullable=True)  # Metadata about tag generation (model, processing time, categories)
     canvas_config_id = Column(UUID(as_uuid=True), ForeignKey('canvas_configs.id'), nullable=True)
     platform = Column(String(20), default='etsy', nullable=False)  # 'etsy' or 'shopify'
     is_active = Column(Boolean, default=True)

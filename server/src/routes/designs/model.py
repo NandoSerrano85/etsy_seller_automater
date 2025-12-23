@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from uuid import UUID
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class DesignImageBase(BaseModel):
@@ -12,6 +12,8 @@ class DesignImageBase(BaseModel):
     platform: str = 'etsy'  # 'etsy' or 'shopify'
     is_active: bool = True
     is_digital: Optional[bool] = False  # Allow None for backwards compatibility
+    tags: Optional[List[str]] = []  # AI-generated tags
+    tags_metadata: Optional[Dict[str, Any]] = None  # Tag generation metadata
 
 class DesignImageCreate(BaseModel):
     product_template_id: UUID
@@ -35,6 +37,8 @@ class DesignImageUpdate(BaseModel):
     platform: Optional[str] = None  # 'etsy' or 'shopify'
     is_active: Optional[bool] = None
     is_digital: Optional[bool] = None
+    tags: Optional[List[str]] = None  # AI-generated tags
+    tags_metadata: Optional[Dict[str, Any]] = None  # Tag generation metadata
 
 class DesignImageResponse(DesignImageBase):
     id: UUID
