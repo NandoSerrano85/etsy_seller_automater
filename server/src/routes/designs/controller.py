@@ -223,9 +223,9 @@ async def get_design(
 
 @router.get('/search-by-tags', response_model=model.DesignImageListResponse)
 async def search_designs_by_tags(
+    current_user: CurrentUser,
     tags: str = Query(..., description="Comma-separated list of tags to search"),
     match_all: bool = Query(False, description="Match ALL tags (AND) vs ANY tag (OR)"),
-    current_user: CurrentUser,
     db: Session = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000)
