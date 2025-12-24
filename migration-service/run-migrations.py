@@ -114,6 +114,7 @@ def discover_migrations():
         "add_phash_to_designs",           # Adds phash column to designs
         "add_additional_hash_columns",    # Adds ahash, dhash, whash columns
         "update_phash_hash_size",         # Updates phash column size and generates all hashes
+        "add_tags_to_design_images",      # Adds tags and tags_metadata for automatic image tagging
         "add_platform_to_designs",        # Adds platform column to separate Shopify and Etsy designs
         "import_local_designs",           # Import local designs with all hash calculations
         "run_canvas_size_migration",      # Canvas size updates
