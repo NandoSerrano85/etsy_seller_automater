@@ -154,7 +154,7 @@ def register_routes(app: FastAPI):
     app.include_router(canvas_config_router)
     app.include_router(dashboard_router)
     app.include_router(size_config_router)
-    app.include_router(order_router)
+    app.include_router(order_router, prefix="/api")
     app.include_router(design_router)
     app.include_router(mockup_router)
     app.include_router(third_party_listings_router)

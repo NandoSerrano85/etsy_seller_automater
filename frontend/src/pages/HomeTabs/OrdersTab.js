@@ -40,7 +40,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       // 'all' filter: no params, gets all orders
 
       const queryString = new URLSearchParams(params).toString();
-      const url = `/orders${queryString ? `?${queryString}` : ''}`;
+      const url = `/api/orders${queryString ? `?${queryString}` : ''}`;
 
       const response = await api.get(url);
       if (response.orders) {
@@ -80,7 +80,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     setLoadingAllOrders(true);
     setPrintError(null);
     try {
-      const response = await api.get('/orders/all-orders?limit=100&offset=0');
+      const response = await api.get('/api/orders/all-orders?limit=100&offset=0');
       if (response.success) {
         setAllOrders(response.orders || []);
         setShowSelectionMode(true);
@@ -119,7 +119,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
         order_ids_length: selectedOrders.length,
       });
       console.log(JSON.stringify({ template_name: selectedTemplate, order_ids: selectedOrders }));
-      const response = await api.post('/orders/print-files-from-selection', {
+      const response = await api.post('/api/orders/print-files-from-selection', {
         template_name: selectedTemplate,
         order_ids: selectedOrders,
       });
@@ -220,7 +220,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       setPrintError(null);
       setPrintMsg(null);
 
-      const response = await api.get('/orders/create-print-files');
+      const response = await api.get('/api/orders/create-print-files');
       console.log(response);
       if (response.success) {
         // Reset selection after successful print

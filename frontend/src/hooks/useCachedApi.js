@@ -141,7 +141,9 @@ export const useCachedApi = () => {
         async () => {
           // Auth service will automatically handle token refresh and injection
           // Fetch only unshipped orders for the pending count (paid, not shipped, not canceled)
-          const response = await makeAuthenticatedRequest('/orders?was_paid=true&was_shipped=false&was_canceled=false');
+          const response = await makeAuthenticatedRequest(
+            '/api/orders?was_paid=true&was_shipped=false&was_canceled=false'
+          );
           return response?.orders || response?.data?.orders || [];
         },
         forceRefresh
