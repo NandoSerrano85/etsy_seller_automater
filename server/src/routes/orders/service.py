@@ -419,6 +419,7 @@ def get_all_orders_with_details(current_user, db, limit=100, offset=0, was_shipp
                 "receipt_id": order.get('receipt_id'),
                 "order_id": order.get('receipt_id'),  # Use receipt_id as order_id
                 "buyer_name": f"{order.get('name', '')} {order.get('first_line', '')}".strip(),
+                "customer_name": f"{order.get('name', '')} {order.get('first_line', '')}".strip(),  # Add customer_name for frontend compatibility
                 "buyer_email": order.get('buyer_email', ''),
                 "create_timestamp": order.get('create_timestamp'),
                 "status": order.get('status', 'unknown'),
