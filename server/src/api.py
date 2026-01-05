@@ -29,18 +29,26 @@ from server.src.routes.ecommerce.admin_orders import router as ecommerce_admin_o
 from server.src.routes.ecommerce.admin_customers import router as ecommerce_admin_customers_router
 from server.src.routes.ecommerce.product_images import router as ecommerce_product_images_router
 
-# Multi-tenant routes - conditionally imported if multi-tenant is enabled
+# Multi-tenant routes - always import organizations router, conditionally import others
 def get_multi_tenant_routers():
-    """Import multi-tenant routers only if multi-tenant is enabled"""
+    """Import multi-tenant routers"""
     routers = []
-    if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
-        print("🔄 Multi-tenant enabled, attempting to import routers...")
-        try:
-            print("📋 Importing organization router...")
-            from server.src.routes.organizations.routes import router as organization_router
-            routers.append(organization_router)
-            print("✅ Organization router imported successfully")
 
+    # Always import organizations router (required by frontend login flow)
+    try:
+        print("📋 Importing organization router...")
+        from server.src.routes.organizations.routes import router as organization_router
+        routers.append(organization_router)
+        print("✅ Organization router imported successfully")
+    except ImportError as e:
+        print(f"❌ Warning: Could not import organization router: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Conditionally import other multi-tenant features
+    if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
+        print("🔄 Multi-tenant enabled, importing additional routers...")
+        try:
             print("📋 Importing printer router...")
             from server.src.routes.printers.routes import router as printer_router
             routers.append(printer_router)
@@ -48,11 +56,12 @@ def get_multi_tenant_routers():
 
             print(f"✅ Successfully imported {len(routers)} multi-tenant routers")
         except ImportError as e:
-            print(f"❌ Warning: Could not import multi-tenant routers: {e}")
+            print(f"❌ Warning: Could not import printer router: {e}")
             import traceback
             traceback.print_exc()
     else:
-        print("⚠️  Multi-tenant features disabled")
+        print("ℹ️  Additional multi-tenant features disabled")
+
     return routers
 import os
 import time
