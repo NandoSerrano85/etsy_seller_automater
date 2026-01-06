@@ -40,7 +40,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       // 'all' filter: no params, gets all orders
 
       const queryString = new URLSearchParams(params).toString();
-      const url = `/api/orders${queryString ? `?${queryString}` : ''}`;
+      const url = `/api/orders/${queryString ? `?${queryString}` : ''}`;
 
       const response = await api.get(url);
       if (response.orders) {

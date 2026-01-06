@@ -142,7 +142,7 @@ async def create_print_files_from_selected_orders(
 
     return await create_from_selection_threaded()
 
-@router.get('/print-files')
+@router.get('/get-print-files')
 async def list_print_files(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
@@ -195,7 +195,7 @@ async def list_print_files(
         logging.error(f"Error listing print files: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list print files: {str(e)}")
 
-@router.get('/print-files/{filename}')
+@router.get('/get-print-files/{filename}')
 async def download_print_file(
     filename: str,
     current_user: CurrentUser,
