@@ -36,7 +36,15 @@ interface ShippingFormData {
   use_different_billing: boolean;
 }
 
-function CheckoutForm() {
+interface CheckoutFormProps {
+  clientSecret?: string;
+  onClientSecretReady?: (secret: string) => void;
+}
+
+function CheckoutForm({
+  clientSecret: externalClientSecret,
+  onClientSecretReady,
+}: CheckoutFormProps) {
   const router = useRouter();
   const { cart, customer, isAuthenticated, clearCart } = useStore();
   const stripe = useStripe();
@@ -44,8 +52,10 @@ function CheckoutForm() {
 
   const [currentStep, setCurrentStep] = useState<CheckoutStep>("shipping");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [clientSecret, setClientSecret] = useState<string>("");
+  const [internalClientSecret, setInternalClientSecret] = useState<string>("");
   const [checkoutSession, setCheckoutSession] = useState<any>(null);
+
+  const clientSecret = externalClientSecret || internalClientSecret;
 
   const [shippingForm, setShippingForm] = useState<ShippingFormData>({
     first_name: customer?.first_name || "",
@@ -108,7 +118,13 @@ function CheckoutForm() {
       const paymentIntent = await checkoutApi.createPaymentIntent(
         session.total,
       );
-      setClientSecret(paymentIntent.client_secret);
+      const secret = paymentIntent.client_secret;
+      setInternalClientSecret(secret);
+
+      // Notify parent component if callback is provided
+      if (onClientSecretReady) {
+        onClientSecretReady(secret);
+      }
 
       setCurrentStep("payment");
     } catch (error: any) {
@@ -505,11 +521,26 @@ function CheckoutForm() {
 }
 
 export default function CheckoutPage() {
-  const [options, setOptions] = useState<any>(null);
+  const [clientSecret, setClientSecret] = useState<string>("");
+
+  const options = clientSecret
+    ? {
+        clientSecret,
+        appearance: {
+          theme: "stripe" as const,
+        },
+      }
+    : undefined;
 
   return (
-    <Elements stripe={stripePromise} options={options}>
-      <CheckoutForm />
-    </Elements>
+    <>
+      {clientSecret && options ? (
+        <Elements stripe={stripePromise} options={options}>
+          <CheckoutForm clientSecret={clientSecret} />
+        </Elements>
+      ) : (
+        <CheckoutForm onClientSecretReady={setClientSecret} />
+      )}
+    </>
   );
 }
