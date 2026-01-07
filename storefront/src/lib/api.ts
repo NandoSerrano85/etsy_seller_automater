@@ -306,6 +306,34 @@ export const checkoutApi = {
     return data;
   },
 
+  getShippingRates: async (shippingAddress: {
+    first_name: string;
+    last_name: string;
+    address1: string;
+    address2?: string;
+    city: string;
+    state: string;
+    zip_code: string;
+    country: string;
+  }): Promise<
+    {
+      carrier: string;
+      service: string;
+      service_level: string;
+      amount: number;
+      currency: string;
+      estimated_days: number | null;
+      duration_terms: string;
+      rate_id: string;
+      is_fallback?: boolean;
+    }[]
+  > => {
+    const { data } = await api.post("/api/storefront/checkout/shipping-rates", {
+      shipping_address: shippingAddress,
+    });
+    return data;
+  },
+
   createPaymentIntent: async (
     amount: number,
     currency = "usd",

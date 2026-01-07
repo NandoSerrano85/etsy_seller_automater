@@ -9,7 +9,7 @@ import { useStore } from "@/store/useStore";
 import { checkoutApi } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import toast from "react-hot-toast";
-import { Loader2, CheckCircle } from "lucide-react";
+import { Loader2, CheckCircle, Truck, Clock } from "lucide-react";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -43,6 +43,18 @@ interface ShippingFormData {
   use_different_billing: boolean;
 }
 
+interface ShippingRate {
+  carrier: string;
+  service: string;
+  service_level: string;
+  amount: number;
+  currency: string;
+  estimated_days: number | null;
+  duration_terms: string;
+  rate_id: string;
+  is_fallback?: boolean;
+}
+
 interface ShippingStepProps {
   shippingForm: ShippingFormData;
   onShippingChange: (
@@ -51,6 +63,107 @@ interface ShippingStepProps {
   onSubmit: (e: React.FormEvent) => Promise<void>;
   isProcessing: boolean;
   isAuthenticated: boolean;
+}
+
+interface ShippingMethodStepProps {
+  shippingRates: ShippingRate[];
+  selectedRate: ShippingRate | null;
+  onSelectRate: (rate: ShippingRate) => void;
+  onBack: () => void;
+  onContinue: () => void;
+  isProcessing: boolean;
+}
+
+function ShippingMethodStep({
+  shippingRates,
+  selectedRate,
+  onSelectRate,
+  onBack,
+  onContinue,
+  isProcessing,
+}: ShippingMethodStepProps) {
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Select Shipping Method</h2>
+
+      <div className="space-y-3 mb-6">
+        {shippingRates.map((rate) => (
+          <div
+            key={rate.rate_id}
+            onClick={() => onSelectRate(rate)}
+            className={`border rounded-lg p-4 cursor-pointer transition-all ${
+              selectedRate?.rate_id === rate.rate_id
+                ? "border-primary-600 bg-primary-50 shadow-md"
+                : "border-gray-300 hover:border-primary-300 hover:bg-gray-50"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <Truck className="w-5 h-5 text-gray-600" />
+                  <span className="font-semibold text-gray-900">
+                    {rate.carrier} - {rate.service}
+                  </span>
+                  {rate.is_fallback && (
+                    <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+                      Estimated
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Clock className="w-4 h-4" />
+                  <span>{rate.duration_terms}</span>
+                  {rate.estimated_days !== null && (
+                    <span className="text-gray-500">
+                      ({rate.estimated_days}{" "}
+                      {rate.estimated_days === 1 ? "day" : "days"})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold text-gray-900">
+                  {rate.amount === 0 ? "FREE" : formatPrice(rate.amount)}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {shippingRates.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-primary-600" />
+          <p>Loading shipping options...</p>
+        </div>
+      )}
+
+      <div className="flex gap-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          onClick={onContinue}
+          disabled={!selectedRate || isProcessing}
+          className="flex-1 bg-primary-600 text-white py-3 px-6 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        >
+          {isProcessing ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Processing...
+            </>
+          ) : (
+            "Continue to Payment"
+          )}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function ShippingStep({
@@ -199,10 +312,10 @@ function ShippingStep({
         {isProcessing ? (
           <>
             <Loader2 className="w-5 h-5 animate-spin" />
-            Processing...
+            Loading shipping options...
           </>
         ) : (
-          "Continue to Payment"
+          "Continue to Shipping"
         )}
       </button>
     </form>
@@ -212,12 +325,15 @@ function ShippingStep({
 export default function CheckoutPage() {
   const router = useRouter();
   const { cart, customer, isAuthenticated } = useStore();
-  const [currentStep, setCurrentStep] = useState<"shipping" | "payment">(
-    "shipping",
-  );
+  const [currentStep, setCurrentStep] = useState<
+    "shipping" | "shipping_method" | "payment"
+  >("shipping");
   const [clientSecret, setClientSecret] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutSession, setCheckoutSession] = useState<any>(null);
+  const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
+  const [selectedShippingRate, setSelectedShippingRate] =
+    useState<ShippingRate | null>(null);
 
   const [shippingForm, setShippingForm] = useState<ShippingFormData>({
     first_name: customer?.first_name || "",
@@ -258,7 +374,49 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      // Initialize checkout with backend
+      // Fetch shipping rates from Shippo
+      const rates = await checkoutApi.getShippingRates({
+        first_name: shippingForm.first_name,
+        last_name: shippingForm.last_name,
+        address1: shippingForm.address1,
+        address2: shippingForm.address2 || undefined,
+        city: shippingForm.city,
+        state: shippingForm.state,
+        zip_code: shippingForm.zip_code,
+        country: shippingForm.country,
+      });
+
+      setShippingRates(rates);
+
+      // Auto-select cheapest option
+      if (rates.length > 0) {
+        setSelectedShippingRate(rates[0]);
+      }
+
+      setCurrentStep("shipping_method");
+    } catch (error: any) {
+      console.error("Failed to fetch shipping rates:", error);
+      toast.error(
+        error.response?.data?.detail ||
+          "Failed to load shipping options. Using default rates.",
+      );
+      // Still proceed to shipping method step with fallback rates
+      setCurrentStep("shipping_method");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleShippingMethodContinue = async () => {
+    if (!selectedShippingRate) {
+      toast.error("Please select a shipping method");
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Initialize checkout with backend including shipping
       const session = await checkoutApi.initialize({
         shipping_address: {
           first_name: shippingForm.first_name,
@@ -272,6 +430,7 @@ export default function CheckoutPage() {
           phone: shippingForm.phone || undefined,
         },
         guest_email: !isAuthenticated ? shippingForm.email : undefined,
+        shipping_method: selectedShippingRate.service_level,
       });
 
       setCheckoutSession(session);
@@ -300,8 +459,9 @@ export default function CheckoutPage() {
 
   const subtotal = checkoutSession?.subtotal || cart.subtotal;
   const tax = checkoutSession?.tax || 0;
-  const shipping = checkoutSession?.shipping || 0;
-  const total = checkoutSession?.total || cart.subtotal;
+  const shipping =
+    checkoutSession?.shipping || selectedShippingRate?.amount || 0;
+  const total = checkoutSession?.total || subtotal + tax + shipping;
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
@@ -326,9 +486,34 @@ export default function CheckoutPage() {
               <span className="ml-2 font-medium">Shipping</span>
             </div>
 
-            <div className="w-24 h-1 mx-4 bg-gray-300">
+            <div className="w-16 h-1 mx-4 bg-gray-300">
               <div
                 className={`h-full transition-all ${currentStep !== "shipping" ? "bg-green-600" : "bg-gray-300"}`}
+              />
+            </div>
+
+            <div className="flex items-center">
+              <div
+                className={`flex items-center justify-center w-10 h-10 rounded-full ${
+                  currentStep === "shipping_method"
+                    ? "bg-primary-600 text-white"
+                    : currentStep === "payment"
+                      ? "bg-green-600 text-white"
+                      : "bg-gray-300 text-gray-600"
+                }`}
+              >
+                {currentStep === "payment" ? (
+                  <CheckCircle className="w-6 h-6" />
+                ) : (
+                  "2"
+                )}
+              </div>
+              <span className="ml-2 font-medium">Shipping Method</span>
+            </div>
+
+            <div className="w-16 h-1 mx-4 bg-gray-300">
+              <div
+                className={`h-full transition-all ${currentStep === "payment" ? "bg-green-600" : "bg-gray-300"}`}
               />
             </div>
 
@@ -340,7 +525,7 @@ export default function CheckoutPage() {
                     : "bg-gray-300 text-gray-600"
                 }`}
               >
-                2
+                3
               </div>
               <span className="ml-2 font-medium">Payment</span>
             </div>
@@ -361,6 +546,17 @@ export default function CheckoutPage() {
                 />
               )}
 
+              {currentStep === "shipping_method" && (
+                <ShippingMethodStep
+                  shippingRates={shippingRates}
+                  selectedRate={selectedShippingRate}
+                  onSelectRate={setSelectedShippingRate}
+                  onBack={() => setCurrentStep("shipping")}
+                  onContinue={handleShippingMethodContinue}
+                  isProcessing={isProcessing}
+                />
+              )}
+
               {currentStep === "payment" && clientSecret && (
                 <Elements
                   stripe={stripePromise}
@@ -375,7 +571,7 @@ export default function CheckoutPage() {
                     checkoutSession={checkoutSession}
                     shippingForm={shippingForm}
                     total={total}
-                    onBack={() => setCurrentStep("shipping")}
+                    onBack={() => setCurrentStep("shipping_method")}
                   />
                 </Elements>
               )}
@@ -424,13 +620,21 @@ export default function CheckoutPage() {
                   <span>Subtotal:</span>
                   <span>{formatPrice(subtotal)}</span>
                 </div>
-                {checkoutSession && (
+                {(selectedShippingRate || checkoutSession) && (
                   <>
                     <div className="flex justify-between text-sm">
                       <span>Shipping:</span>
-                      <span>
-                        {shipping === 0 ? "FREE" : formatPrice(shipping)}
-                      </span>
+                      <div className="text-right">
+                        <div>
+                          {shipping === 0 ? "FREE" : formatPrice(shipping)}
+                        </div>
+                        {selectedShippingRate && (
+                          <div className="text-xs text-gray-500">
+                            {selectedShippingRate.carrier} -{" "}
+                            {selectedShippingRate.service}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span>Tax:</span>
