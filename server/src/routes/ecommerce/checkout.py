@@ -442,10 +442,19 @@ async def complete_checkout(
     # Generate order number
     order_number = generate_order_number()
 
+    # Get storefront owner user_id
+    storefront_owner_user_id = os.getenv('STOREFRONT_OWNER_USER_ID')
+    if not storefront_owner_user_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Storefront owner user ID not configured. Please set STOREFRONT_OWNER_USER_ID environment variable."
+        )
+
     # Create order
     order = Order(
         id=uuid.uuid4(),
         order_number=order_number,
+        user_id=uuid.UUID(storefront_owner_user_id),
         customer_id=uuid.UUID(customer_id) if customer_id else None,
         guest_email=guest_email if not customer_id else None,
         subtotal=cart.subtotal,
