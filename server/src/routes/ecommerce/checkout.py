@@ -15,6 +15,7 @@ from server.src.entities.ecommerce.order import Order, OrderItem
 from server.src.entities.ecommerce.customer import Customer
 from server.src.entities.ecommerce.product import Product, ProductVariant
 from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
+from server.src.entities.user import User
 
 # Stripe SDK - Install with: pip install stripe
 try:
@@ -443,15 +444,20 @@ async def complete_checkout(
     # Generate order number
     order_number = generate_order_number()
 
-    # Get storefront owner user_id from settings
+    # Get storefront owner user_id from settings, or fallback to first user
     storefront_settings = db.query(StorefrontSettings).first()
-    if not storefront_settings:
-        raise HTTPException(
-            status_code=500,
-            detail="Storefront not configured. Please configure your storefront settings first."
-        )
-
-    storefront_owner_user_id = storefront_settings.user_id
+    if storefront_settings:
+        storefront_owner_user_id = storefront_settings.user_id
+    else:
+        # Fallback: Get first user from users table
+        first_user = db.query(User).first()
+        if not first_user:
+            raise HTTPException(
+                status_code=500,
+                detail="No users found. Please create a user account first."
+            )
+        storefront_owner_user_id = first_user.id
+        logging.warning(f"No storefront settings found. Using first user {first_user.id} as storefront owner.")
 
     # Create order
     order = Order(
