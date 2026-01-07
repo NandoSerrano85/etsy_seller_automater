@@ -338,6 +338,16 @@ class PaymentIntentRequest(BaseModel):
     currency: str = Field("usd", description="Currency code")
 
 
+class CompleteCheckoutRequest(BaseModel):
+    """Request to complete checkout after payment."""
+    session_id: str
+    payment_intent_id: str
+    shipping_address: AddressModel
+    billing_address: Optional[AddressModel] = None
+    customer_note: Optional[str] = None
+    guest_email: Optional[EmailStr] = None
+
+
 @router.post('/create-payment-intent')
 async def create_stripe_payment_intent(
     request: PaymentIntentRequest,
@@ -376,12 +386,7 @@ async def create_stripe_payment_intent(
 
 @router.post('/complete', response_model=OrderCreatedResponse)
 async def complete_checkout(
-    session_id: str,
-    payment_intent_id: str,
-    shipping_address: AddressModel,
-    billing_address: Optional[AddressModel] = None,
-    customer_note: Optional[str] = None,
-    guest_email: Optional[EmailStr] = None,
+    request: CompleteCheckoutRequest,
     x_session_id: Optional[str] = Header(None),
     current_customer: Optional[Customer] = Depends(get_current_customer_optional),
     db: Session = Depends(get_db)
@@ -392,6 +397,14 @@ async def complete_checkout(
     Called after payment is confirmed by Stripe.
     Creates order record and clears cart.
     """
+    # Extract data from request
+    session_id = request.session_id
+    payment_intent_id = request.payment_intent_id
+    shipping_address = request.shipping_address
+    billing_address = request.billing_address
+    customer_note = request.customer_note
+    guest_email = request.guest_email
+
     # For guest checkout, require email
     if not current_customer and not guest_email:
         raise HTTPException(status_code=400, detail="Email required")
