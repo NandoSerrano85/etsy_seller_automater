@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
+import dynamicImport from "next/dynamic";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import { useStore } from "@/store/useStore";
@@ -20,7 +20,7 @@ const stripePromise = checkoutApi
   .then((config) => loadStripe(config.stripe_public_key));
 
 // Dynamically import PaymentForm with no SSR
-const PaymentForm = dynamic(() => import("./PaymentForm"), {
+const PaymentForm = dynamicImport(() => import("./PaymentForm"), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center py-12">
@@ -328,9 +328,7 @@ export default function CheckoutPage() {
 
             <div className="w-24 h-1 mx-4 bg-gray-300">
               <div
-                className={`h-full transition-all ${
-                  currentStep !== "shipping" ? "bg-green-600" : "bg-gray-300"
-                }`}
+                className={`h-full transition-all ${currentStep !== "shipping" ? "bg-green-600" : "bg-gray-300"}`}
               />
             </div>
 
