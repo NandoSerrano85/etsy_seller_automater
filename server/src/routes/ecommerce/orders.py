@@ -11,6 +11,7 @@ from server.src.database.core import get_db
 from server.src.entities.ecommerce.order import Order, OrderItem
 from server.src.entities.ecommerce.customer import Customer
 from server.src.routes.ecommerce.customers import get_current_customer
+from server.src.routes.ecommerce.checkout import get_current_customer_optional
 
 
 router = APIRouter(
@@ -217,20 +218,24 @@ async def get_order_details(
 @router.get('/number/{order_number}', response_model=OrderResponse)
 async def get_order_by_number(
     order_number: str,
-    current_customer: Customer = Depends(get_current_customer),
+    current_customer: Optional[Customer] = Depends(get_current_customer_optional),
     db: Session = Depends(get_db)
 ):
     """
     Get full details for an order by order number.
 
-    Requires authentication token.
-    Customer can only view their own orders.
+    Supports both authenticated customers and guest orders.
+    - Authenticated: Customer can only view their own orders
+    - Guest: Can view any order (for post-checkout confirmation)
     """
-    # Get order
-    order = db.query(Order).filter(
-        Order.order_number == order_number,
-        Order.customer_id == current_customer.id
-    ).first()
+    # Build query
+    query = db.query(Order).filter(Order.order_number == order_number)
+
+    # If authenticated, verify the order belongs to this customer
+    if current_customer:
+        query = query.filter(Order.customer_id == current_customer.id)
+
+    order = query.first()
 
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

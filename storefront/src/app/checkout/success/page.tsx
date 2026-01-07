@@ -7,6 +7,7 @@ import { CheckCircle, Package, Mail, ArrowRight } from "lucide-react";
 import { ordersApi } from "@/lib/api";
 import { Order } from "@/types";
 import { formatPrice, formatDate } from "@/lib/utils";
+import toast from "react-hot-toast";
 
 function CheckoutSuccessContent() {
   const searchParams = useSearchParams();
@@ -32,8 +33,13 @@ function CheckoutSuccessContent() {
     try {
       const data = await ordersApi.getByNumber(orderNumber);
       setOrder(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch order:", error);
+      const errorMessage =
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to load order details. Please check your email for order confirmation.";
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
