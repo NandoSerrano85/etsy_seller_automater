@@ -10,10 +10,13 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { useStore } from "@/store/useStore";
-import { checkoutApi, customerApi } from "@/lib/api";
+import { checkoutApi } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import toast from "react-hot-toast";
-import { Loader2, ShoppingBag, CreditCard, CheckCircle } from "lucide-react";
+import { Loader2, CreditCard, CheckCircle } from "lucide-react";
+
+// Force dynamic rendering - checkout is inherently dynamic
+export const dynamic = "force-dynamic";
 
 // Initialize Stripe
 const stripePromise = checkoutApi
@@ -39,23 +42,25 @@ interface ShippingFormData {
 interface CheckoutFormProps {
   clientSecret?: string;
   onClientSecretReady?: (secret: string) => void;
+  currentStep?: "shipping" | "payment";
+  onBack?: () => void;
 }
 
 function CheckoutForm({
-  clientSecret: externalClientSecret,
+  clientSecret,
   onClientSecretReady,
+  currentStep: externalCurrentStep = "shipping",
+  onBack,
 }: CheckoutFormProps) {
   const router = useRouter();
   const { cart, customer, isAuthenticated, clearCart } = useStore();
-  const stripe = useStripe();
-  const elements = useElements();
 
-  const [currentStep, setCurrentStep] = useState<CheckoutStep>("shipping");
+  // Only call Stripe hooks when we're actually in the Elements context
+  const stripe = externalCurrentStep === "payment" ? useStripe() : null;
+  const elements = externalCurrentStep === "payment" ? useElements() : null;
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [internalClientSecret, setInternalClientSecret] = useState<string>("");
   const [checkoutSession, setCheckoutSession] = useState<any>(null);
-
-  const clientSecret = externalClientSecret || internalClientSecret;
 
   const [shippingForm, setShippingForm] = useState<ShippingFormData>({
     first_name: customer?.first_name || "",
@@ -119,14 +124,11 @@ function CheckoutForm({
         session.total,
       );
       const secret = paymentIntent.client_secret;
-      setInternalClientSecret(secret);
 
-      // Notify parent component if callback is provided
+      // Notify parent component to switch to payment step
       if (onClientSecretReady) {
         onClientSecretReady(secret);
       }
-
-      setCurrentStep("payment");
     } catch (error: any) {
       console.error("Checkout initialization error:", error);
       toast.error(
@@ -213,12 +215,12 @@ function CheckoutForm({
             <div className="flex items-center">
               <div
                 className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                  currentStep === "shipping"
+                  externalCurrentStep === "shipping"
                     ? "bg-primary-600 text-white"
                     : "bg-green-600 text-white"
                 }`}
               >
-                {currentStep === "shipping" ? (
+                {externalCurrentStep === "shipping" ? (
                   "1"
                 ) : (
                   <CheckCircle className="w-6 h-6" />
@@ -230,7 +232,9 @@ function CheckoutForm({
             <div className="w-24 h-1 mx-4 bg-gray-300">
               <div
                 className={`h-full transition-all ${
-                  currentStep !== "shipping" ? "bg-green-600" : "bg-gray-300"
+                  externalCurrentStep !== "shipping"
+                    ? "bg-green-600"
+                    : "bg-gray-300"
                 }`}
               />
             </div>
@@ -238,18 +242,12 @@ function CheckoutForm({
             <div className="flex items-center">
               <div
                 className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                  currentStep === "payment"
+                  externalCurrentStep === "payment"
                     ? "bg-primary-600 text-white"
-                    : currentStep === "review"
-                      ? "bg-green-600 text-white"
-                      : "bg-gray-300 text-gray-600"
+                    : "bg-gray-300 text-gray-600"
                 }`}
               >
-                {currentStep === "review" ? (
-                  <CheckCircle className="w-6 h-6" />
-                ) : (
-                  "2"
-                )}
+                2
               </div>
               <span className="ml-2 font-medium">Payment</span>
             </div>
@@ -260,7 +258,7 @@ function CheckoutForm({
           {/* Main Content */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm p-6">
-              {currentStep === "shipping" && (
+              {externalCurrentStep === "shipping" && (
                 <form onSubmit={handleShippingSubmit}>
                   <h2 className="text-2xl font-bold mb-6">
                     Shipping Information
@@ -410,7 +408,7 @@ function CheckoutForm({
                 </form>
               )}
 
-              {currentStep === "payment" && clientSecret && (
+              {externalCurrentStep === "payment" && clientSecret && (
                 <form onSubmit={handlePaymentSubmit}>
                   <h2 className="text-2xl font-bold mb-6">
                     Payment Information
@@ -423,7 +421,7 @@ function CheckoutForm({
                   <div className="flex gap-4">
                     <button
                       type="button"
-                      onClick={() => setCurrentStep("shipping")}
+                      onClick={onBack}
                       className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-semibold hover:bg-gray-300"
                     >
                       Back
@@ -521,7 +519,14 @@ function CheckoutForm({
 }
 
 export default function CheckoutPage() {
+  return <CheckoutPageContent />;
+}
+
+function CheckoutPageContent() {
   const [clientSecret, setClientSecret] = useState<string>("");
+  const [currentStep, setCurrentStep] = useState<"shipping" | "payment">(
+    "shipping",
+  );
 
   const options = clientSecret
     ? {
@@ -532,15 +537,27 @@ export default function CheckoutPage() {
       }
     : undefined;
 
+  // Render shipping step without Elements wrapper
+  if (currentStep === "shipping" || !clientSecret) {
+    return (
+      <CheckoutForm
+        onClientSecretReady={(secret) => {
+          setClientSecret(secret);
+          setCurrentStep("payment");
+        }}
+        currentStep={currentStep}
+      />
+    );
+  }
+
+  // Render payment step with Elements wrapper
   return (
-    <>
-      {clientSecret && options ? (
-        <Elements stripe={stripePromise} options={options}>
-          <CheckoutForm clientSecret={clientSecret} />
-        </Elements>
-      ) : (
-        <CheckoutForm onClientSecretReady={setClientSecret} />
-      )}
-    </>
+    <Elements stripe={stripePromise} options={options}>
+      <CheckoutForm
+        clientSecret={clientSecret}
+        currentStep={currentStep}
+        onBack={() => setCurrentStep("shipping")}
+      />
+    </Elements>
   );
 }
