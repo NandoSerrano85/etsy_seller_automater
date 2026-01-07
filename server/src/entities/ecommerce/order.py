@@ -105,7 +105,6 @@ class OrderItem(Base):
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     order = relationship("Order", back_populates="items")
