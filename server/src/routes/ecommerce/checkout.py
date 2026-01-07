@@ -16,6 +16,7 @@ from server.src.entities.ecommerce.customer import Customer
 from server.src.entities.ecommerce.product import Product, ProductVariant
 from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
 from server.src.entities.user import User
+from server.src.services.shippo_service import shippo_service
 
 # Stripe SDK - Install with: pip install stripe
 try:
@@ -103,6 +104,7 @@ class CheckoutInitRequest(BaseModel):
     """Request to initialize checkout."""
     shipping_address: AddressModel
     billing_address: Optional[AddressModel] = None  # Use shipping if not provided
+    shipping_method: Optional[str] = None  # Selected shipping method (service_level or rate_id)
     customer_note: Optional[str] = None
     guest_email: Optional[EmailStr] = None  # Required if not authenticated
 
@@ -133,6 +135,23 @@ class OrderCreatedResponse(BaseModel):
     total: float
     payment_status: str
     message: str
+
+
+class ShippingRateRequest(BaseModel):
+    """Request to get shipping rates."""
+    shipping_address: AddressModel
+
+
+class ShippingRateResponse(BaseModel):
+    """Individual shipping rate option."""
+    carrier: str
+    service: str
+    service_level: str
+    amount: float
+    currency: str = "USD"
+    estimated_days: Optional[int] = None
+    duration_terms: Optional[str] = None
+    rate_id: str
 
 
 # ============================================================================
@@ -236,6 +255,60 @@ async def get_stripe_config():
     return {
         "stripe_public_key": STRIPE_PUBLIC_KEY
     }
+
+
+@router.post('/shipping-rates', response_model=List[ShippingRateResponse])
+async def get_shipping_rates(
+    request: ShippingRateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Get real-time shipping rates from Shippo API.
+
+    Returns available shipping options with carriers, services, and prices
+    based on the destination address.
+    """
+    try:
+        # Format address for Shippo
+        to_address = {
+            'name': f"{request.shipping_address.first_name} {request.shipping_address.last_name}",
+            'street1': request.shipping_address.address1,
+            'city': request.shipping_address.city,
+            'state': request.shipping_address.state,
+            'zip': request.shipping_address.zip_code,
+            'country': request.shipping_address.country,
+        }
+
+        # Add optional fields
+        if request.shipping_address.address2:
+            to_address['street2'] = request.shipping_address.address2
+        if request.shipping_address.phone:
+            to_address['phone'] = request.shipping_address.phone
+
+        # Get rates from Shippo
+        rates = shippo_service.get_shipping_rates(to_address=to_address)
+
+        # Convert to response format
+        return [
+            ShippingRateResponse(
+                carrier=rate['carrier'],
+                service=rate['service'],
+                service_level=rate['service_level'],
+                amount=rate['amount'],
+                currency=rate['currency'],
+                estimated_days=rate.get('estimated_days'),
+                duration_terms=rate.get('duration_terms'),
+                rate_id=rate['rate_id']
+            )
+            for rate in rates
+        ]
+
+    except Exception as e:
+        logging.error(f"Failed to get shipping rates: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to calculate shipping rates. Please try again."
+        )
 
 
 @router.post('/init', response_model=CheckoutResponse)
