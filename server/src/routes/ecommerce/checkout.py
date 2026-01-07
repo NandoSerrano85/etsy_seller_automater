@@ -332,10 +332,15 @@ async def initialize_checkout(
     )
 
 
+class PaymentIntentRequest(BaseModel):
+    """Request model for creating payment intent."""
+    amount: float = Field(..., description="Payment amount in dollars")
+    currency: str = Field("usd", description="Currency code")
+
+
 @router.post('/create-payment-intent')
 async def create_stripe_payment_intent(
-    amount: float,
-    currency: str = "usd",
+    request: PaymentIntentRequest,
     db: Session = Depends(get_db)
 ):
     """
@@ -343,6 +348,8 @@ async def create_stripe_payment_intent(
 
     Frontend will use this to collect payment details securely.
     """
+    amount = request.amount
+    currency = request.currency
     if not STRIPE_AVAILABLE:
         raise HTTPException(
             status_code=503,

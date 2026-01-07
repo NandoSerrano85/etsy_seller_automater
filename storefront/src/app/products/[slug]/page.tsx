@@ -112,7 +112,7 @@ export default function ProductDetailPage() {
         : [];
 
   const currentImage =
-    images[selectedImageIndex] || "/images/placeholder-product.jpg";
+    images[selectedImageIndex] || "/images/placeholder-product.svg";
 
   return (
     <div className="bg-white">
