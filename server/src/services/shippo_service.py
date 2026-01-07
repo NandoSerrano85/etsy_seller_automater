@@ -17,14 +17,48 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def get_storefront_shipping_settings():
+    """
+    Get shipping settings from StorefrontSettings database.
+
+    Returns the first user's storefront settings if available, None otherwise.
+    This allows the Shippo service to use database-configured settings instead of environment variables.
+    """
+    try:
+        from server.src.database.core import SessionLocal
+        from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
+
+        db = SessionLocal()
+        try:
+            settings = db.query(StorefrontSettings).first()
+            return settings
+        finally:
+            db.close()
+    except Exception as e:
+        logger.debug(f"Could not fetch storefront settings from database: {e}")
+        return None
+
+
 class ShippoService:
     """Service for interacting with Shippo API."""
 
     def __init__(self):
-        """Initialize Shippo service with API credentials."""
-        self.api_key = os.getenv('SHIPPO_API_KEY')
+        """Initialize Shippo service with API credentials from database or environment."""
+        # Try to get settings from database first
+        db_settings = get_storefront_shipping_settings()
+
+        if db_settings and db_settings.shippo_api_key:
+            # Use database settings
+            self.api_key = db_settings.shippo_api_key
+            self.test_mode = db_settings.shippo_test_mode.lower() == 'true' if db_settings.shippo_test_mode else True
+            logger.info("Using Shippo settings from database")
+        else:
+            # Fall back to environment variables
+            self.api_key = os.getenv('SHIPPO_API_KEY')
+            self.test_mode = os.getenv('SHIPPO_TEST_MODE', 'true').lower() == 'true'
+            logger.info("Using Shippo settings from environment variables")
+
         self.api_url = 'https://api.goshippo.com'
-        self.test_mode = os.getenv('SHIPPO_TEST_MODE', 'true').lower() == 'true'
 
         if not self.api_key:
             logger.warning("SHIPPO_API_KEY not configured. Shipping rate calculation will use fallback values.")
@@ -148,11 +182,30 @@ class ShippoService:
 
     def _get_default_origin_address(self) -> Dict[str, str]:
         """
-        Get default origin/warehouse address from environment.
+        Get default origin/warehouse address from database or environment.
 
         Returns:
             Origin address dictionary
         """
+        # Try to get from database first
+        db_settings = get_storefront_shipping_settings()
+
+        if db_settings and db_settings.shipping_from_street1:
+            # Use database settings
+            return {
+                'name': db_settings.shipping_from_name or 'CraftFlow Commerce',
+                'company': db_settings.shipping_from_company or 'CraftFlow Commerce',
+                'street1': db_settings.shipping_from_street1,
+                'street2': db_settings.shipping_from_street2 or '',
+                'city': db_settings.shipping_from_city or 'Miami',
+                'state': db_settings.shipping_from_state or 'FL',
+                'zip': db_settings.shipping_from_zip or '33101',
+                'country': db_settings.shipping_from_country or 'US',
+                'phone': db_settings.shipping_from_phone or '555-0100',
+                'email': db_settings.shipping_from_email or 'shipping@craftflow.com'
+            }
+
+        # Fall back to environment variables
         return {
             'name': os.getenv('SHIPPO_FROM_NAME', 'CraftFlow Commerce'),
             'company': os.getenv('SHIPPO_FROM_COMPANY', 'CraftFlow Commerce'),
@@ -168,11 +221,26 @@ class ShippoService:
 
     def _get_default_parcel(self) -> Dict[str, Any]:
         """
-        Get default parcel dimensions.
+        Get default parcel dimensions from database or environment.
 
         Returns:
             Parcel specifications dictionary
         """
+        # Try to get from database first
+        db_settings = get_storefront_shipping_settings()
+
+        if db_settings and db_settings.shipping_default_length:
+            # Use database settings
+            return {
+                'length': db_settings.shipping_default_length or '10',
+                'width': db_settings.shipping_default_width or '8',
+                'height': db_settings.shipping_default_height or '4',
+                'distance_unit': 'in',
+                'weight': db_settings.shipping_default_weight or '1',
+                'mass_unit': 'lb'
+            }
+
+        # Fall back to environment variables
         return {
             'length': os.getenv('SHIPPO_DEFAULT_LENGTH', '10'),
             'width': os.getenv('SHIPPO_DEFAULT_WIDTH', '8'),

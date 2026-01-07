@@ -35,6 +35,28 @@ class StorefrontSettingsRequest(BaseModel):
     text_color: str = Field("#111827", pattern="^#[0-9A-Fa-f]{6}$")
     background_color: str = Field("#ffffff", pattern="^#[0-9A-Fa-f]{6}$")
 
+    # Shipping Configuration
+    shipping_from_name: Optional[str] = Field(None, max_length=255)
+    shipping_from_company: Optional[str] = Field(None, max_length=255)
+    shipping_from_street1: Optional[str] = Field(None, max_length=255)
+    shipping_from_street2: Optional[str] = Field(None, max_length=255)
+    shipping_from_city: Optional[str] = Field(None, max_length=100)
+    shipping_from_state: Optional[str] = Field(None, max_length=50)
+    shipping_from_zip: Optional[str] = Field(None, max_length=20)
+    shipping_from_country: Optional[str] = Field("US", max_length=50)
+    shipping_from_phone: Optional[str] = Field(None, max_length=50)
+    shipping_from_email: Optional[str] = Field(None, max_length=255)
+
+    # Default Package Dimensions
+    shipping_default_length: Optional[str] = Field("10", max_length=10)
+    shipping_default_width: Optional[str] = Field("8", max_length=10)
+    shipping_default_height: Optional[str] = Field("4", max_length=10)
+    shipping_default_weight: Optional[str] = Field("1", max_length=10)
+
+    # Shippo API Configuration
+    shippo_api_key: Optional[str] = Field(None, max_length=255)
+    shippo_test_mode: Optional[str] = Field("true", max_length=10)
+
 
 class StorefrontSettingsResponse(BaseModel):
     """Storefront settings response model."""
@@ -48,6 +70,29 @@ class StorefrontSettingsResponse(BaseModel):
     accent_color: str
     text_color: str
     background_color: str
+
+    # Shipping Configuration
+    shipping_from_name: Optional[str] = None
+    shipping_from_company: Optional[str] = None
+    shipping_from_street1: Optional[str] = None
+    shipping_from_street2: Optional[str] = None
+    shipping_from_city: Optional[str] = None
+    shipping_from_state: Optional[str] = None
+    shipping_from_zip: Optional[str] = None
+    shipping_from_country: Optional[str] = None
+    shipping_from_phone: Optional[str] = None
+    shipping_from_email: Optional[str] = None
+
+    # Default Package Dimensions
+    shipping_default_length: Optional[str] = None
+    shipping_default_width: Optional[str] = None
+    shipping_default_height: Optional[str] = None
+    shipping_default_weight: Optional[str] = None
+
+    # Shippo API Configuration
+    shippo_api_key: Optional[str] = None
+    shippo_test_mode: Optional[str] = None
+
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

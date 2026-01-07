@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useNotifications } from '../components/NotificationSystem';
 import axios from 'axios';
-import { PaintBrushIcon, PhotoIcon, CheckCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { PaintBrushIcon, PhotoIcon, CheckCircleIcon, ArrowPathIcon, TruckIcon } from '@heroicons/react/24/outline';
 
 const CraftFlowStorefrontSettings = () => {
   const { userToken: token, user } = useAuth();
@@ -21,6 +21,25 @@ const CraftFlowStorefrontSettings = () => {
     accent_color: '#34d399',
     text_color: '#111827',
     background_color: '#ffffff',
+    // Shipping Configuration
+    shipping_from_name: '',
+    shipping_from_company: '',
+    shipping_from_street1: '',
+    shipping_from_street2: '',
+    shipping_from_city: '',
+    shipping_from_state: '',
+    shipping_from_zip: '',
+    shipping_from_country: 'US',
+    shipping_from_phone: '',
+    shipping_from_email: '',
+    // Package Defaults
+    shipping_default_length: '10',
+    shipping_default_width: '8',
+    shipping_default_height: '4',
+    shipping_default_weight: '1',
+    // Shippo API
+    shippo_api_key: '',
+    shippo_test_mode: 'true',
   });
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
@@ -47,6 +66,25 @@ const CraftFlowStorefrontSettings = () => {
           accent_color: response.data.accent_color || '#34d399',
           text_color: response.data.text_color || '#111827',
           background_color: response.data.background_color || '#ffffff',
+          // Shipping Configuration
+          shipping_from_name: response.data.shipping_from_name || '',
+          shipping_from_company: response.data.shipping_from_company || '',
+          shipping_from_street1: response.data.shipping_from_street1 || '',
+          shipping_from_street2: response.data.shipping_from_street2 || '',
+          shipping_from_city: response.data.shipping_from_city || '',
+          shipping_from_state: response.data.shipping_from_state || '',
+          shipping_from_zip: response.data.shipping_from_zip || '',
+          shipping_from_country: response.data.shipping_from_country || 'US',
+          shipping_from_phone: response.data.shipping_from_phone || '',
+          shipping_from_email: response.data.shipping_from_email || '',
+          // Package Defaults
+          shipping_default_length: response.data.shipping_default_length || '10',
+          shipping_default_width: response.data.shipping_default_width || '8',
+          shipping_default_height: response.data.shipping_default_height || '4',
+          shipping_default_weight: response.data.shipping_default_weight || '1',
+          // Shippo API
+          shippo_api_key: response.data.shippo_api_key || '',
+          shippo_test_mode: response.data.shippo_test_mode || 'true',
         });
       }
     } catch (error) {
@@ -260,6 +298,245 @@ const CraftFlowStorefrontSettings = () => {
                     value={settings.background_color}
                     onChange={value => handleColorChange('background_color', value)}
                   />
+                </div>
+              </div>
+
+              {/* Shipping Configuration */}
+              <div className="bg-white rounded-lg shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                  <TruckIcon className="w-5 h-5 mr-2" />
+                  Shipping Configuration
+                </h2>
+
+                <div className="space-y-6">
+                  {/* Origin/Warehouse Address */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Origin/Warehouse Address</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Business Name</label>
+                        <input
+                          type="text"
+                          name="shipping_from_name"
+                          value={settings.shipping_from_name}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="Your Business Name"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Company (optional)</label>
+                        <input
+                          type="text"
+                          name="shipping_from_company"
+                          value={settings.shipping_from_company}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="Your Company LLC"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+                        <input
+                          type="text"
+                          name="shipping_from_street1"
+                          value={settings.shipping_from_street1}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="123 Business St"
+                        />
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Street Address 2 (optional)
+                        </label>
+                        <input
+                          type="text"
+                          name="shipping_from_street2"
+                          value={settings.shipping_from_street2}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="Suite 100"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                        <input
+                          type="text"
+                          name="shipping_from_city"
+                          value={settings.shipping_from_city}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="Miami"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                        <input
+                          type="text"
+                          name="shipping_from_state"
+                          value={settings.shipping_from_state}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="FL"
+                          maxLength="2"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+                        <input
+                          type="text"
+                          name="shipping_from_zip"
+                          value={settings.shipping_from_zip}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="33101"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                        <input
+                          type="text"
+                          name="shipping_from_country"
+                          value={settings.shipping_from_country}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="US"
+                          maxLength="2"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                        <input
+                          type="tel"
+                          name="shipping_from_phone"
+                          value={settings.shipping_from_phone}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="555-123-4567"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input
+                          type="email"
+                          name="shipping_from_email"
+                          value={settings.shipping_from_email}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="shipping@yourbusiness.com"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Default Package Dimensions */}
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Default Package Dimensions</h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Used when calculating shipping rates. Dimensions in inches, weight in pounds.
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Length (in)</label>
+                        <input
+                          type="text"
+                          name="shipping_default_length"
+                          value={settings.shipping_default_length}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="10"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Width (in)</label>
+                        <input
+                          type="text"
+                          name="shipping_default_width"
+                          value={settings.shipping_default_width}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="8"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Height (in)</label>
+                        <input
+                          type="text"
+                          name="shipping_default_height"
+                          value={settings.shipping_default_height}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="4"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Weight (lb)</label>
+                        <input
+                          type="text"
+                          name="shipping_default_weight"
+                          value={settings.shipping_default_weight}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Shippo API Configuration */}
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Shippo API Configuration</h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Get your API key from{' '}
+                      <a
+                        href="https://goshippo.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sage-600 hover:text-sage-700 underline"
+                      >
+                        Shippo.com
+                      </a>
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Shippo API Key</label>
+                        <input
+                          type="text"
+                          name="shippo_api_key"
+                          value={settings.shippo_api_key}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm font-mono"
+                          placeholder="shippo_live_..."
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Test Mode</label>
+                        <select
+                          name="shippo_test_mode"
+                          value={settings.shippo_test_mode}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                        >
+                          <option value="true">Test Mode</option>
+                          <option value="false">Live Mode</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
