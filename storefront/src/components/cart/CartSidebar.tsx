@@ -33,9 +33,10 @@ export function CartSidebar() {
     }
   };
 
-  const handleRemove = async (itemId: string) => {
+  const handleRemove = async (itemId: string, index: number) => {
     try {
       await removeFromCart(itemId);
+      cartItems.splice(index, 1);
       toast.success("Item removed from cart");
     } catch (error) {
       toast.error("Failed to remove item");
@@ -91,7 +92,7 @@ export function CartSidebar() {
             </div>
           ) : (
             <div className="space-y-4">
-              {cartItems.map((item) => {
+              {cartItems.map((item, index) => {
                 return (
                   <div key={item.id} className="flex gap-4 border-b pb-4">
                     {/* Product Image */}
@@ -143,7 +144,7 @@ export function CartSidebar() {
                           <Plus className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleRemove(item.id)}
+                          onClick={() => handleRemove(item.id, index)}
                           disabled={isLoadingCart}
                           className="ml-auto p-1 text-red-500 hover:text-red-700 disabled:opacity-50"
                           aria-label="Remove item"
