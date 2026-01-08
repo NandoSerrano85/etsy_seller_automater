@@ -333,21 +333,37 @@ async def remove_from_cart(
     """
     Remove item from shopping cart.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     # Get cart
     cart = get_or_create_cart(db, session_id=x_session_id, customer_id=customer_id)
+
+    # Log cart state for debugging
+    logger.info(f"Attempting to remove item {item_id} from cart {cart.id}")
+    logger.info(f"Cart has {len(cart.items or [])} items")
 
     # Find and remove item
     cart_items = cart.items or []
     item_found = False
 
+    # Log all cart item IDs for debugging
+    cart_item_ids = [item.get('id') for item in cart_items]
+    logger.info(f"Cart item IDs: {cart_item_ids}")
+
     for i, cart_item in enumerate(cart_items):
         if cart_item.get('id') == item_id:
-            cart_items.pop(i)
+            removed_item = cart_items.pop(i)
+            logger.info(f"Removed item: {removed_item.get('product_name')} (id: {item_id})")
             item_found = True
             break
 
     if not item_found:
-        raise HTTPException(status_code=404, detail="Item not found in cart")
+        logger.warning(f"Item {item_id} not found in cart. Available IDs: {cart_item_ids}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Item not found in cart. Item ID: {item_id}"
+        )
 
     # Update cart
     cart.items = cart_items
@@ -357,6 +373,7 @@ async def remove_from_cart(
     db.commit()
     db.refresh(cart)
 
+    logger.info(f"Successfully removed item. Cart now has {len(cart_items)} items")
     return format_cart_response(cart)
 
 
