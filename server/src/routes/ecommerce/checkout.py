@@ -183,7 +183,7 @@ def calculate_tax(subtotal: float, state: str) -> float:
 
 def calculate_shipping(items: List[dict], address: dict, shipping_method: Optional[str] = None) -> float:
     """
-    Calculate shipping cost based on selected shipping method.
+    Calculate shipping cost based on selected shipping method from Shippo + handling fee.
 
     Args:
         items: Cart items
@@ -191,16 +191,32 @@ def calculate_shipping(items: List[dict], address: dict, shipping_method: Option
         shipping_method: Selected shipping method service_level (e.g., 'usps_priority', 'ups_ground')
 
     Returns:
-        Shipping cost in dollars
+        Shipping cost in dollars (Shippo rate + handling fee)
     """
     # Free shipping over $50 (can be configured in StorefrontSettings)
     subtotal = sum(item.get('subtotal', 0) for item in items)
     if subtotal >= 50:
         return 0.0
 
-    # If no shipping method selected, return default flat rate
+    # Get handling fee from StorefrontSettings
+    handling_fee = 0.0
+    try:
+        from server.src.database.core import SessionLocal
+        from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
+
+        db = SessionLocal()
+        try:
+            settings = db.query(StorefrontSettings).first()
+            if settings and settings.handling_fee:
+                handling_fee = float(settings.handling_fee)
+        finally:
+            db.close()
+    except Exception as e:
+        logging.error(f"Error getting handling fee from settings: {e}")
+
+    # If no shipping method selected, return default flat rate + handling fee
     if not shipping_method:
-        return 5.99
+        return round(5.99 + handling_fee, 2)
 
     # Get shipping rates from Shippo service to find the selected rate
     try:
@@ -214,18 +230,20 @@ def calculate_shipping(items: List[dict], address: dict, shipping_method: Option
         # Find the rate matching the selected shipping_method
         for rate in rates:
             if rate.get('service_level') == shipping_method or rate.get('rate_id') == shipping_method:
-                return float(rate.get('amount', 5.99))
+                shippo_rate = float(rate.get('amount', 5.99))
+                return round(shippo_rate + handling_fee, 2)
 
         # If exact match not found, try to find by carrier (fallback for legacy data)
         for rate in rates:
             if shipping_method.lower() in rate.get('service_level', '').lower():
-                return float(rate.get('amount', 5.99))
+                shippo_rate = float(rate.get('amount', 5.99))
+                return round(shippo_rate + handling_fee, 2)
 
     except Exception as e:
         logging.error(f"Error getting shipping rates: {e}")
 
-    # Fallback to default rate if shipping method not found
-    return 5.99
+    # Fallback to default rate + handling fee if shipping method not found
+    return round(5.99 + handling_fee, 2)
 
 
 def generate_order_number() -> str:

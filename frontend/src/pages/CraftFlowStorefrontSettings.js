@@ -40,6 +40,8 @@ const CraftFlowStorefrontSettings = () => {
     // Shippo API
     shippo_api_key: '',
     shippo_test_mode: 'true',
+    // Shipping Pricing
+    handling_fee: '0.00',
   });
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
@@ -85,6 +87,8 @@ const CraftFlowStorefrontSettings = () => {
           // Shippo API
           shippo_api_key: response.data.shippo_api_key || '',
           shippo_test_mode: response.data.shippo_test_mode || 'true',
+          // Shipping Pricing
+          handling_fee: response.data.handling_fee || '0.00',
         });
       }
     } catch (error) {
@@ -534,6 +538,32 @@ const CraftFlowStorefrontSettings = () => {
                           <option value="true">Test Mode</option>
                           <option value="false">Live Mode</option>
                         </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Shipping Pricing */}
+                  <div className="border-t pt-4">
+                    <h3 className="text-sm font-semibold text-gray-800 mb-3">Shipping Pricing</h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Add an optional handling fee to cover packaging materials and processing costs.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Handling Fee ($)</label>
+                        <input
+                          type="number"
+                          name="handling_fee"
+                          value={settings.handling_fee}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-sage-500 focus:border-sage-500 text-sm"
+                          placeholder="0.00"
+                          step="0.01"
+                          min="0"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          This fee will be added to the carrier's shipping rate (e.g., $2.50 for packaging materials)
+                        </p>
                       </div>
                     </div>
                   </div>

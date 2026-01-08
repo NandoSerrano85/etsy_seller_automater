@@ -127,6 +127,7 @@ def discover_migrations():
         "remove_updated_at_from_order_items",  # Removes updated_at column from order items (not in schema)
         "add_shipping_config_to_storefront_settings",  # Adds shipping origin address and package defaults
         "populate_shipping_from_env",  # Optional: Populate shipping settings from environment variables
+        "add_handling_fee_to_storefront_settings",  # Adds handling_fee column for additional shipping charges
 
         # User and subscription migrations
         "add_subscription_plan_to_users",      # Adds subscription_plan column to users table

@@ -56,6 +56,9 @@ class StorefrontSettings(Base):
     shippo_api_key = Column(String(255))
     shippo_test_mode = Column(String(10), default="true")
 
+    # Shipping Pricing
+    handling_fee = Column(String(10), default="0.00")  # Additional handling fee added to shipping cost
+
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -89,6 +92,7 @@ class StorefrontSettings(Base):
             "shipping_default_weight": self.shipping_default_weight,
             "shippo_api_key": self.shippo_api_key,
             "shippo_test_mode": self.shippo_test_mode,
+            "handling_fee": self.handling_fee,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
