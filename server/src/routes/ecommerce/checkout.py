@@ -208,12 +208,25 @@ def calculate_shipping(items: List[dict], address: dict, shipping_method: Option
         db = SessionLocal()
         try:
             settings = db.query(StorefrontSettings).first()
-            if settings and settings.handling_fee:
-                handling_fee = float(settings.handling_fee)
+            if settings:
+                logging.info(f"[calculate_shipping] Found StorefrontSettings for user_id: {settings.user_id}")
+                if settings.handling_fee:
+                    try:
+                        handling_fee = float(settings.handling_fee)
+                        logging.info(f"[calculate_shipping] Handling fee loaded: ${handling_fee}")
+                    except (ValueError, TypeError) as e:
+                        logging.error(f"[calculate_shipping] Error converting handling_fee '{settings.handling_fee}' to float: {e}")
+                        handling_fee = 0.0
+                else:
+                    logging.info(f"[calculate_shipping] No handling fee set (value: {settings.handling_fee})")
+            else:
+                logging.warning("[calculate_shipping] No StorefrontSettings found in database")
         finally:
             db.close()
     except Exception as e:
-        logging.error(f"Error getting handling fee from settings: {e}")
+        logging.error(f"[calculate_shipping] Error getting handling fee from settings: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
 
     # Get shipping rates from Shippo service to find the selected rate
     try:
@@ -302,6 +315,48 @@ async def get_stripe_config():
     }
 
 
+@router.get('/debug/handling-fee')
+async def debug_handling_fee(db: Session = Depends(get_db)):
+    """
+    Debug endpoint to check handling fee configuration.
+    Returns all storefront settings and their handling fees.
+    """
+    try:
+        all_settings = db.query(StorefrontSettings).all()
+
+        if not all_settings:
+            return {
+                "status": "no_settings_found",
+                "message": "No StorefrontSettings records found in database",
+                "settings_count": 0
+            }
+
+        settings_info = []
+        for settings in all_settings:
+            settings_info.append({
+                "id": settings.id,
+                "user_id": str(settings.user_id),
+                "store_name": settings.store_name,
+                "handling_fee_raw": settings.handling_fee,
+                "handling_fee_type": type(settings.handling_fee).__name__,
+                "handling_fee_converted": float(settings.handling_fee) if settings.handling_fee else 0.0
+            })
+
+        return {
+            "status": "success",
+            "settings_count": len(all_settings),
+            "settings": settings_info,
+            "first_setting_handling_fee": float(all_settings[0].handling_fee) if all_settings[0].handling_fee else 0.0
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+
 @router.post('/shipping-rates', response_model=List[ShippingRateResponse])
 async def get_shipping_rates(
     request: ShippingRateRequest,
@@ -315,13 +370,28 @@ async def get_shipping_rates(
     """
     try:
         # Get handling fee from StorefrontSettings
+        # Note: Since this is a public endpoint, we get the first active storefront settings
+        # In a multi-tenant setup, you'd need to identify which storefront via subdomain/domain
         handling_fee = 0.0
         try:
             settings = db.query(StorefrontSettings).first()
-            if settings and settings.handling_fee:
-                handling_fee = float(settings.handling_fee)
+            if settings:
+                logging.info(f"Found StorefrontSettings for user_id: {settings.user_id}")
+                if settings.handling_fee:
+                    try:
+                        handling_fee = float(settings.handling_fee)
+                        logging.info(f"Handling fee loaded: ${handling_fee}")
+                    except (ValueError, TypeError) as e:
+                        logging.error(f"Error converting handling_fee '{settings.handling_fee}' to float: {e}")
+                        handling_fee = 0.0
+                else:
+                    logging.info(f"No handling fee set (value: {settings.handling_fee})")
+            else:
+                logging.warning("No StorefrontSettings found in database")
         except Exception as e:
-            logging.error(f"Error getting handling fee: {e}")
+            logging.error(f"Error getting handling fee from database: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
 
         # Format address for Shippo
         to_address = {
