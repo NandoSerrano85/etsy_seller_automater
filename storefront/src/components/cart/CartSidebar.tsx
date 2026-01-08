@@ -19,6 +19,10 @@ export function CartSidebar() {
   } = useStore();
   const { settings } = useBranding();
 
+  useEffect(() => {
+    console.log("Cart items updated:", cartItems);
+  }, [cart]);
+
   const handleUpdateQuantity = async (
     itemId: string,
     currentQuantity: number,
@@ -51,9 +55,6 @@ export function CartSidebar() {
   const cartItems = cart?.items || [];
   const subtotal = cart?.subtotal || 0;
 
-  useEffect(() => {
-    console.log("Cart items updated:", cartItems);
-  }, [cartItems]);
   return (
     <>
       {/* Overlay */}
