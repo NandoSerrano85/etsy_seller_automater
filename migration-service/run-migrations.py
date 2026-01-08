@@ -130,6 +130,7 @@ def discover_migrations():
 
         # User and subscription migrations
         "add_subscription_plan_to_users",      # Adds subscription_plan column to users table
+        "upgrade_users_to_pro_plan",           # Upgrades all users to Pro plan for CraftFlow Commerce access
         "add_user_id_to_ecommerce_products",   # Adds user_id column for multi-tenant isolation
         "add_user_id_to_ecommerce_customers",  # Adds user_id column to customers table
         "add_user_id_to_ecommerce_orders",     # Adds user_id column to orders table
