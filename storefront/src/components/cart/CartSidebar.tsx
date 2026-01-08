@@ -34,6 +34,8 @@ export function CartSidebar() {
   };
 
   const handleRemove = async (itemId: string, index: number) => {
+    console.log("Removing item at index:", index);
+    console.log("Current cart items before removal:", cart?.items);
     try {
       await removeFromCart(itemId);
       cartItems.splice(index, 1);
