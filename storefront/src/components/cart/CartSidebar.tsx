@@ -92,11 +92,8 @@ export function CartSidebar() {
           ) : (
             <div className="space-y-4">
               {cartItems.map((item) => {
-                // Extract item ID from product_id (simplified - adjust based on your cart structure)
-                const itemId = `${item.product_id}${item.variant_id ? `-${item.variant_id}` : ""}`;
-
                 return (
-                  <div key={itemId} className="flex gap-4 border-b pb-4">
+                  <div key={item.id} className="flex gap-4 border-b pb-4">
                     {/* Product Image */}
                     <div className="w-20 h-20 bg-gray-100 rounded flex-shrink-0">
                       {item.image_url && (
@@ -126,7 +123,7 @@ export function CartSidebar() {
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() =>
-                            handleUpdateQuantity(itemId, item.quantity, -1)
+                            handleUpdateQuantity(item.id, item.quantity, -1)
                           }
                           disabled={isLoadingCart || item.quantity <= 1}
                           className="p-1 rounded border hover:bg-gray-50 disabled:opacity-50"
@@ -138,7 +135,7 @@ export function CartSidebar() {
                         </span>
                         <button
                           onClick={() =>
-                            handleUpdateQuantity(itemId, item.quantity, 1)
+                            handleUpdateQuantity(item.id, item.quantity, 1)
                           }
                           disabled={isLoadingCart}
                           className="p-1 rounded border hover:bg-gray-50 disabled:opacity-50"
@@ -146,7 +143,7 @@ export function CartSidebar() {
                           <Plus className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleRemove(itemId)}
+                          onClick={() => handleRemove(item.id)}
                           disabled={isLoadingCart}
                           className="ml-auto p-1 text-red-500 hover:text-red-700 disabled:opacity-50"
                           aria-label="Remove item"

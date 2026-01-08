@@ -51,6 +51,7 @@ export interface Product {
 
 // Cart Types
 export interface CartItem {
+  id: string; // Unique cart item ID from backend
   product_id: string;
   variant_id?: string;
   product_name: string;
