@@ -43,7 +43,7 @@ export function CartSidebar() {
     console.log("Current cart items before removal:", cart?.items);
     try {
       await removeFromCart(itemId);
-      cartItems.splice(index, 1);
+      cart?.items.splice(index, 1);
       toast.success("Item removed from cart");
     } catch (error) {
       toast.error("Failed to remove item");
