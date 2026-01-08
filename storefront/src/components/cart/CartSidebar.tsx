@@ -20,7 +20,7 @@ export function CartSidebar() {
   const { settings } = useBranding();
 
   useEffect(() => {
-    console.log("Cart items updated:", cartItems);
+    console.log("Cart items updated:", cart?.items);
   }, [cart]);
 
   const handleUpdateQuantity = async (
