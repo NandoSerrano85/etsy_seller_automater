@@ -214,10 +214,6 @@ def calculate_shipping(items: List[dict], address: dict, shipping_method: Option
     except Exception as e:
         logging.error(f"Error getting handling fee from settings: {e}")
 
-    # If no shipping method selected, return default flat rate + handling fee
-    if not shipping_method:
-        return round(5.99 + handling_fee, 2)
-
     # Get shipping rates from Shippo service to find the selected rate
     try:
         # Get rates from Shippo (includes both API rates and fallback rates)
