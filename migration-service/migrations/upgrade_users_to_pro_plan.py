@@ -1,18 +1,29 @@
 """
-Upgrade all users to Pro plan for CraftFlow Commerce access.
+Upgrade all users to Pro plan for CraftFlow Commerce access (OPTIONAL).
 
 This migration upgrades all existing users to the 'pro' subscription plan
 to ensure they have access to CraftFlow Commerce features.
 
-This is a one-time migration for existing users. New users can be assigned
-different plans through the signup process or admin panel.
+DISABLED BY DEFAULT - Set AUTO_UPGRADE_USERS_TO_PRO=true to enable
+
+Alternative: Use the admin API endpoint to manually upgrade specific users
 """
 
+import os
 from sqlalchemy import text
 
 
 def upgrade(connection):
-    """Upgrade all users to Pro plan"""
+    """Upgrade all users to Pro plan (optional, controlled by env var)"""
+
+    # Check if auto-upgrade is enabled
+    auto_upgrade = os.getenv('AUTO_UPGRADE_USERS_TO_PRO', 'false').lower() == 'true'
+
+    if not auto_upgrade:
+        print("⏭️  AUTO_UPGRADE_USERS_TO_PRO not enabled, skipping automatic upgrade")
+        print("   To enable: Set AUTO_UPGRADE_USERS_TO_PRO=true")
+        print("   Or use admin API to manually upgrade specific users")
+        return
 
     # Check if users table exists
     check_table_sql = text("""
@@ -49,6 +60,7 @@ def upgrade(connection):
         SELECT COUNT(*)
         FROM users
         WHERE subscription_plan != 'pro'
+        AND subscription_plan != 'enterprise'
     """)
 
     result = connection.execute(count_sql)
