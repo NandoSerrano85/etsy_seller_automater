@@ -441,6 +441,39 @@ export default function CheckoutPage() {
         is_fallback: true,
       },
       {
+        carrier: "UPS",
+        service: "UPS Ground",
+        service_level: "ups_ground",
+        amount: 12.99,
+        currency: "USD",
+        estimated_days: 4,
+        duration_terms: "3-5 business days",
+        rate_id: "fallback_ups_ground",
+        is_fallback: true,
+      },
+      {
+        carrier: "UPS",
+        service: "UPS 2nd Day Air",
+        service_level: "ups_2day",
+        amount: 19.99,
+        currency: "USD",
+        estimated_days: 2,
+        duration_terms: "2 business days",
+        rate_id: "fallback_ups_2day",
+        is_fallback: true,
+      },
+      {
+        carrier: "UPS",
+        service: "UPS Next Day Air",
+        service_level: "ups_next_day",
+        amount: 29.99,
+        currency: "USD",
+        estimated_days: 1,
+        duration_terms: "Next business day",
+        rate_id: "fallback_ups_next_day",
+        is_fallback: true,
+      },
+      {
         carrier: "USPS",
         service: "Priority Mail Express",
         service_level: "usps_express",
@@ -675,10 +708,13 @@ export default function CheckoutPage() {
                         <div>
                           {shipping === 0 ? "FREE" : formatPrice(shipping)}
                         </div>
-                        {selectedShippingRate && (
+                        {(selectedShippingRate ||
+                          (checkoutSession?.shipping_carrier &&
+                            checkoutSession?.shipping_service)) && (
                           <div className="text-xs text-gray-500">
-                            {selectedShippingRate.carrier} -{" "}
-                            {selectedShippingRate.service}
+                            {selectedShippingRate
+                              ? `${selectedShippingRate.carrier} - ${selectedShippingRate.service}`
+                              : `${checkoutSession.shipping_carrier} - ${checkoutSession.shipping_service}`}
                           </div>
                         )}
                       </div>

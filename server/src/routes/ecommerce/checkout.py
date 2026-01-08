@@ -119,6 +119,9 @@ class CheckoutResponse(BaseModel):
     total: float
     shipping_address: dict
     billing_address: dict
+    shipping_method: Optional[str] = None
+    shipping_carrier: Optional[str] = None
+    shipping_service: Optional[str] = None
 
 
 class StripePaymentRequest(BaseModel):
@@ -178,25 +181,51 @@ def calculate_tax(subtotal: float, state: str) -> float:
     return round(subtotal * tax_rate, 2)
 
 
-def calculate_shipping(items: List[dict], address: dict) -> float:
+def calculate_shipping(items: List[dict], address: dict, shipping_method: Optional[str] = None) -> float:
     """
-    Calculate shipping cost.
+    Calculate shipping cost based on selected shipping method.
 
-    TODO: Implement proper shipping calculation based on:
-    - Item weight/dimensions
-    - Destination address
-    - Shipping method (standard, expedited, etc.)
-    - Integration with shipping carriers (USPS, UPS, FedEx)
+    Args:
+        items: Cart items
+        address: Shipping address
+        shipping_method: Selected shipping method service_level (e.g., 'usps_priority', 'ups_ground')
+
+    Returns:
+        Shipping cost in dollars
     """
-    # Placeholder: flat rate shipping
-    FLAT_RATE_SHIPPING = 5.99
-
-    # Free shipping over $50
+    # Free shipping over $50 (can be configured in StorefrontSettings)
     subtotal = sum(item.get('subtotal', 0) for item in items)
     if subtotal >= 50:
         return 0.0
 
-    return FLAT_RATE_SHIPPING
+    # If no shipping method selected, return default flat rate
+    if not shipping_method:
+        return 5.99
+
+    # Get shipping rates from Shippo service to find the selected rate
+    try:
+        # Get rates from Shippo (includes both API rates and fallback rates)
+        rates = shippo_service.get_shipping_rates(
+            to_address=address,
+            from_address=None,  # Uses default from settings
+            parcel=None  # Uses default parcel dimensions
+        )
+
+        # Find the rate matching the selected shipping_method
+        for rate in rates:
+            if rate.get('service_level') == shipping_method or rate.get('rate_id') == shipping_method:
+                return float(rate.get('amount', 5.99))
+
+        # If exact match not found, try to find by carrier (fallback for legacy data)
+        for rate in rates:
+            if shipping_method.lower() in rate.get('service_level', '').lower():
+                return float(rate.get('amount', 5.99))
+
+    except Exception as e:
+        logging.error(f"Error getting shipping rates: {e}")
+
+    # Fallback to default rate if shipping method not found
+    return 5.99
 
 
 def generate_order_number() -> str:
@@ -376,8 +405,12 @@ async def initialize_checkout(
     # Calculate tax
     tax = calculate_tax(cart.subtotal, checkout_data.shipping_address.state)
 
-    # Calculate shipping
-    shipping = calculate_shipping(cart.items, checkout_data.shipping_address.dict())
+    # Calculate shipping using the selected shipping method
+    shipping = calculate_shipping(
+        cart.items,
+        checkout_data.shipping_address.dict(),
+        checkout_data.shipping_method
+    )
 
     # Calculate total
     total = round(cart.subtotal + tax + shipping, 2)
@@ -395,6 +428,24 @@ async def initialize_checkout(
 
     db.commit()
 
+    # Get shipping method details for display
+    shipping_carrier = None
+    shipping_service = None
+    if checkout_data.shipping_method:
+        try:
+            rates = shippo_service.get_shipping_rates(
+                to_address=checkout_data.shipping_address.dict(),
+                from_address=None,
+                parcel=None
+            )
+            for rate in rates:
+                if rate.get('service_level') == checkout_data.shipping_method or rate.get('rate_id') == checkout_data.shipping_method:
+                    shipping_carrier = rate.get('carrier')
+                    shipping_service = rate.get('service')
+                    break
+        except Exception as e:
+            logging.error(f"Error getting shipping method details: {e}")
+
     return CheckoutResponse(
         session_id=session_id,
         cart_id=str(cart.id),
@@ -403,7 +454,10 @@ async def initialize_checkout(
         shipping=shipping,
         total=total,
         shipping_address=checkout_data.shipping_address.dict(),
-        billing_address=billing_address.dict()
+        billing_address=billing_address.dict(),
+        shipping_method=checkout_data.shipping_method,
+        shipping_carrier=shipping_carrier,
+        shipping_service=shipping_service
     )
 
 

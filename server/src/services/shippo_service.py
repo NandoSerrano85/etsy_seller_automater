@@ -255,7 +255,7 @@ class ShippoService:
         Get fallback shipping rates when Shippo is not available.
 
         Returns:
-            List of basic shipping options
+            List of basic shipping options from USPS, UPS, and FedEx
         """
         return [
             {
@@ -278,6 +278,39 @@ class ShippoService:
                 'estimated_days': 2,
                 'duration_terms': '1-3 business days',
                 'rate_id': 'fallback_priority',
+                'is_fallback': True
+            },
+            {
+                'carrier': 'UPS',
+                'service': 'UPS Ground',
+                'service_level': 'ups_ground',
+                'amount': 12.99,
+                'currency': 'USD',
+                'estimated_days': 4,
+                'duration_terms': '3-5 business days',
+                'rate_id': 'fallback_ups_ground',
+                'is_fallback': True
+            },
+            {
+                'carrier': 'UPS',
+                'service': 'UPS 2nd Day Air',
+                'service_level': 'ups_2day',
+                'amount': 19.99,
+                'currency': 'USD',
+                'estimated_days': 2,
+                'duration_terms': '2 business days',
+                'rate_id': 'fallback_ups_2day',
+                'is_fallback': True
+            },
+            {
+                'carrier': 'UPS',
+                'service': 'UPS Next Day Air',
+                'service_level': 'ups_next_day',
+                'amount': 29.99,
+                'currency': 'USD',
+                'estimated_days': 1,
+                'duration_terms': 'Next business day',
+                'rate_id': 'fallback_ups_next_day',
                 'is_fallback': True
             },
             {
