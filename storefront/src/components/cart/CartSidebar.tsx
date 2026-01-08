@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { X, Minus, Plus, Trash2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -50,6 +51,9 @@ export function CartSidebar() {
   const cartItems = cart?.items || [];
   const subtotal = cart?.subtotal || 0;
 
+  useEffect(() => {
+    console.log("Cart items updated:", cartItems);
+  }, [cartItems]);
   return (
     <>
       {/* Overlay */}
