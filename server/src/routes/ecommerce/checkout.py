@@ -105,6 +105,7 @@ class CheckoutInitRequest(BaseModel):
     shipping_address: AddressModel
     billing_address: Optional[AddressModel] = None  # Use shipping if not provided
     shipping_method: Optional[str] = None  # Selected shipping method (service_level or rate_id)
+    shipping_amount: Optional[float] = None  # Selected shipping amount (includes handling fee)
     customer_note: Optional[str] = None
     guest_email: Optional[EmailStr] = None  # Required if not authenticated
 
@@ -230,10 +231,11 @@ def calculate_shipping(items: List[dict], address: dict, shipping_method: Option
                 return round(shippo_rate + handling_fee, 2)
 
         # If exact match not found, try to find by carrier (fallback for legacy data)
-        for rate in rates:
-            if shipping_method.lower() in rate.get('service_level', '').lower():
-                shippo_rate = float(rate.get('amount', 5.99))
-                return round(shippo_rate + handling_fee, 2)
+        if shipping_method:
+            for rate in rates:
+                if shipping_method.lower() in rate.get('service_level', '').lower():
+                    shippo_rate = float(rate.get('amount', 5.99))
+                    return round(shippo_rate + handling_fee, 2)
 
     except Exception as e:
         logging.error(f"Error getting shipping rates: {e}")
@@ -306,12 +308,21 @@ async def get_shipping_rates(
     db: Session = Depends(get_db)
 ):
     """
-    Get real-time shipping rates from Shippo API.
+    Get real-time shipping rates from Shippo API with handling fee included.
 
     Returns available shipping options with carriers, services, and prices
-    based on the destination address.
+    based on the destination address. Prices include the carrier rate + handling fee.
     """
     try:
+        # Get handling fee from StorefrontSettings
+        handling_fee = 0.0
+        try:
+            settings = db.query(StorefrontSettings).first()
+            if settings and settings.handling_fee:
+                handling_fee = float(settings.handling_fee)
+        except Exception as e:
+            logging.error(f"Error getting handling fee: {e}")
+
         # Format address for Shippo
         to_address = {
             'name': f"{request.shipping_address.first_name} {request.shipping_address.last_name}",
@@ -331,13 +342,13 @@ async def get_shipping_rates(
         # Get rates from Shippo
         rates = shippo_service.get_shipping_rates(to_address=to_address)
 
-        # Convert to response format
+        # Convert to response format with handling fee added
         return [
             ShippingRateResponse(
                 carrier=rate['carrier'],
                 service=rate['service'],
                 service_level=rate['service_level'],
-                amount=rate['amount'],
+                amount=round(rate['amount'] + handling_fee, 2),  # Add handling fee to displayed rate
                 currency=rate['currency'],
                 estimated_days=rate.get('estimated_days'),
                 duration_terms=rate.get('duration_terms'),
@@ -419,12 +430,17 @@ async def initialize_checkout(
     # Calculate tax
     tax = calculate_tax(cart.subtotal, checkout_data.shipping_address.state)
 
-    # Calculate shipping using the selected shipping method
-    shipping = calculate_shipping(
-        cart.items,
-        checkout_data.shipping_address.dict(),
-        checkout_data.shipping_method
-    )
+    # Calculate shipping - use selected amount if provided, otherwise calculate
+    if checkout_data.shipping_amount is not None:
+        # User selected a rate from /shipping-rates endpoint (already includes handling fee)
+        shipping = checkout_data.shipping_amount
+    else:
+        # Fallback: calculate shipping (for backwards compatibility or if amount not provided)
+        shipping = calculate_shipping(
+            cart.items,
+            checkout_data.shipping_address.dict(),
+            checkout_data.shipping_method
+        )
 
     # Calculate total
     total = round(cart.subtotal + tax + shipping, 2)

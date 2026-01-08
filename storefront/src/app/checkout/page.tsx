@@ -511,6 +511,7 @@ export default function CheckoutPage() {
         },
         guest_email: !isAuthenticated ? shippingForm.email : undefined,
         shipping_method: selectedShippingRate.service_level,
+        shipping_amount: selectedShippingRate.amount, // Send the selected amount (includes handling fee)
       });
 
       setCheckoutSession(session);

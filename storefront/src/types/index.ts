@@ -200,6 +200,7 @@ export interface CheckoutInit {
   customer_note?: string;
   guest_email?: string;
   shipping_method?: string;
+  shipping_amount?: number;
 }
 
 export interface CheckoutResponse {
