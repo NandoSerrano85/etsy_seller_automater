@@ -199,6 +199,7 @@ export interface CheckoutInit {
   billing_address?: CheckoutAddress;
   customer_note?: string;
   guest_email?: string;
+  shipping_method?: string;
 }
 
 export interface CheckoutResponse {

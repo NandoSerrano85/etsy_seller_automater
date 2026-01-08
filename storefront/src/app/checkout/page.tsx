@@ -386,25 +386,72 @@ export default function CheckoutPage() {
         country: shippingForm.country,
       });
 
-      setShippingRates(rates);
-
-      // Auto-select cheapest option
-      if (rates.length > 0) {
+      if (rates && rates.length > 0) {
+        setShippingRates(rates);
         setSelectedShippingRate(rates[0]);
+      } else {
+        // Use fallback rates if API returns empty
+        const fallbackRates = getFallbackRates();
+        setShippingRates(fallbackRates);
+        setSelectedShippingRate(fallbackRates[0]);
+        toast.error("Using estimated shipping rates");
       }
 
       setCurrentStep("shipping_method");
     } catch (error: any) {
       console.error("Failed to fetch shipping rates:", error);
+
+      // Use fallback rates on error
+      const fallbackRates = getFallbackRates();
+      setShippingRates(fallbackRates);
+      setSelectedShippingRate(fallbackRates[0]);
+
       toast.error(
-        error.response?.data?.detail ||
-          "Failed to load shipping options. Using default rates.",
+        "Unable to fetch real-time rates. Using estimated shipping costs.",
       );
-      // Still proceed to shipping method step with fallback rates
       setCurrentStep("shipping_method");
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Fallback shipping rates
+  const getFallbackRates = () => {
+    return [
+      {
+        carrier: "USPS",
+        service: "First Class Package",
+        service_level: "usps_first",
+        amount: 5.99,
+        currency: "USD",
+        estimated_days: 3,
+        duration_terms: "2-5 business days",
+        rate_id: "fallback_first_class",
+        is_fallback: true,
+      },
+      {
+        carrier: "USPS",
+        service: "Priority Mail",
+        service_level: "usps_priority",
+        amount: 9.99,
+        currency: "USD",
+        estimated_days: 2,
+        duration_terms: "1-3 business days",
+        rate_id: "fallback_priority",
+        is_fallback: true,
+      },
+      {
+        carrier: "USPS",
+        service: "Priority Mail Express",
+        service_level: "usps_express",
+        amount: 24.99,
+        currency: "USD",
+        estimated_days: 1,
+        duration_terms: "Overnight",
+        rate_id: "fallback_express",
+        is_fallback: true,
+      },
+    ];
   };
 
   const handleShippingMethodContinue = async () => {
