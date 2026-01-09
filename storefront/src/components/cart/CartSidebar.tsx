@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { X, Minus, Plus, Trash2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { useBranding } from "@/contexts/BrandingContext";
@@ -19,10 +18,6 @@ export function CartSidebar() {
   } = useStore();
   const { settings } = useBranding();
 
-  useEffect(() => {
-    console.log("Cart items updated:", cart?.items);
-  }, [cart]);
-
   const handleUpdateQuantity = async (
     itemId: string,
     currentQuantity: number,
@@ -33,19 +28,19 @@ export function CartSidebar() {
 
     try {
       await updateCartItem(itemId, newQuantity);
+      toast.success("Quantity updated");
     } catch (error) {
+      console.error("Failed to update quantity:", error);
       toast.error("Failed to update quantity");
     }
   };
 
-  const handleRemove = async (itemId: string, index: number) => {
-    console.log("Removing item at index:", index);
-    console.log("Current cart items before removal:", cart?.items);
+  const handleRemove = async (itemId: string) => {
     try {
       await removeFromCart(itemId);
-      cart?.items.splice(index, 1);
       toast.success("Item removed from cart");
     } catch (error) {
+      console.error("Failed to remove item:", error);
       toast.error("Failed to remove item");
     }
   };
@@ -99,7 +94,7 @@ export function CartSidebar() {
             </div>
           ) : (
             <div className="space-y-4">
-              {cartItems.map((item, index) => {
+              {cartItems.map((item) => {
                 return (
                   <div key={item.id} className="flex gap-4 border-b pb-4">
                     {/* Product Image */}
@@ -151,7 +146,7 @@ export function CartSidebar() {
                           <Plus className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => handleRemove(item.id, index)}
+                          onClick={() => handleRemove(item.id)}
                           disabled={isLoadingCart}
                           className="ml-auto p-1 text-red-500 hover:text-red-700 disabled:opacity-50"
                           aria-label="Remove item"
