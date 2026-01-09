@@ -18,6 +18,8 @@ export function CartSidebar() {
   } = useStore();
   const { settings } = useBranding();
 
+  console.log("[CartSidebar] Render - cart:", cart, "items:", cart?.items);
+
   const handleUpdateQuantity = async (
     itemId: string,
     currentQuantity: number,
