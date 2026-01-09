@@ -264,10 +264,14 @@ async def add_to_cart(
         }
         cart_items.append(new_item)
 
-    # Update cart
-    cart.items = cart_items
+    # Update cart - Create new list to ensure SQLAlchemy detects the change
+    cart.items = list(cart_items)  # Force new list object
     cart.subtotal = calculate_cart_totals(cart)
     cart.updated_at = datetime.utcnow()
+
+    # Mark the items column as modified to ensure JSONB update
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(cart, 'items')
 
     db.commit()
     db.refresh(cart)
@@ -312,10 +316,14 @@ async def update_cart_item(
     if not item_found:
         raise HTTPException(status_code=404, detail="Item not found in cart")
 
-    # Update cart
-    cart.items = cart_items
+    # Update cart - Create new list to ensure SQLAlchemy detects the change
+    cart.items = list(cart_items)  # Force new list object
     cart.subtotal = calculate_cart_totals(cart)
     cart.updated_at = datetime.utcnow()
+
+    # Mark the items column as modified to ensure JSONB update
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(cart, 'items')
 
     db.commit()
     db.refresh(cart)
@@ -365,15 +373,19 @@ async def remove_from_cart(
             detail=f"Item not found in cart. Item ID: {item_id}"
         )
 
-    # Update cart
-    cart.items = cart_items
+    # Update cart - Create new list to ensure SQLAlchemy detects the change
+    cart.items = list(cart_items)  # Force new list object
     cart.subtotal = calculate_cart_totals(cart)
     cart.updated_at = datetime.utcnow()
+
+    # Mark the items column as modified to ensure JSONB update
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(cart, 'items')
 
     db.commit()
     db.refresh(cart)
 
-    logger.info(f"Successfully removed item. Cart now has {len(cart_items)} items")
+    logger.info(f"Successfully removed item. Cart now has {len(cart.items)} items")
     return format_cart_response(cart)
 
 
