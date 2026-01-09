@@ -57,6 +57,9 @@ class StorefrontSettingsRequest(BaseModel):
     shippo_api_key: Optional[str] = Field(None, max_length=255)
     shippo_test_mode: Optional[str] = Field("true", max_length=10)
 
+    # Shipping Pricing
+    handling_fee: Optional[str] = Field("0.00", max_length=10)
+
 
 class StorefrontSettingsResponse(BaseModel):
     """Storefront settings response model."""
@@ -92,6 +95,9 @@ class StorefrontSettingsResponse(BaseModel):
     # Shippo API Configuration
     shippo_api_key: Optional[str] = None
     shippo_test_mode: Optional[str] = None
+
+    # Shipping Pricing
+    handling_fee: Optional[str] = None
 
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
