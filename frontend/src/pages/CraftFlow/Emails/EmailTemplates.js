@@ -3,14 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { useNotifications } from '../../../components/NotificationSystem';
 import axios from 'axios';
-import {
-  EnvelopeIcon,
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
-  EyeIcon,
-  FunnelIcon,
-} from '@heroicons/react/24/outline';
+import { EnvelopeIcon, PlusIcon, PencilIcon, TrashIcon, EyeIcon, FunnelIcon } from '@heroicons/react/24/outline';
 
 const EmailTemplates = () => {
   const { userToken: token } = useAuth();
@@ -180,11 +173,15 @@ const EmailTemplates = () => {
 
                 {/* Badges */}
                 <div className="flex flex-wrap gap-2 mb-4">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeBadgeColor(template.email_type)}`}>
+                  <span
+                    className={`px-2 py-1 text-xs font-medium rounded-full ${getTypeBadgeColor(template.email_type)}`}
+                  >
                     {formatEmailType(template.email_type)}
                   </span>
                   {template.is_default && (
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">Default</span>
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                      Default
+                    </span>
                   )}
                   <span
                     className={`px-2 py-1 text-xs font-medium rounded-full ${

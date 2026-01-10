@@ -3,14 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { useNotifications } from '../../../components/NotificationSystem';
 import axios from 'axios';
-import {
-  ArrowLeftIcon,
-  PlusIcon,
-  TrashIcon,
-  ArrowUpIcon,
-  ArrowDownIcon,
-  CheckIcon,
-} from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon } from '@heroicons/react/24/outline';
 
 const EmailTemplateEditor = () => {
   const { userToken: token } = useAuth();
@@ -493,18 +486,25 @@ const EmailTemplateEditor = () => {
                 </button>
 
                 <div className="hidden group-hover:block absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
-                  {['logo', 'header', 'text', 'button', 'order_summary', 'tracking_info', 'shipping_address', 'footer'].map(
-                    type => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => addBlock(type)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 capitalize"
-                      >
-                        {type.replace('_', ' ')}
-                      </button>
-                    )
-                  )}
+                  {[
+                    'logo',
+                    'header',
+                    'text',
+                    'button',
+                    'order_summary',
+                    'tracking_info',
+                    'shipping_address',
+                    'footer',
+                  ].map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => addBlock(type)}
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 capitalize"
+                    >
+                      {type.replace('_', ' ')}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}

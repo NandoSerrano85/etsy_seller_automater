@@ -57,9 +57,13 @@ const EmailSubscribers = () => {
   const handleSaveSubscriber = async subscriberData => {
     try {
       if (editingSubscriber) {
-        await axios.put(`${API_BASE_URL}/api/ecommerce/admin/emails/subscribers/${editingSubscriber.id}`, subscriberData, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        await axios.put(
+          `${API_BASE_URL}/api/ecommerce/admin/emails/subscribers/${editingSubscriber.id}`,
+          subscriberData,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
         addNotification('success', 'Subscriber updated successfully');
       } else {
         await axios.post(`${API_BASE_URL}/api/ecommerce/admin/emails/subscribers`, subscriberData, {
@@ -236,7 +240,9 @@ const EmailSubscribers = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tags</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Tags
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total Sent
                   </th>
@@ -262,7 +268,10 @@ const EmailSubscribers = () => {
                       <div className="flex flex-wrap gap-1">
                         {subscriber.tags && subscriber.tags.length > 0 ? (
                           subscriber.tags.map((tag, idx) => (
-                            <span key={idx} className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                            <span
+                              key={idx}
+                              className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800"
+                            >
                               {tag}
                             </span>
                           ))
@@ -272,8 +281,12 @@ const EmailSubscribers = () => {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{subscriber.total_sent || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{subscriber.total_opened || 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(subscriber.last_sent_at)}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {subscriber.total_opened || 0}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      {formatDate(subscriber.last_sent_at)}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span
                         className={`px-2 py-1 text-xs font-medium rounded-full ${
@@ -339,7 +352,10 @@ const SubscriberModal = ({ subscriber, onSave, onClose }) => {
     e.preventDefault();
     const subscriberData = {
       email,
-      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      tags: tags
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean),
       customer_id: customerId || null,
       is_subscribed: isSubscribed,
     };
