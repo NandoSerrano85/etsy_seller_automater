@@ -233,3 +233,131 @@ export interface ApiError {
   detail: string;
   status?: number;
 }
+
+// Email System Types
+export type EmailTemplateType = "transactional" | "marketing";
+export type EmailType = "order_confirmation" | "shipping_notification" | "marketing";
+export type EmailLogStatus = "sent" | "delivered" | "opened" | "clicked" | "bounced" | "failed";
+export type ScheduledEmailStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+export type EmailBlockType = "logo" | "header" | "text" | "button" | "order_summary" | "tracking_info" | "shipping_address" | "footer";
+
+export interface EmailBlock {
+  type: EmailBlockType;
+  [key: string]: any; // Block-specific fields
+}
+
+export interface EmailTemplate {
+  id: string;
+  user_id: string;
+  name: string;
+  template_type: EmailTemplateType;
+  email_type: EmailType;
+  subject: string;
+  blocks: EmailBlock[];
+  primary_color: string;
+  secondary_color: string;
+  logo_url?: string;
+  sendgrid_template_id?: string;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailLog {
+  id: string;
+  user_id: string;
+  template_id?: string;
+  email_type: EmailType;
+  recipient_email: string;
+  subject: string;
+  order_id?: string;
+  customer_id?: string;
+  sendgrid_message_id?: string;
+  sendgrid_status?: EmailLogStatus;
+  sent_at: string;
+  delivered_at?: string;
+  opened_at?: string;
+  clicked_at?: string;
+  error_message?: string;
+  created_at: string;
+}
+
+export interface EmailSubscriber {
+  id: string;
+  user_id: string;
+  email: string;
+  customer_id?: string;
+  is_subscribed: boolean;
+  unsubscribed_at?: string;
+  tags: string[];
+  total_sent: number;
+  total_opened: number;
+  total_clicked: number;
+  last_sent_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduledEmail {
+  id: string;
+  user_id: string;
+  template_id: string;
+  recipient_filter?: any;
+  recipient_count?: number;
+  scheduled_for: string;
+  status: ScheduledEmailStatus;
+  sent_count: number;
+  failed_count: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailAnalyticsSummary {
+  total_sent: number;
+  total_delivered: number;
+  total_opened: number;
+  total_clicked: number;
+  total_bounced: number;
+  total_failed: number;
+  delivery_rate: number;
+  open_rate: number;
+  click_rate: number;
+  by_email_type: { [key: string]: number };
+}
+
+export interface EmailAnalytics {
+  period: string;
+  start_date?: string;
+  end_date?: string;
+  summary: EmailAnalyticsSummary;
+}
+
+// Email Request Types
+export interface EmailTemplateRequest {
+  name: string;
+  template_type: EmailTemplateType;
+  email_type: EmailType;
+  subject: string;
+  blocks: EmailBlock[];
+  primary_color: string;
+  secondary_color: string;
+  logo_url?: string;
+  is_active: boolean;
+}
+
+export interface EmailSubscriberRequest {
+  email: string;
+  customer_id?: string;
+  tags: string[];
+  is_subscribed: boolean;
+}
+
+export interface SendMarketingEmailRequest {
+  template_id: string;
+  recipient_filter?: any;
+  recipient_emails?: string[];
+  schedule_for?: string;
+}

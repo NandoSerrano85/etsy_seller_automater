@@ -167,6 +167,25 @@ async def upsert_storefront_settings(
     try:
         db.commit()
         db.refresh(settings)
+
+        # Create default email templates if this is the first save
+        try:
+            from server.src.services.email_service import create_default_templates
+            from server.src.entities.ecommerce.email_template import EmailTemplate
+
+            # Check if user has any templates
+            existing_count = db.query(EmailTemplate).filter(
+                EmailTemplate.user_id == current_user.id
+            ).count()
+
+            if existing_count == 0:
+                print(f"🔄 Creating default email templates for user {current_user.id}")
+                create_default_templates(db, current_user.id, settings)
+                print(f"✅ Default email templates created")
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to create default email templates: {e}")
+            # Don't fail the request if template creation fails
+
         return settings
     except Exception as e:
         db.rollback()

@@ -129,6 +129,7 @@ def discover_migrations():
         "add_shipping_config_to_storefront_settings",  # Adds shipping origin address and package defaults
         "populate_shipping_from_env",  # Optional: Populate shipping settings from environment variables
         "add_handling_fee_to_storefront_settings",  # Adds handling_fee column for additional shipping charges
+        "create_email_tables",  # Creates email messaging system tables for transactional and marketing emails
 
         # User and subscription migrations
         "add_subscription_plan_to_users",      # Adds subscription_plan column to users table

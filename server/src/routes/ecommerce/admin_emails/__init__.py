@@ -1,0 +1,1 @@
+"""Admin Email API package."""

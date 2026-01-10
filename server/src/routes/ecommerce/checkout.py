@@ -756,7 +756,32 @@ async def complete_checkout(
     db.commit()
     db.refresh(order)
 
-    # TODO: Send order confirmation email
+    # Send order confirmation email
+    try:
+        from server.src.services.email_service import EmailService
+        from server.src.entities.ecommerce.email_template import EmailTemplate
+
+        # Get active order confirmation template
+        email_template = db.query(EmailTemplate).filter(
+            EmailTemplate.user_id == order.user_id,
+            EmailTemplate.email_type == "order_confirmation",
+            EmailTemplate.is_active == True
+        ).first()
+
+        if email_template and os.getenv("ENABLE_EMAIL_SERVICE", "false").lower() == "true":
+            email_service = EmailService(db=db)
+            recipient = guest_email if guest_email else (current_customer.email if current_customer else None)
+
+            if recipient:
+                email_service.send_order_confirmation(
+                    user_id=order.user_id,
+                    order=order,
+                    recipient_email=recipient
+                )
+                logging.info(f"Order confirmation email sent to {recipient} for order {order.order_number}")
+    except Exception as e:
+        # Don't block order creation if email fails
+        logging.error(f"Failed to send order confirmation email: {e}")
 
     return OrderCreatedResponse(
         order_id=str(order.id),

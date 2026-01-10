@@ -29,6 +29,8 @@ from server.src.routes.ecommerce.admin_products import router as ecommerce_admin
 from server.src.routes.ecommerce.admin_orders import router as ecommerce_admin_orders_router
 from server.src.routes.ecommerce.admin_customers import router as ecommerce_admin_customers_router
 from server.src.routes.ecommerce.product_images import router as ecommerce_product_images_router
+from server.src.routes.ecommerce.admin_emails.controller import router as ecommerce_admin_emails_router
+from server.src.routes.ecommerce.webhooks import router as ecommerce_webhooks_router
 
 # Multi-tenant routes - always import organizations router, conditionally import others
 def get_multi_tenant_routers():
@@ -186,6 +188,8 @@ def register_routes(app: FastAPI):
     app.include_router(ecommerce_admin_orders_router)
     app.include_router(ecommerce_admin_customers_router)
     app.include_router(ecommerce_product_images_router)
+    app.include_router(ecommerce_admin_emails_router)
+    app.include_router(ecommerce_webhooks_router)
 
     # Multi-tenant routes - only enabled if multi-tenant is enabled
     multi_tenant_routers = get_multi_tenant_routers()

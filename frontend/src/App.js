@@ -43,6 +43,14 @@ const CraftFlowOrders = React.lazy(() => import('./pages/CraftFlowOrders'));
 const CraftFlowCustomers = React.lazy(() => import('./pages/CraftFlowCustomers'));
 const CraftFlowStorefrontSettings = React.lazy(() => import('./pages/CraftFlowStorefrontSettings'));
 
+// CraftFlow Email Management components (lazy loaded)
+const CraftFlowEmailTemplates = React.lazy(() => import('./pages/CraftFlow/Emails/EmailTemplates'));
+const CraftFlowEmailTemplateEditor = React.lazy(() => import('./pages/CraftFlow/Emails/EmailTemplateEditor'));
+const CraftFlowEmailLogs = React.lazy(() => import('./pages/CraftFlow/Emails/EmailLogs'));
+const CraftFlowEmailAnalytics = React.lazy(() => import('./pages/CraftFlow/Emails/EmailAnalytics'));
+const CraftFlowEmailSubscribers = React.lazy(() => import('./pages/CraftFlow/Emails/EmailSubscribers'));
+const CraftFlowEmailCampaigns = React.lazy(() => import('./pages/CraftFlow/Emails/EmailCampaigns'));
+
 // Template components (lazy loaded)
 const TemplateCreator = React.lazy(() => import('./pages/TemplateCreator'));
 
@@ -368,6 +376,64 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CraftFlowStorefrontSettings />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* CraftFlow Email Management */}
+            <Route
+              path="/craftflow/emails/templates"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailTemplates />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/emails/templates/new"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailTemplateEditor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/emails/templates/edit/:id"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailTemplateEditor />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/emails/logs"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailLogs />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/emails/analytics"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailAnalytics />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/emails/subscribers"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailSubscribers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/emails/campaigns"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowEmailCampaigns />
                 </ProtectedRoute>
               }
             />

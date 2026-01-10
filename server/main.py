@@ -86,6 +86,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  Warning: Failed to start OAuth token refresh service: {e}")
 
+    # Start email campaign scheduler
+    try:
+        from server.src.services.email_campaign_scheduler import start_email_campaign_scheduler
+        print("🔄 Starting email campaign scheduler service...")
+        asyncio.create_task(start_email_campaign_scheduler())
+        print("✅ Email campaign scheduler started")
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to start email campaign scheduler: {e}")
+
     # Only start legacy token refresh service in production after API is fully ready
     if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
         try:
@@ -124,6 +133,14 @@ async def lifespan(app: FastAPI):
         print("✅ OAuth token refresh service stopped")
     except Exception as e:
         print(f"⚠️  Warning: Error stopping OAuth token refresh service: {e}")
+
+    # Stop email campaign scheduler
+    try:
+        from server.src.services.email_campaign_scheduler import stop_email_campaign_scheduler
+        stop_email_campaign_scheduler()
+        print("✅ Email campaign scheduler stopped")
+    except Exception as e:
+        print(f"⚠️  Warning: Error stopping email campaign scheduler: {e}")
 
     # Shutdown cache service
     try:

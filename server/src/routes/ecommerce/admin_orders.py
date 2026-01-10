@@ -290,6 +290,13 @@ async def update_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    # Track if tracking info was just added
+    tracking_was_added = (
+        order_data.tracking_number is not None and
+        not order.tracking_number and
+        order_data.fulfillment_status == 'shipped'
+    )
+
     # Update fields
     if order_data.status is not None:
         order.status = order_data.status
@@ -313,6 +320,47 @@ async def update_order(
 
     db.commit()
     db.refresh(order)
+
+    # Send shipping notification email if tracking was just added
+    if tracking_was_added:
+        try:
+            from server.src.services.email_service import EmailService
+            from server.src.entities.ecommerce.email_template import EmailTemplate
+            import logging
+
+            # Get active shipping notification template
+            email_template = db.query(EmailTemplate).filter(
+                EmailTemplate.user_id == current_user.id,
+                EmailTemplate.email_type == "shipping_notification",
+                EmailTemplate.is_active == True
+            ).first()
+
+            if email_template and os.getenv("ENABLE_EMAIL_SERVICE", "false").lower() == "true":
+                email_service = EmailService(db=db)
+
+                # Get recipient email
+                recipient = None
+                if order.guest_email:
+                    recipient = order.guest_email
+                elif order.customer:
+                    from server.src.entities.ecommerce.customer import Customer
+                    customer = db.query(Customer).filter(Customer.id == order.customer_id).first()
+                    if customer:
+                        recipient = customer.email
+
+                if recipient and order.tracking_number:
+                    email_service.send_shipping_notification(
+                        user_id=current_user.id,
+                        order=order,
+                        tracking_number=order.tracking_number,
+                        tracking_url=order.tracking_url or "",
+                        recipient_email=recipient
+                    )
+                    logging.info(f"Shipping notification sent to {recipient} for order {order.order_number}")
+        except Exception as e:
+            # Don't block order update if email fails
+            import logging
+            logging.error(f"Failed to send shipping notification email: {e}")
 
     # Get customer name and items for response
     customer_name = None

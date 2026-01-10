@@ -364,4 +364,130 @@ export const checkoutApi = {
   },
 };
 
+// Email API (Admin)
+export const emailApi = {
+  // Templates
+  listTemplates: async (params?: {
+    email_type?: string;
+    is_active?: boolean;
+  }) => {
+    const { data } = await api.get("/api/ecommerce/admin/emails/templates", {
+      params,
+    });
+    return data;
+  },
+
+  getTemplate: async (id: string) => {
+    const { data } = await api.get(
+      `/api/ecommerce/admin/emails/templates/${id}`,
+    );
+    return data;
+  },
+
+  createTemplate: async (template: any) => {
+    const { data } = await api.post(
+      "/api/ecommerce/admin/emails/templates",
+      template,
+    );
+    return data;
+  },
+
+  updateTemplate: async (id: string, template: any) => {
+    const { data } = await api.put(
+      `/api/ecommerce/admin/emails/templates/${id}`,
+      template,
+    );
+    return data;
+  },
+
+  deleteTemplate: async (id: string) => {
+    await api.delete(`/api/ecommerce/admin/emails/templates/${id}`);
+  },
+
+  previewTemplate: async (id: string, context: any) => {
+    const { data } = await api.post(
+      `/api/ecommerce/admin/emails/templates/${id}/preview`,
+      { context },
+    );
+    return data;
+  },
+
+  // Logs
+  listLogs: async (params: {
+    skip?: number;
+    limit?: number;
+    email_type?: string;
+    status?: string;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const { data } = await api.get("/api/ecommerce/admin/emails/logs", {
+      params,
+    });
+    return data;
+  },
+
+  // Analytics
+  getAnalytics: async (params?: { start_date?: string; end_date?: string }) => {
+    const { data } = await api.get(
+      "/api/ecommerce/admin/emails/analytics/summary",
+      { params },
+    );
+    return data;
+  },
+
+  // Subscribers
+  listSubscribers: async (params: {
+    skip?: number;
+    limit?: number;
+    tags?: string;
+    is_subscribed?: boolean;
+  }) => {
+    const { data } = await api.get("/api/ecommerce/admin/emails/subscribers", {
+      params,
+    });
+    return data;
+  },
+
+  addSubscriber: async (subscriber: any) => {
+    const { data } = await api.post(
+      "/api/ecommerce/admin/emails/subscribers",
+      subscriber,
+    );
+    return data;
+  },
+
+  updateSubscriber: async (id: string, subscriber: any) => {
+    const { data } = await api.put(
+      `/api/ecommerce/admin/emails/subscribers/${id}`,
+      subscriber,
+    );
+    return data;
+  },
+
+  deleteSubscriber: async (id: string) => {
+    await api.delete(`/api/ecommerce/admin/emails/subscribers/${id}`);
+  },
+
+  // Campaigns
+  listCampaigns: async (params?: { status?: string }) => {
+    const { data } = await api.get("/api/ecommerce/admin/emails/scheduled", {
+      params,
+    });
+    return data;
+  },
+
+  sendMarketingEmail: async (campaign: any) => {
+    const { data } = await api.post(
+      "/api/ecommerce/admin/emails/send-marketing",
+      campaign,
+    );
+    return data;
+  },
+
+  cancelCampaign: async (id: string) => {
+    await api.delete(`/api/ecommerce/admin/emails/scheduled/${id}`);
+  },
+};
+
 export default api;
