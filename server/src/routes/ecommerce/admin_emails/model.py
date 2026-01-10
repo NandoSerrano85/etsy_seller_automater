@@ -1,8 +1,9 @@
 """Pydantic models for Email Messaging API."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
+from uuid import UUID
 
 
 # ============================================================================
@@ -24,8 +25,8 @@ class EmailTemplateRequest(BaseModel):
 
 class EmailTemplateResponse(BaseModel):
     """Response model for email templates."""
-    id: str
-    user_id: str
+    id: UUID
+    user_id: UUID
     name: str
     template_type: str
     email_type: str
@@ -40,6 +41,11 @@ class EmailTemplateResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_serializer('id', 'user_id')
+    def serialize_uuid(self, value: UUID) -> str:
+        """Convert UUID to string for JSON serialization."""
+        return str(value)
+
     class Config:
         from_attributes = True
 
@@ -50,13 +56,13 @@ class EmailTemplateResponse(BaseModel):
 
 class EmailLogResponse(BaseModel):
     """Response model for email logs."""
-    id: str
-    user_id: str
-    template_id: Optional[str]
+    id: UUID
+    user_id: UUID
+    template_id: Optional[UUID]
     email_type: str
     recipient_email: str
     subject: str
-    order_id: Optional[str]
+    order_id: Optional[UUID]
     customer_id: Optional[str]
     sendgrid_message_id: Optional[str]
     sendgrid_status: Optional[str]
@@ -66,6 +72,11 @@ class EmailLogResponse(BaseModel):
     clicked_at: Optional[datetime]
     error_message: Optional[str]
     created_at: datetime
+
+    @field_serializer('id', 'user_id', 'template_id', 'order_id', 'customer_id')
+    def serialize_uuid(self, value: Optional[UUID]) -> Optional[str]:
+        """Convert UUID to string for JSON serialization."""
+        return str(value) if value else None
 
     class Config:
         from_attributes = True
@@ -94,8 +105,8 @@ class EmailSubscriberRequest(BaseModel):
 
 class EmailSubscriberResponse(BaseModel):
     """Response model for email subscribers."""
-    id: str
-    user_id: str
+    id: UUID
+    user_id: UUID
     email: str
     customer_id: Optional[str]
     is_subscribed: bool
@@ -107,6 +118,11 @@ class EmailSubscriberResponse(BaseModel):
     last_sent_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer('id', 'user_id')
+    def serialize_uuid(self, value: UUID) -> str:
+        """Convert UUID to string for JSON serialization."""
+        return str(value)
 
     class Config:
         from_attributes = True
@@ -145,9 +161,9 @@ class SendMarketingEmailResponse(BaseModel):
 
 class ScheduledEmailResponse(BaseModel):
     """Response model for scheduled emails."""
-    id: str
-    user_id: str
-    template_id: str
+    id: UUID
+    user_id: UUID
+    template_id: UUID
     recipient_filter: Optional[Dict[str, Any]]
     recipient_count: Optional[int]
     scheduled_for: datetime
@@ -158,6 +174,11 @@ class ScheduledEmailResponse(BaseModel):
     completed_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer('id', 'user_id', 'template_id')
+    def serialize_uuid(self, value: UUID) -> str:
+        """Convert UUID to string for JSON serialization."""
+        return str(value)
 
     class Config:
         from_attributes = True
