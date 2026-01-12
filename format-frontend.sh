@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Format frontend files with Prettier
-echo "🎨 Formatting frontend files with Prettier..."
-cd "$(dirname "$0")/frontend"
+# Format admin frontend files with Prettier
+echo "🎨 Formatting admin frontend files with Prettier..."
+cd "$(dirname "$0")/admin-frontend"
 npm run format
-echo "✅ Frontend formatting complete!"
+echo "✅ Admin frontend formatting complete!"
