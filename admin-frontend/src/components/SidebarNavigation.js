@@ -48,11 +48,13 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
         { label: 'Orders', path: '/?tab=orders' },
         { label: 'Analytics', path: '/?tab=analytics' },
         { label: 'Listings', path: '/?tab=listings' },
+        { label: 'Products', path: '/?tab=designs&subtab=gallery' },
+        { label: 'Upload New Product', path: '/?tab=designs&subtab=upload' },
       ],
     },
     {
-      id: 'products',
-      label: 'Products',
+      id: 'mockups',
+      label: 'Mockup Creator',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -63,13 +65,8 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
           />
         </svg>
       ),
-      hasSubmenu: true,
+      path: '/mockup-creator',
       gradient: 'from-purple-100 to-purple-200',
-      submenu: [
-        { label: 'Mockups', path: '/mockup-creator' },
-        { label: 'Designs', path: '/?tab=designs&subtab=gallery' },
-        { label: 'Upload New Product', path: '/?tab=designs&subtab=upload' },
-      ],
     },
     {
       id: 'shopify',
