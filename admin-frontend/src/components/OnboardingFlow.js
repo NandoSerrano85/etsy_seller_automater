@@ -167,7 +167,7 @@ const OnboardingFlow = ({ onComplete }) => {
             <ul className="text-sm text-gray-600 space-y-1 text-left max-w-sm mx-auto">
               <li>• Use the Analytics tab to track your sales</li>
               <li>• Check Orders tab for new purchases</li>
-              <li>• Upload designs in the Designs tab</li>
+              <li>• Upload products in the Products tab</li>
               <li>• Use Tools for batch operations</li>
             </ul>
           </div>

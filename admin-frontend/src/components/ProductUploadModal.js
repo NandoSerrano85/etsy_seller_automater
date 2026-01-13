@@ -3,7 +3,7 @@ import { useApi } from '../hooks/useApi';
 import { useSSEProgress } from '../hooks/useSSEProgress';
 import { useProgressSimulation } from '../hooks/useProgressSimulation';
 
-const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
+const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   const api = useApi();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -925,4 +925,4 @@ const DesignUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => {
   );
 };
 
-export default DesignUploadModal;
+export default ProductUploadModal;

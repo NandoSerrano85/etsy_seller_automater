@@ -19,7 +19,7 @@ const OrganizationManagement = React.lazy(() => import('./pages/OrganizationMana
 const PrinterManagement = React.lazy(() => import('./pages/PrinterManagement'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const SubscriptionPage = React.lazy(() => import('./pages/SubscriptionPage'));
-const DesignsTab = React.lazy(() => import('./pages/HomeTabs/DesignsTab'));
+const ProductsTab = React.lazy(() => import('./pages/HomeTabs/ProductsTab'));
 const AnalyticsTab = React.lazy(() => import('./pages/HomeTabs/AnalyticsTab'));
 const OrdersTab = React.lazy(() => import('./pages/HomeTabs/OrdersTab'));
 const ToolsTab = React.lazy(() => import('./pages/HomeTabs/ToolsTab'));
@@ -161,18 +161,18 @@ function App() {
               }
             />
 
-            {/* Design Studio Routes */}
+            {/* Products Routes */}
             <Route
-              path="/designs"
+              path="/products"
               element={
                 <ProtectedRoute>
-                  <DesignsTab />
+                  <ProductsTab />
                 </ProtectedRoute>
               }
             >
-              <Route path="upload" element={<DesignsTab defaultTab="upload" />} />
-              <Route path="gallery" element={<DesignsTab defaultTab="gallery" />} />
-              <Route path="templates" element={<DesignsTab defaultTab="templates" />} />
+              <Route path="mockup" element={<ProductsTab defaultTab="productMockup" />} />
+              <Route path="design" element={<ProductsTab defaultTab="productDesign" />} />
+              <Route path="upload" element={<ProductsTab defaultTab="upload" />} />
             </Route>
 
             {/* Mockup Creator */}

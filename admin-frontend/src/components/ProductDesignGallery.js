@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import BackToTop from './BackToTop';
 import Dropdown from './Dropdown';
 
-const MockupsGallery = ({ mockupImages, openImageModal }) => {
+const ProductDesignGallery = ({ designFiles, openImageModal }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedImage, setSelectedImage] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -26,7 +26,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   ];
 
   // Filter and sort images
-  const filteredImages = mockupImages
+  const filteredImages = designFiles
     .filter(image => image.filename.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       const nameA = a.filename.toLowerCase();
@@ -127,7 +127,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   return (
     <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 space-y-2 sm:space-y-0">
-        <h3 className="text-lg sm:text-xl font-semibold text-gray-900">Etsy Store Mockups</h3>
+        <h3 className="text-lg sm:text-xl font-semibold text-gray-900">QNAP Product Files</h3>
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full sm:w-auto">
           <div className="flex space-x-4 p-4">
             {/* View Mode Dropdown */}
@@ -136,12 +136,11 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
             {/* Sort Order Dropdown */}
             <Dropdown label="Sort" options={sortOptions} value={sortOrder} onChange={setSortOrder} />
           </div>
-
           {/* Search Input */}
           <div className="relative w-full sm:w-auto">
             <input
               type="text"
-              placeholder="Search Etsy mockups..."
+              placeholder="Search QNAP product files..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-auto text-sm sm:text-base"
@@ -190,7 +189,7 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
             </div>
             <div className="p-3 sm:p-4">
               <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 text-sm sm:text-base">{image.filename}</h3>
-              <p className="text-xs sm:text-sm text-gray-500">Etsy Listing Image</p>
+              <p className="text-xs sm:text-sm text-gray-500">QNAP Product File</p>
             </div>
           </div>
         ))}
@@ -246,19 +245,20 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
 
       {/* Results Info */}
       <div className="text-center text-sm text-gray-600 mt-4">
-        Showing {startIndex + 1}-{Math.min(endIndex, filteredImages.length)} of {filteredImages.length} Etsy mockups
+        Showing {startIndex + 1}-{Math.min(endIndex, filteredImages.length)} of {filteredImages.length} QNAP product
+        files
       </div>
 
       {/* Zoom Modal */}
       {selectedImage && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="relative max-w-full max-h-full">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="relative max-w-4xl max-h-full p-4">
             {/* Close button */}
             <button
               onClick={closeZoomModal}
-              className="absolute top-2 right-2 z-10 bg-black bg-opacity-50 text-white rounded-full p-1 sm:p-2 hover:bg-opacity-75 transition-colors"
+              className="absolute top-2 right-2 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-colors"
             >
-              <svg className="w-4 h-4 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -267,9 +267,9 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
             {currentImageIndex > 0 && (
               <button
                 onClick={prevImage}
-                className="absolute left-2 sm:left-4 top-1/2 transform -translate-y-1/2 z-10 bg-black bg-opacity-50 text-white rounded-full p-1 sm:p-2 hover:bg-opacity-75 transition-colors"
+                className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-colors"
               >
-                <svg className="w-4 h-4 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
@@ -278,32 +278,32 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
             {currentImageIndex < filteredImages.length - 1 && (
               <button
                 onClick={nextImage}
-                className="absolute right-2 sm:right-4 top-1/2 transform -translate-y-1/2 z-10 bg-black bg-opacity-50 text-white rounded-full p-1 sm:p-2 hover:bg-opacity-75 transition-colors"
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-colors"
               >
-                <svg className="w-4 h-4 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
             )}
 
             {/* Zoom controls */}
-            <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-1 sm:space-x-2">
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2">
               <button
                 onClick={zoomOut}
-                className="bg-black bg-opacity-50 text-white rounded-full p-1 sm:p-2 hover:bg-opacity-75 transition-colors"
+                className="bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-colors"
               >
-                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
                 </svg>
               </button>
-              <span className="bg-black bg-opacity-50 text-white px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-xs sm:text-sm">
+              <span className="bg-black bg-opacity-50 text-white px-3 py-2 rounded-lg text-sm">
                 {Math.round(zoomLevel * 100)}%
               </span>
               <button
                 onClick={zoomIn}
-                className="bg-black bg-opacity-50 text-white rounded-full p-1 sm:p-2 hover:bg-opacity-75 transition-colors"
+                className="bg-black bg-opacity-50 text-white rounded-full p-2 hover:bg-opacity-75 transition-colors"
               >
-                <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
               </button>
@@ -324,12 +324,12 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
             </div>
 
             {/* Image info */}
-            <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-10 bg-black bg-opacity-50 text-white px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-xs sm:text-sm">
+            <div className="absolute bottom-4 left-4 z-10 bg-black bg-opacity-50 text-white px-3 py-2 rounded-lg text-sm">
               {selectedImage.filename} ({currentImageIndex + 1} of {filteredImages.length})
             </div>
 
             {/* Keyboard shortcuts hint */}
-            <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-10 bg-black bg-opacity-50 text-white px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-xs">
+            <div className="absolute top-4 left-4 z-10 bg-black bg-opacity-50 text-white px-3 py-2 rounded-lg text-xs">
               <div>← → Navigate | +/- Zoom | ESC Close</div>
             </div>
           </div>
@@ -342,4 +342,4 @@ const MockupsGallery = ({ mockupImages, openImageModal }) => {
   );
 };
 
-export default MockupsGallery;
+export default ProductDesignGallery;

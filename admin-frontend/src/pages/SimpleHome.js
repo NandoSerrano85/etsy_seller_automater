@@ -8,7 +8,7 @@ import { SalesCard, OrdersCard, DesignsCard, MockupsCard } from '../components/S
 import QuickActions from '../components/QuickActions';
 import OverviewTab from './HomeTabs/OverviewTab';
 import AnalyticsTab from './HomeTabs/AnalyticsTab';
-import DesignsTab from './HomeTabs/DesignsTab';
+import ProductsTab from './HomeTabs/ProductsTab';
 import ToolsTab from './HomeTabs/ToolsTab';
 import OrdersTab from './HomeTabs/OrdersTab';
 import ListingsTab from './HomeTabs/ListingsTab';
@@ -210,9 +210,9 @@ const Home = () => {
           />
         );
 
-      case 'designs':
+      case 'products':
         return (
-          <DesignsTab
+          <ProductsTab
             isConnected={isEtsyConnected}
             authUrl="/connect-etsy"
             designs={designs}

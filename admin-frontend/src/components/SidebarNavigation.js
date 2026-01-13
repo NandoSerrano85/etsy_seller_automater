@@ -48,8 +48,9 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
         { label: 'Orders', path: '/?tab=orders' },
         { label: 'Analytics', path: '/?tab=analytics' },
         { label: 'Listings', path: '/?tab=listings' },
-        { label: 'Products', path: '/?tab=designs&subtab=gallery' },
-        { label: 'Upload New Product', path: '/?tab=designs&subtab=upload' },
+        { label: 'Product Mockup', path: '/?tab=products&subtab=productMockup' },
+        { label: 'Product Design', path: '/?tab=products&subtab=productDesign' },
+        { label: 'Upload Product', path: '/?tab=products&subtab=upload' },
       ],
     },
     {

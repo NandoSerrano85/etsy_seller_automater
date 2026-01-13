@@ -71,19 +71,18 @@ const TopNavigation = ({
       };
     }
 
-    if (pathname === '/' && tab === 'designs') {
+    if (pathname === '/' && tab === 'products') {
       return {
-        title: 'Design Studio',
-        subtitle: 'Manage your creative assets and templates',
+        title: 'Products',
+        subtitle: 'Manage your product mockups and designs',
         breadcrumbs: [
           { label: 'Dashboard', href: '/' },
-          { label: 'Design Studio', active: true },
+          { label: 'Products', active: true },
         ],
         tabs: [
-          { id: 'gallery', label: 'Gallery', icon: '🎨' },
-          { id: 'upload', label: 'Upload', icon: '⬆️' },
-          { id: 'templates', label: 'Templates', icon: '📋' },
-          { id: 'mockups', label: 'Mockups', icon: '🖼️' },
+          { id: 'productMockup', label: 'Product Mockup', icon: '🖼️' },
+          { id: 'productDesign', label: 'Product Design', icon: '🎨' },
+          { id: 'upload', label: 'Upload Product', icon: '⬆️' },
         ],
       };
     }
