@@ -2,7 +2,7 @@ import numpy as np
 import cv2, os, tempfile
 from datetime import date
 from functools import lru_cache
-from server.src.utils.util import inches_to_pixels, rotate_image_90, save_single_image
+from server.src.utils.util import inches_to_pixels, rotate_image_90, save_single_image, save_image_with_format
 
 # Optional memory monitoring (install with: pip install psutil)
 # This provides detailed memory usage reporting and prevents out-of-memory errors
@@ -417,7 +417,8 @@ def create_gang_sheets(
     dpi=400,
     std_dpi=None,
     text='Single ',
-    processed_images=None
+    processed_images=None,
+    file_format='PNG'
 ):
    """
    Create gang sheets from image data.
@@ -434,6 +435,7 @@ def create_gang_sheets(
        dpi: DPI for gang sheet creation
        std_dpi: Standard DPI for output scaling (defaults to dpi)
        text: Text prefix for output filename
+       file_format: Output file format ('PNG', 'SVG', or 'PSD')
    """
    import logging
 
@@ -777,14 +779,17 @@ def create_gang_sheets(
                    if new_width > 0 and new_height > 0:
                        resized_gang_sheet = cv2.resize(cropped_gang_sheet, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
                        today = date.today()
-                       filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}.png"
-                       save_single_image(
+                       # Base filename without extension
+                       base_filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}"
+                       # Use the new save function that supports multiple formats
+                       save_image_with_format(
                            resized_gang_sheet,
                            output_path,
-                           filename,
+                           base_filename,
+                           file_format=file_format,
                            target_dpi=(dpi, dpi)
                        )
-                       logging.info(f"Successfully created gang sheet: {filename}")
+                       logging.info(f"Successfully created gang sheet: {base_filename}.{file_format.lower()}")
                        
                        # CRITICAL: Immediately free memory after successful save
                        # This frees up the ~2.95GB gang sheet memory before starting next part

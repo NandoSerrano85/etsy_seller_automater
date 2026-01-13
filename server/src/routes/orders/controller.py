@@ -72,12 +72,13 @@ async def create_gang_sheets_from_mockups(
 @router.get('/create-print-files', response_model=model.PrintFilesResponse)
 async def create_print_files(
     current_user: CurrentUser,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    format: str = 'PNG'
 ):
     """Create print files (threaded - heavy file processing)"""
     @run_in_thread
     def create_print_files_threaded():
-        return service.create_print_files(current_user, db)
+        return service.create_print_files(current_user, db, format=format)
 
     return await create_print_files_threaded()
 
@@ -137,7 +138,8 @@ async def create_print_files_from_selected_orders(
             order_ids,
             request_body.template_name,
             current_user,
-            db
+            db,
+            format=request_body.format
         )
 
     return await create_from_selection_threaded()
@@ -169,16 +171,18 @@ async def list_print_files(
 
             try:
                 files = sftp.listdir(full_path)
-                # Filter for PNG files and get file info
+                # Filter for print files (PNG, SVG, PSD) and get file info
                 print_files = []
                 for filename in files:
-                    if filename.endswith('.png'):
+                    file_ext = filename.lower().split('.')[-1]
+                    if file_ext in ('png', 'svg', 'psd', 'jpg', 'jpeg', 'pdf'):
                         file_path = f"{full_path}/{filename}"
                         stat_info = sftp.stat(file_path)
                         print_files.append({
                             "filename": filename,
                             "size": stat_info.st_size,
-                            "modified": datetime.fromtimestamp(float(stat_info.st_mtime), tz=timezone.utc).isoformat()
+                            "modified": datetime.fromtimestamp(float(stat_info.st_mtime), tz=timezone.utc).isoformat(),
+                            "format": file_ext.upper()
                         })
 
                 # Sort by modified date (newest first)
@@ -218,8 +222,10 @@ async def download_print_file(
     if '..' in filename or '/' in filename or '\\' in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    if not filename.endswith('.png'):
-        raise HTTPException(status_code=400, detail="Only PNG files are supported")
+    # Check file extension
+    file_ext = filename.lower().split('.')[-1]
+    if file_ext not in ('png', 'svg', 'psd', 'jpg', 'jpeg', 'pdf'):
+        raise HTTPException(status_code=400, detail="Unsupported file format")
 
     try:
         # Download file from NAS to memory
@@ -231,10 +237,22 @@ async def download_print_file(
 
         logging.info(f"Downloading print file: {shop_name}/PrintFiles/{filename} ({len(file_content)} bytes)")
 
+        # Determine media type based on file extension
+        file_ext = filename.lower().split('.')[-1]
+        media_types = {
+            'png': 'image/png',
+            'jpg': 'image/jpeg',
+            'jpeg': 'image/jpeg',
+            'svg': 'image/svg+xml',
+            'psd': 'image/vnd.adobe.photoshop',
+            'pdf': 'application/pdf'
+        }
+        media_type = media_types.get(file_ext, 'application/octet-stream')
+
         # Return file as streaming response
         return StreamingResponse(
             io.BytesIO(file_content),
-            media_type="image/png",
+            media_type=media_type,
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"'
             }

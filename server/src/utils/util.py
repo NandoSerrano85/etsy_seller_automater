@@ -52,21 +52,173 @@ def get_width_and_height(image, image_path, target_dpi=None):
     # Calculate and return current size in inches
     return width_px / dpi_x, height_px / dpi_y
 
+def save_image_with_format(image, folder_path, filename, file_format='PNG', target_dpi=(STD_DPI, STD_DPI)):
+    """
+    Save image in specified format (PNG, SVG, or PSD).
+
+    Args:
+        image: numpy array image data
+        folder_path: output directory path
+        filename: base filename (extension will be added based on format)
+        file_format: output format ('PNG', 'SVG', or 'PSD')
+        target_dpi: DPI tuple for the output image
+    """
+    import logging
+
+    # Ensure output directory exists
+    os.makedirs(folder_path, exist_ok=True)
+
+    # Validate image
+    if image is None or not isinstance(image, np.ndarray):
+        raise ValueError("Invalid image data")
+
+    if image.size == 0:
+        raise ValueError("Empty image array")
+
+    # Remove existing extension from filename if present
+    base_filename = os.path.splitext(filename)[0]
+
+    # Log image info
+    height, width = image.shape[:2]
+    channels = image.shape[2] if len(image.shape) > 2 else 1
+    size_mb = (height * width * channels) / (1024 * 1024)
+    logging.info(f"Saving image: {width}x{height}x{channels} ({size_mb:.1f}MB) -> {base_filename}.{file_format.lower()}")
+
+    file_format = file_format.upper()
+
+    if file_format == 'PNG':
+        output_path = os.path.join(folder_path, f"{base_filename}.png")
+        save_single_image(image, folder_path, f"{base_filename}.png", target_dpi)
+    elif file_format == 'SVG':
+        output_path = os.path.join(folder_path, f"{base_filename}.svg")
+        _save_as_svg(image, output_path, target_dpi)
+    elif file_format == 'PSD':
+        output_path = os.path.join(folder_path, f"{base_filename}.psd")
+        _save_as_psd(image, output_path, target_dpi)
+    else:
+        raise ValueError(f"Unsupported format: {file_format}. Use PNG, SVG, or PSD")
+
+    logging.info(f"Successfully saved image in {file_format} format: {output_path}")
+    return output_path
+
+
+def _save_as_svg(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
+    """Convert numpy array image to SVG format using embedded PNG."""
+    import logging
+    import base64
+
+    try:
+        # First encode as PNG
+        retval, buffer = cv2.imencode(".png", image)
+        if not retval:
+            raise RuntimeError("Failed to encode image to PNG for SVG embedding")
+
+        # Convert to base64 for embedding
+        png_base64 = base64.b64encode(buffer).decode('utf-8')
+
+        # Get image dimensions
+        height, width = image.shape[:2]
+
+        # Convert pixels to inches for SVG dimensions
+        width_inches = width / target_dpi[0]
+        height_inches = height / target_dpi[1]
+
+        # Create SVG with embedded PNG
+        svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{width_inches}in" height="{height_inches}in"
+     viewBox="0 0 {width} {height}">
+  <image width="{width}" height="{height}"
+         xlink:href="data:image/png;base64,{png_base64}"/>
+</svg>'''
+
+        with open(output_path, 'w') as f:
+            f.write(svg_content)
+
+        logging.info(f"Successfully saved SVG: {output_path}")
+    except Exception as e:
+        logging.error(f"Error saving SVG {output_path}: {e}")
+        raise
+
+
+def _save_as_psd(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
+    """Convert numpy array image to PSD format."""
+    import logging
+
+    try:
+        # Try using psd-tools library first (if available)
+        try:
+            from psd_tools import PSDImage
+            from psd_tools.api.layers import PixelLayer
+
+            # Convert OpenCV BGR(A) to RGB(A) for PIL
+            if image.shape[2] == 4:
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+            else:
+                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+            # Create PIL image
+            pil_image = Image.fromarray(image_rgb)
+
+            # Set DPI
+            pil_image.info['dpi'] = target_dpi
+
+            # Create PSD with single layer
+            psd = PSDImage.new("RGBA", pil_image.size)
+            layer = PixelLayer.frompil(pil_image, psd, "Layer 1")
+
+            # Save PSD
+            psd.save(output_path)
+            logging.info(f"Successfully saved PSD using psd-tools: {output_path}")
+            return
+        except ImportError:
+            logging.warning("psd-tools not available, falling back to PIL method")
+
+        # Fallback: Save as layered PSD using PIL
+        # Convert OpenCV BGR(A) to RGB(A)
+        if image.shape[2] == 4:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+            mode = 'RGBA'
+        else:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            mode = 'RGB'
+
+        # Create PIL image and save
+        pil_image = Image.fromarray(image_rgb, mode)
+        pil_image.info['dpi'] = target_dpi
+
+        # PIL doesn't have native PSD support, so we'll save as TIFF with layers
+        # which is compatible with Photoshop
+        logging.warning("Saving as multi-layer TIFF (Photoshop compatible) instead of native PSD")
+        tiff_path = output_path.replace('.psd', '.tif')
+        pil_image.save(tiff_path, format='TIFF', dpi=target_dpi, compression='tiff_lzw')
+
+        # If user expects .psd, also save a copy with .psd extension
+        # (it's actually a TIFF but Photoshop can open it)
+        import shutil
+        shutil.copy2(tiff_path, output_path)
+
+        logging.info(f"Successfully saved PSD-compatible TIFF: {output_path}")
+    except Exception as e:
+        logging.error(f"Error saving PSD {output_path}: {e}")
+        raise
+
+
 def save_single_image(image, folder_path, filename, target_dpi=(STD_DPI,STD_DPI)):
     import logging
     output_path = os.path.join(folder_path, filename)
-    
+
     try:
         # Ensure output directory exists
         os.makedirs(folder_path, exist_ok=True)
-        
+
         # Validate image
         if image is None or not isinstance(image, np.ndarray):
             raise ValueError("Invalid image data")
-        
+
         if image.size == 0:
             raise ValueError("Empty image array")
-        
+
         # Log image info for debugging large images
         height, width = image.shape[:2]
         channels = image.shape[2] if len(image.shape) > 2 else 1

@@ -29,3 +29,4 @@ class PrintFilesResponse(BaseModel):
 class PrintFilesFromSelectionRequest(BaseModel):
     order_ids: List[int]  # Etsy receipt IDs
     template_name: str
+    format: Optional[str] = 'PNG'  # File format: PNG, SVG, or PSD

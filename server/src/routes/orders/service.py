@@ -140,7 +140,8 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
         try:
             if os.path.exists(output_dir):
                 for filename in os.listdir(output_dir):
-                    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+                    file_ext = filename.lower().split('.')[-1]
+                    if file_ext in ('png', 'jpg', 'jpeg', 'pdf', 'svg', 'psd'):
                         file_path = os.path.join(output_dir, filename)
                         relative_path = f"Printfiles/{filename}"
                         success = nas_storage.upload_file(
@@ -170,7 +171,7 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
             "execution_time": f"{total_time:.2f}s"
         }
 
-def create_print_files(current_user, db, printer_id=None, canvas_config_id=None):
+def create_print_files(current_user, db, printer_id=None, canvas_config_id=None, format='PNG'):
     """Get item summary from Etsy and optionally create gang sheets."""
     from server.src.entities.printer import Printer
     from server.src.entities.canvas_config import CanvasConfig
@@ -282,7 +283,8 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
                     processed_item_data,
                     template_name,
                     temp_printfiles_dir + "/",
-                    item_summary["Total QTY"] if "Total QTY" in item_summary else 0
+                    item_summary["Total QTY"] if "Total QTY" in item_summary else 0,
+                    file_format=format
                 )
 
                 if result is None:
@@ -296,7 +298,8 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None)
                     try:
                         if os.path.exists(temp_printfiles_dir):
                             for filename in os.listdir(temp_printfiles_dir):
-                                if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+                                file_ext = filename.lower().split('.')[-1]
+                                if file_ext in ('png', 'jpg', 'jpeg', 'pdf', 'svg', 'psd'):
                                     file_path = os.path.join(temp_printfiles_dir, filename)
                                     relative_path = f"Printfiles/{filename}"
 
@@ -446,7 +449,7 @@ def get_all_orders_with_details(current_user, db, limit=100, offset=0, was_shipp
         logging.error(f"Error fetching all orders: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch orders: {str(e)}")
 
-def create_print_files_from_selected_orders(order_ids, template_name, current_user, db, printer_id=None, canvas_config_id=None):
+def create_print_files_from_selected_orders(order_ids, template_name, current_user, db, printer_id=None, canvas_config_id=None, format='PNG'):
     """
     Create print files (gang sheets) from specific selected orders.
 
@@ -457,6 +460,7 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         db: Database session
         printer_id: Optional printer ID
         canvas_config_id: Optional canvas config ID
+        format: File format for output (PNG, SVG, or PSD)
 
     Returns:
         Dictionary with success status and file information
@@ -589,7 +593,8 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                 output_path=output_dir,
                 total_images=len(order_items_data.get('Title', [])),
                 dpi=400,
-                std_dpi=400
+                std_dpi=400,
+                file_format=format
             )
             gangsheet_time = time.time() - gangsheet_start
             logging.info(f"Gangsheet creation completed in {gangsheet_time:.2f}s")
@@ -608,7 +613,8 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
             try:
                 if os.path.exists(output_dir):
                     for filename in os.listdir(output_dir):
-                        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.pdf')):
+                        file_ext = filename.lower().split('.')[-1]
+                        if file_ext in ('png', 'jpg', 'jpeg', 'pdf', 'svg', 'psd'):
                             file_path = os.path.join(output_dir, filename)
                             relative_path = f"Printfiles/{filename}"
                             success = nas_storage.upload_file(

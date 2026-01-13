@@ -16,6 +16,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
   const [allOrders, setAllOrders] = useState([]);
   const [loadingAllOrders, setLoadingAllOrders] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState('UVDTF 16oz');
+  const [selectedFormat, setSelectedFormat] = useState('PNG'); // 'PNG', 'SVG', 'PSD'
   const [orderFilter, setOrderFilter] = useState('active'); // 'active', 'shipped', 'all'
   const [filteredOrders, setFilteredOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -114,14 +115,18 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       console.log('🔵 Sending request:', {
         template_name: selectedTemplate,
         order_ids: selectedOrders,
+        format: selectedFormat,
         order_ids_type: typeof selectedOrders,
         order_ids_is_array: Array.isArray(selectedOrders),
         order_ids_length: selectedOrders.length,
       });
-      console.log(JSON.stringify({ template_name: selectedTemplate, order_ids: selectedOrders }));
+      console.log(
+        JSON.stringify({ template_name: selectedTemplate, order_ids: selectedOrders, format: selectedFormat })
+      );
       const response = await api.post('/api/orders/print-files-from-selection', {
         template_name: selectedTemplate,
         order_ids: selectedOrders,
+        format: selectedFormat,
       });
 
       console.log('🟢 Received response:', response);
@@ -220,7 +225,7 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       setPrintError(null);
       setPrintMsg(null);
 
-      const response = await api.get('/api/orders/create-print-files');
+      const response = await api.get(`/api/orders/create-print-files?format=${selectedFormat}`);
       console.log(response);
       if (response.success) {
         // Reset selection after successful print
@@ -361,6 +366,15 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
                     <option value="UVDTF 12oz">UVDTF 12oz</option>
                     <option value="UVDTF Misc">UVDTF Misc</option>
                   </select>
+                  <select
+                    value={selectedFormat}
+                    onChange={e => setSelectedFormat(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-lavender-500"
+                  >
+                    <option value="PNG">PNG</option>
+                    <option value="SVG">SVG</option>
+                    <option value="PSD">PSD</option>
+                  </select>
                   <button
                     onClick={handleCreateFromSelection}
                     disabled={selectedOrders.length === 0 || printLoading}
@@ -438,6 +452,15 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
               )}
               {!showSelectionMode && (
                 <>
+                  <select
+                    value={selectedFormat}
+                    onChange={e => setSelectedFormat(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-lavender-500"
+                  >
+                    <option value="PNG">PNG</option>
+                    <option value="SVG">SVG</option>
+                    <option value="PSD">PSD</option>
+                  </select>
                   <button
                     onClick={loadAllOrdersForSelection}
                     disabled={loadingAllOrders}
