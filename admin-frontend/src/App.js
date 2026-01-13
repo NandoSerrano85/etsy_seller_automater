@@ -169,11 +169,7 @@ function App() {
                   <ProductsTab />
                 </ProtectedRoute>
               }
-            >
-              <Route path="mockup" element={<ProductsTab defaultTab="productMockup" />} />
-              <Route path="design" element={<ProductsTab defaultTab="productDesign" />} />
-              <Route path="upload" element={<ProductsTab defaultTab="upload" />} />
-            </Route>
+            />
 
             {/* Mockup Creator */}
             <Route
