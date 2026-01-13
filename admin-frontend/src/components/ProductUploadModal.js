@@ -44,7 +44,7 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
     'Creating product mockups',
     'Uploading to Etsy store',
   ];
-  const [stage, setStage] = useState('template'); // 'template', 'mockup', 'canvas', 'size', 'upload'
+  const [stage, setStage] = useState('template'); // 'template', 'mockup', 'canvas', 'size', 'format', 'upload'
   const [canvasConfigs, setCanvasConfigs] = useState([]);
   const [selectedCanvasConfig, setSelectedCanvasConfig] = useState(null);
   const [sizeConfigs, setSizeConfigs] = useState([]);
@@ -52,6 +52,7 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
   const [mockups, setMockups] = useState([]);
   const [selectedMockup, setSelectedMockup] = useState(null);
   const [loadingMockups, setLoadingMockups] = useState(false);
+  const [selectedFormats, setSelectedFormats] = useState(['png']); // Default to PNG, can include 'svg', 'psd'
 
   // Helper functions for enhanced logging
   const addLog = (type, message, details = null) => {
@@ -234,9 +235,17 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
     setStage('size');
   };
 
-  const handleContinueToUpload = () => {
+  const handleContinueToFormat = () => {
     if (!selectedSizeConfig) {
       alert('Please select a size configuration first');
+      return;
+    }
+    setStage('format');
+  };
+
+  const handleContinueToUpload = () => {
+    if (!selectedFormats || selectedFormats.length === 0) {
+      alert('Please select at least one file format');
       return;
     }
     setStage('upload');
@@ -256,8 +265,11 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
         setStage('canvas');
         setSelectedSizeConfig(null);
         break;
-      case 'upload':
+      case 'format':
         setStage('size');
+        break;
+      case 'upload':
+        setStage('format');
         break;
       default:
         // No action needed for other stages
@@ -266,7 +278,14 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
   };
 
   const handleUpload = async () => {
-    if (!selectedTemplate || !selectedMockup || !selectedCanvasConfig || !selectedSizeConfig) {
+    if (
+      !selectedTemplate ||
+      !selectedMockup ||
+      !selectedCanvasConfig ||
+      !selectedSizeConfig ||
+      !selectedFormats ||
+      selectedFormats.length === 0
+    ) {
       alert('Please complete all configuration steps first');
       return;
     }
@@ -341,6 +360,7 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
           canvas_config_id: selectedCanvasConfig.id,
           size_config_id: selectedSizeConfig.id,
           is_digital: false,
+          file_formats: selectedFormats, // Include selected file formats
         };
 
         // Then proceed with file upload with session ID for progress tracking
@@ -572,6 +592,169 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
     </div>
   );
 
+  const toggleFormat = format => {
+    if (selectedFormats.includes(format)) {
+      // Don't allow deselecting if it's the only one
+      if (selectedFormats.length > 1) {
+        setSelectedFormats(selectedFormats.filter(f => f !== format));
+      }
+    } else {
+      setSelectedFormats([...selectedFormats, format]);
+    }
+  };
+
+  const renderFormatSelection = () => (
+    <div className="space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Select Output File Formats</h3>
+        <p className="text-gray-600 mb-4">
+          Choose which file formats you want for your printfiles. You can select multiple formats.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* PNG Format */}
+        <div
+          className={`border rounded-lg p-6 cursor-pointer transition-all ${
+            selectedFormats.includes('png')
+              ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => toggleFormat('png')}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <h4 className="font-semibold text-gray-900">PNG</h4>
+            </div>
+            {selectedFormats.includes('png') && (
+              <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">Standard raster image format</p>
+          <ul className="text-xs text-gray-500 space-y-1">
+            <li>• High quality mockups</li>
+            <li>• Etsy listing images</li>
+            <li>• Print-ready files</li>
+          </ul>
+        </div>
+
+        {/* SVG Format */}
+        <div
+          className={`border rounded-lg p-6 cursor-pointer transition-all ${
+            selectedFormats.includes('svg')
+              ? 'border-green-500 bg-green-50 ring-2 ring-green-200'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => toggleFormat('svg')}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+                />
+              </svg>
+              <h4 className="font-semibold text-gray-900">SVG</h4>
+            </div>
+            {selectedFormats.includes('svg') && (
+              <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">Scalable vector format</p>
+          <ul className="text-xs text-gray-500 space-y-1">
+            <li>• Infinitely scalable</li>
+            <li>• Small file size</li>
+            <li>• Ideal for cutting machines</li>
+          </ul>
+        </div>
+
+        {/* PSD Format */}
+        <div
+          className={`border rounded-lg p-6 cursor-pointer transition-all ${
+            selectedFormats.includes('psd')
+              ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200'
+              : 'border-gray-200 hover:border-gray-300'
+          }`}
+          onClick={() => toggleFormat('psd')}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-2">
+              <svg className="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
+                />
+              </svg>
+              <h4 className="font-semibold text-gray-900">PSD</h4>
+            </div>
+            {selectedFormats.includes('psd') && (
+              <svg className="w-5 h-5 text-purple-500" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+          </div>
+          <p className="text-sm text-gray-600 mb-2">Photoshop format</p>
+          <ul className="text-xs text-gray-500 space-y-1">
+            <li>• Editable layers</li>
+            <li>• Professional editing</li>
+            <li>• Full color control</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+        <div className="flex items-start space-x-3">
+          <svg className="w-5 h-5 text-blue-500 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <div className="flex-1">
+            <h4 className="text-sm font-semibold text-blue-900 mb-1">Selected Formats</h4>
+            <p className="text-sm text-blue-700">
+              {selectedFormats.length === 0
+                ? 'No formats selected'
+                : selectedFormats.length === 1
+                  ? `${selectedFormats[0].toUpperCase()} only`
+                  : selectedFormats.map(f => f.toUpperCase()).join(', ')}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -583,7 +766,17 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
       >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">
-            {stage === 'template' ? 'Select Template' : 'Select Mockup'}
+            {stage === 'template'
+              ? 'Select Template'
+              : stage === 'mockup'
+                ? 'Select Mockup'
+                : stage === 'canvas'
+                  ? 'Select Canvas Configuration'
+                  : stage === 'size'
+                    ? 'Select Size Configuration'
+                    : stage === 'format'
+                      ? 'Select File Formats'
+                      : 'Upload Products'}
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -674,6 +867,8 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
               renderCanvasSelection()
             ) : stage === 'size' ? (
               renderSizeSelection()
+            ) : stage === 'format' ? (
+              renderFormatSelection()
             ) : (
               <div className="text-center py-8">
                 <p className="text-gray-600 mb-4">Click "Upload Images" to select and upload your designs</p>
@@ -681,7 +876,11 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
             )}
             {/* Action Buttons */}
             <div className="flex justify-end space-x-4 pt-6 border-t">
-              {stage === 'mockup' && (
+              {(stage === 'mockup' ||
+                stage === 'canvas' ||
+                stage === 'size' ||
+                stage === 'format' ||
+                stage === 'upload') && (
                 <button
                   type="button"
                   onClick={handleBack}
@@ -707,14 +906,17 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
                       : stage === 'canvas'
                         ? handleContinueToSize
                         : stage === 'size'
-                          ? handleContinueToUpload
-                          : handleUpload
+                          ? handleContinueToFormat
+                          : stage === 'format'
+                            ? handleContinueToUpload
+                            : handleUpload
                 }
                 disabled={
                   (stage === 'template' && !selectedTemplate) ||
                   (stage === 'mockup' && !selectedMockup) ||
                   (stage === 'canvas' && !selectedCanvasConfig) ||
                   (stage === 'size' && !selectedSizeConfig) ||
+                  (stage === 'format' && (!selectedFormats || selectedFormats.length === 0)) ||
                   (stage === 'upload' && uploading)
                 }
                 className={`px-6 py-2 rounded-lg font-medium transition-colors ${
@@ -913,6 +1115,10 @@ const ProductUploadModal = ({ isOpen, onClose, onUpload, onUploadComplete }) => 
                   'Continue to Canvas'
                 ) : stage === 'canvas' ? (
                   'Continue to Size'
+                ) : stage === 'size' ? (
+                  'Continue to Format Selection'
+                ) : stage === 'format' ? (
+                  'Continue to Upload'
                 ) : (
                   'Upload Images'
                 )}

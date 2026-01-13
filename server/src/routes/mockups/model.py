@@ -123,6 +123,7 @@ class UploadToEtsyRequest(BaseModel):
     design_ids: List[UUID]  # List of design IDs to upload
     mockup_id: UUID  # ID of the mockup to upload
     product_template_id: UUID  # ID of the product template
+    file_formats: Optional[List[str]] = ['png']  # File formats to generate (png, svg, psd)
 
 class UploadToEtsyResponse(BaseModel):
     success: bool

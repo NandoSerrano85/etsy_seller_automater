@@ -27,6 +27,7 @@ class DesignImageCreate(BaseModel):
     is_digital: bool = False
     filename: str = ''
     file_path: str = ''
+    file_formats: Optional[List[str]] = ['png']  # Supported formats: png, svg, psd
 
 class DesignImageUpdate(BaseModel):
     filename: Optional[str] = None
