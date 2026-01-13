@@ -20,8 +20,8 @@ const TopNavigation = ({
     const currentTab = searchParams.get('tab');
     const newParams = new URLSearchParams(searchParams);
 
-    if (currentTab === 'orders') {
-      // For orders section, update subtab
+    if (currentTab === 'orders' || currentTab === 'products') {
+      // For orders and products sections, update subtab
       newParams.set('subtab', tabId);
     } else {
       // For other sections, update main tab
