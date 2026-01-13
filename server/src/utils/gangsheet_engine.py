@@ -626,11 +626,13 @@ def create_gang_sheets(
         
            current_x, current_y = 0, 0
            row_height = 0
-           
+
            logging.info(f"Starting part {part} with image_index={image_index}, current_image_amount_left={current_image_amount_left}")
            logging.info(f"Processing range: {image_index} to {len(titles)-1}")
-           
+
            images_processed_in_part = 0
+           # Track individual images for layered export (SVG/PSD)
+           placed_images = []
            for i in range(image_index, len(titles)):
                try:
                    img = get_processed_image(i)
@@ -690,15 +692,26 @@ def create_gang_sheets(
                        try:
                            y_end = min(current_y + img_height, height_px)
                            x_end = min(current_x + img_width, width_px)
-                           
+
                            # Place image on gang sheet
                            gang_sheet[current_y:y_end, current_x:x_end] = img[:y_end-current_y, :x_end-current_x]
-                           
+
+                           # Track this image's position and metadata for layered export
+                           image_label = os.path.splitext(os.path.basename(str(titles[i])))[0] if titles[i] else f"Image_{i}"
+                           placed_images.append({
+                               'label': image_label,
+                               'x': current_x,
+                               'y': current_y,
+                               'width': img_width,
+                               'height': img_height,
+                               'image_data': img.copy()  # Store copy of the image data
+                           })
+
                            # For memory-mapped arrays, flush data periodically
                            if hasattr(gang_sheet, '_temp_filename'):  # Memory-mapped array
                                if images_processed_in_part % 10 == 0:  # Flush every 10 images
                                    gang_sheet.flush()
-                           
+
                            images_processed_in_part += 1
                        except Exception as e:
                            logging.warning(f"Error placing image on gang sheet: {e}")
@@ -781,15 +794,42 @@ def create_gang_sheets(
                        today = date.today()
                        # Base filename without extension
                        base_filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}"
-                       # Use the new save function that supports multiple formats
+
+                       # Adjust placed_images positions to account for cropping and scaling
+                       scale_factor = std_dpi / dpi
+                       adjusted_placed_images = []
+                       for img_info in placed_images:
+                           # Adjust for cropping
+                           adj_x = img_info['x'] - xmin
+                           adj_y = img_info['y'] - ymin
+                           # Adjust for scaling
+                           scaled_x = int(adj_x * scale_factor)
+                           scaled_y = int(adj_y * scale_factor)
+                           scaled_width = int(img_info['width'] * scale_factor)
+                           scaled_height = int(img_info['height'] * scale_factor)
+
+                           # Resize the image data as well
+                           scaled_image = cv2.resize(img_info['image_data'], (scaled_width, scaled_height), interpolation=cv2.INTER_CUBIC)
+
+                           adjusted_placed_images.append({
+                               'label': img_info['label'],
+                               'x': scaled_x,
+                               'y': scaled_y,
+                               'width': scaled_width,
+                               'height': scaled_height,
+                               'image_data': scaled_image
+                           })
+
+                       # Use the new save function that supports multiple formats with layers
                        save_image_with_format(
                            resized_gang_sheet,
                            output_path,
                            base_filename,
                            file_format=file_format,
-                           target_dpi=(dpi, dpi)
+                           target_dpi=(dpi, dpi),
+                           placed_images=adjusted_placed_images
                        )
-                       logging.info(f"Successfully created gang sheet: {base_filename}.{file_format.lower()}")
+                       logging.info(f"Successfully created gang sheet with {len(adjusted_placed_images)} layers: {base_filename}.{file_format.lower()}")
                        
                        # CRITICAL: Immediately free memory after successful save
                        # This frees up the ~2.95GB gang sheet memory before starting next part

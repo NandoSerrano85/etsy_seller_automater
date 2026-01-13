@@ -52,7 +52,7 @@ def get_width_and_height(image, image_path, target_dpi=None):
     # Calculate and return current size in inches
     return width_px / dpi_x, height_px / dpi_y
 
-def save_image_with_format(image, folder_path, filename, file_format='PNG', target_dpi=(STD_DPI, STD_DPI)):
+def save_image_with_format(image, folder_path, filename, file_format='PNG', target_dpi=(STD_DPI, STD_DPI), placed_images=None):
     """
     Save image in specified format (PNG, SVG, or PSD).
 
@@ -62,6 +62,8 @@ def save_image_with_format(image, folder_path, filename, file_format='PNG', targ
         filename: base filename (extension will be added based on format)
         file_format: output format ('PNG', 'SVG', or 'PSD')
         target_dpi: DPI tuple for the output image
+        placed_images: list of dicts with individual image metadata for layered formats
+                       Each dict contains: label, x, y, width, height, image_data
     """
     import logging
 
@@ -91,10 +93,10 @@ def save_image_with_format(image, folder_path, filename, file_format='PNG', targ
         save_single_image(image, folder_path, f"{base_filename}.png", target_dpi)
     elif file_format == 'SVG':
         output_path = os.path.join(folder_path, f"{base_filename}.svg")
-        _save_as_svg(image, output_path, target_dpi)
+        _save_as_svg(image, output_path, target_dpi, placed_images)
     elif file_format == 'PSD':
         output_path = os.path.join(folder_path, f"{base_filename}.psd")
-        _save_as_psd(image, output_path, target_dpi)
+        _save_as_psd(image, output_path, target_dpi, placed_images)
     else:
         raise ValueError(f"Unsupported format: {file_format}. Use PNG, SVG, or PSD")
 
@@ -102,20 +104,12 @@ def save_image_with_format(image, folder_path, filename, file_format='PNG', targ
     return output_path
 
 
-def _save_as_svg(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
-    """Convert numpy array image to SVG format using embedded PNG."""
+def _save_as_svg(image, output_path, target_dpi=(STD_DPI, STD_DPI), placed_images=None):
+    """Convert numpy array image to SVG format with individual labeled layers."""
     import logging
     import base64
 
     try:
-        # First encode as PNG
-        retval, buffer = cv2.imencode(".png", image)
-        if not retval:
-            raise RuntimeError("Failed to encode image to PNG for SVG embedding")
-
-        # Convert to base64 for embedding
-        png_base64 = base64.b64encode(buffer).decode('utf-8')
-
         # Get image dimensions
         height, width = image.shape[:2]
 
@@ -123,15 +117,59 @@ def _save_as_svg(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
         width_inches = width / target_dpi[0]
         height_inches = height / target_dpi[1]
 
-        # Create SVG with embedded PNG
+        # Start SVG content with inkscape namespace for layer labels
         svg_content = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
      width="{width_inches}in" height="{height_inches}in"
      viewBox="0 0 {width} {height}">
-  <image width="{width}" height="{height}"
-         xlink:href="data:image/png;base64,{png_base64}"/>
-</svg>'''
+'''
 
+        # If we have individual image data, create separate layers for each
+        if placed_images and len(placed_images) > 0:
+            logging.info(f"Creating SVG with {len(placed_images)} individual labeled layers")
+
+            # Create a group for each individual image
+            for idx, img_info in enumerate(placed_images):
+                label = img_info.get('label', f'Image_{idx}')
+                x = img_info.get('x', 0)
+                y = img_info.get('y', 0)
+                img_width = img_info.get('width', 0)
+                img_height = img_info.get('height', 0)
+                img_data = img_info.get('image_data')
+
+                if img_data is not None and isinstance(img_data, np.ndarray):
+                    # Encode individual image as PNG
+                    retval, buffer = cv2.imencode(".png", img_data)
+                    if retval:
+                        png_base64 = base64.b64encode(buffer).decode('utf-8')
+
+                        # Create a labeled group for this image
+                        # Using id and inkscape:label for compatibility with design software
+                        svg_content += f'''  <g id="{label}" inkscape:label="{label}">
+    <image x="{x}" y="{y}" width="{img_width}" height="{img_height}"
+           xlink:href="data:image/png;base64,{png_base64}"/>
+  </g>
+'''
+
+            logging.info(f"Created {len(placed_images)} labeled layers in SVG")
+        else:
+            # Fallback: save entire image as single layer
+            logging.info("No individual image data provided, saving as single layer")
+            retval, buffer = cv2.imencode(".png", image)
+            if not retval:
+                raise RuntimeError("Failed to encode image to PNG for SVG embedding")
+
+            png_base64 = base64.b64encode(buffer).decode('utf-8')
+            svg_content += f'''  <image width="{width}" height="{height}"
+         xlink:href="data:image/png;base64,{png_base64}"/>
+'''
+
+        # Close SVG
+        svg_content += '</svg>'
+
+        # Write to file
         with open(output_path, 'w') as f:
             f.write(svg_content)
 
@@ -141,8 +179,8 @@ def _save_as_svg(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
         raise
 
 
-def _save_as_psd(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
-    """Convert numpy array image to PSD format."""
+def _save_as_psd(image, output_path, target_dpi=(STD_DPI, STD_DPI), placed_images=None):
+    """Convert numpy array image to PSD format with individual labeled layers."""
     import logging
 
     try:
@@ -151,21 +189,61 @@ def _save_as_psd(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
             from psd_tools import PSDImage
             from psd_tools.api.layers import PixelLayer
 
-            # Convert OpenCV BGR(A) to RGB(A) for PIL
-            if image.shape[2] == 4:
-                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+            # Get canvas dimensions
+            height, width = image.shape[:2]
+
+            # Create PSD document
+            psd = PSDImage.new("RGBA", (width, height))
+
+            # If we have individual image data, create separate layers for each
+            if placed_images and len(placed_images) > 0:
+                logging.info(f"Creating PSD with {len(placed_images)} individual labeled layers")
+
+                # Create a layer for each individual image
+                for idx, img_info in enumerate(placed_images):
+                    label = img_info.get('label', f'Image_{idx}')
+                    x = img_info.get('x', 0)
+                    y = img_info.get('y', 0)
+                    img_width = img_info.get('width', 0)
+                    img_height = img_info.get('height', 0)
+                    img_data = img_info.get('image_data')
+
+                    if img_data is not None and isinstance(img_data, np.ndarray):
+                        # Convert OpenCV BGR(A) to RGB(A) for PIL
+                        if img_data.shape[2] == 4:
+                            img_rgb = cv2.cvtColor(img_data, cv2.COLOR_BGRA2RGBA)
+                        else:
+                            img_rgb = cv2.cvtColor(img_data, cv2.COLOR_BGR2RGB)
+                            # Add alpha channel
+                            img_rgb = np.dstack([img_rgb, np.ones((img_rgb.shape[0], img_rgb.shape[1], 1), dtype=np.uint8) * 255])
+
+                        # Create PIL image for this layer
+                        layer_pil = Image.fromarray(img_rgb, 'RGBA')
+
+                        # Create a blank canvas and paste the image at the correct position
+                        canvas = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+                        canvas.paste(layer_pil, (x, y))
+
+                        # Create layer from canvas
+                        layer = PixelLayer.frompil(canvas, psd, label)
+
+                logging.info(f"Created {len(placed_images)} labeled layers in PSD")
             else:
-                image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # Fallback: create single layer with entire image
+                logging.info("No individual image data provided, creating single layer")
 
-            # Create PIL image
-            pil_image = Image.fromarray(image_rgb)
+                # Convert OpenCV BGR(A) to RGB(A) for PIL
+                if image.shape[2] == 4:
+                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+                else:
+                    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-            # Set DPI
-            pil_image.info['dpi'] = target_dpi
+                # Create PIL image
+                pil_image = Image.fromarray(image_rgb)
+                pil_image.info['dpi'] = target_dpi
 
-            # Create PSD with single layer
-            psd = PSDImage.new("RGBA", pil_image.size)
-            layer = PixelLayer.frompil(pil_image, psd, "Layer 1")
+                # Create single layer
+                layer = PixelLayer.frompil(pil_image, psd, "Background")
 
             # Save PSD
             psd.save(output_path)
@@ -174,7 +252,7 @@ def _save_as_psd(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
         except ImportError:
             logging.warning("psd-tools not available, falling back to PIL method")
 
-        # Fallback: Save as layered PSD using PIL
+        # Fallback: Save as layered TIFF using PIL (Photoshop compatible)
         # Convert OpenCV BGR(A) to RGB(A)
         if image.shape[2] == 4:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
@@ -190,6 +268,7 @@ def _save_as_psd(image, output_path, target_dpi=(STD_DPI, STD_DPI)):
         # PIL doesn't have native PSD support, so we'll save as TIFF with layers
         # which is compatible with Photoshop
         logging.warning("Saving as multi-layer TIFF (Photoshop compatible) instead of native PSD")
+        logging.warning("For full PSD layer support, install psd-tools: pip install psd-tools")
         tiff_path = output_path.replace('.psd', '.tif')
         pil_image.save(tiff_path, format='TIFF', dpi=target_dpi, compression='tiff_lzw')
 
