@@ -6,6 +6,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
+ARG REACT_APP_STRIPE_PUBLISHABLE_KEY
+
+ENV REACT_APP_STRIPE_PUBLISHABLE_KEY=${REACT_APP_STRIPE_PUBLISHABLE_KEY}
 # Install dependencies
 RUN npm install
 
