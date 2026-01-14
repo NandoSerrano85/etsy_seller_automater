@@ -5,12 +5,12 @@
 
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3003';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003/api';
 
 class SubscriptionService {
   constructor() {
     this.api = axios.create({
-      baseURL: `${API_BASE_URL}/api/subscriptions`,
+      baseURL: `${API_BASE_URL}/subscriptions`,
       withCredentials: true,
     });
   }
