@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from server.src.database.core import get_db
 from server.src.routes.auth.service import CurrentUser
+from server.src.routes.organizations.service import OrganizationService
 from typing import Annotated
+from uuid import UUID
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -62,3 +64,33 @@ def get_user_organizations(
     except Exception as e:
         print(f"Organization route error: {e}")
         raise HTTPException(status_code=500, detail="Failed to load organizations")
+
+@router.get("/{organization_id}/members")
+def get_organization_members(
+    organization_id: UUID,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get members of an organization"""
+    try:
+        user_id = current_user.get_uuid()
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User not authenticated")
+
+        # Check if user has access to this organization
+        if not OrganizationService.check_user_access(db, user_id, organization_id):
+            raise HTTPException(status_code=403, detail="Access denied to this organization")
+
+        # Get members
+        members = OrganizationService.get_organization_members(db, organization_id)
+
+        return {
+            "success": True,
+            "data": members
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting organization members: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get organization members")

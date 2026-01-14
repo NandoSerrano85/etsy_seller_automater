@@ -8,7 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from server.src.entities.organization import Organization
+from server.src.entities.organization import Organization, OrganizationMember
 from server.src.entities.user import User
 from server.src.entities.org_features import OrgFeatures, Features
 from server.src.entities.files import File
@@ -260,3 +260,48 @@ class OrganizationService:
             User.is_active == True
         ).first()
         return user is not None
+
+    @staticmethod
+    def get_organization_members(db: Session, org_id: UUID) -> List[Dict[str, Any]]:
+        """Get all members of an organization"""
+        try:
+            # Get members from organization_members table
+            members_query = db.query(OrganizationMember, User).join(
+                User, OrganizationMember.user_id == User.id
+            ).filter(OrganizationMember.organization_id == org_id).all()
+
+            members_list = []
+            for membership, user in members_query:
+                members_list.append({
+                    'user_id': str(user.id),
+                    'user_name': user.name if hasattr(user, 'name') else user.email,
+                    'email': user.email,
+                    'role': membership.role,
+                    'joined_at': membership.joined_at.isoformat() if membership.joined_at else None,
+                    'is_active': user.is_active if hasattr(user, 'is_active') else True
+                })
+
+            # Also include users directly assigned to the org (legacy support)
+            direct_users = db.query(User).filter(
+                User.org_id == org_id,
+                User.is_active == True
+            ).all()
+
+            for user in direct_users:
+                # Avoid duplicates
+                if not any(m['user_id'] == str(user.id) for m in members_list):
+                    members_list.append({
+                        'user_id': str(user.id),
+                        'user_name': user.name if hasattr(user, 'name') else user.email,
+                        'email': user.email,
+                        'role': user.role if hasattr(user, 'role') else 'member',
+                        'joined_at': user.created_at.isoformat() if hasattr(user, 'created_at') and user.created_at else None,
+                        'is_active': user.is_active if hasattr(user, 'is_active') else True
+                    })
+
+            logger.info(f"Retrieved {len(members_list)} members for organization: {org_id}")
+            return members_list
+
+        except Exception as e:
+            logger.error(f"Error getting members for organization {org_id}: {e}")
+            return []
