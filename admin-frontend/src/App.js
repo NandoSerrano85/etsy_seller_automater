@@ -4,6 +4,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import SidebarNavigation from './components/SidebarNavigation';
 import TopNavigation from './components/TopNavigation';
 import NotificationSystem, { useNotifications } from './components/NotificationSystem';
+import useDataStore from './stores/dataStore';
 
 // Critical components (loaded immediately)
 import LoginRegister from './pages/LoginRegister';
@@ -68,6 +69,15 @@ const AppLayout = memo(({ children }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { notifications, removeNotification } = useNotifications();
 
+  // Get orders data from store to calculate unshipped count
+  const { data: storeData } = useDataStore();
+  const orders = storeData.orders || [];
+
+  // Calculate unshipped orders count
+  const unshippedOrdersCount = useMemo(() => {
+    return orders.filter(order => !order.was_shipped && order.was_paid && !order.was_canceled).length;
+  }, [orders]);
+
   // Hide sidebar and top nav on login and public pages
   const isPublicPage = useMemo(
     () => ['/login', '/oauth/redirect', '/welcome', '/organization-select'].includes(location.pathname),
@@ -124,6 +134,7 @@ const AppLayout = memo(({ children }) => {
           activeTab={currentSubTab || currentTab}
           onTabChange={handleTabChange}
           onMenuToggle={toggleSidebar}
+          unshippedOrdersCount={unshippedOrdersCount}
         />
 
         {/* Page Content */}

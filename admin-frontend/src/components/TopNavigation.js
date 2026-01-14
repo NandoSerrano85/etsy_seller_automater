@@ -10,6 +10,7 @@ const TopNavigation = ({
   activeTab,
   onTabChange,
   onMenuToggle,
+  unshippedOrdersCount = 0,
 }) => {
   const location = useLocation();
   // const navigate = useNavigate();
@@ -96,8 +97,7 @@ const TopNavigation = ({
           { label: 'Orders', active: true },
         ],
         tabs: [
-          { id: 'pending', label: 'Pending', icon: '⏳', badge: 5 },
-          { id: 'processing', label: 'Processing', icon: '🔄', badge: 12 },
+          { id: 'pending', label: 'Pending', icon: '⏳', badge: unshippedOrdersCount || undefined },
           { id: 'completed', label: 'Completed', icon: '✅' },
           { id: 'all', label: 'All Orders', icon: '📋' },
           { id: 'print', label: 'Send to Print', icon: '🖨️' },
