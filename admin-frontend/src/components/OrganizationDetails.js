@@ -27,14 +27,16 @@ const OrganizationDetails = ({ organization, onOrganizationUpdate }) => {
     try {
       const result = await organizationService.getOrganizationMembers(organization.id);
       if (result.success) {
-        setMembers(result.data);
+        setMembers(Array.isArray(result.data) ? result.data : []);
       } else {
+        setMembers([]);
         addNotification({
           type: 'error',
           message: `Failed to load members: ${result.error}`,
         });
       }
     } catch (error) {
+      setMembers([]);
       addNotification({
         type: 'error',
         message: 'Failed to load organization members',
