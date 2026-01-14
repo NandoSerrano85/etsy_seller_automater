@@ -130,8 +130,17 @@ const OrganizationDetails = ({ organization, onOrganizationUpdate }) => {
   };
 
   const formatRole = role => {
+    if (!role || typeof role !== 'string') return 'Unknown';
     return role.charAt(0).toUpperCase() + role.slice(1);
   };
+
+  if (!organization) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-sage-200 p-8 text-center">
+        <p className="text-sage-600">No organization selected</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
