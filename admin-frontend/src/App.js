@@ -69,13 +69,14 @@ const AppLayout = memo(({ children }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { notifications, removeNotification } = useNotifications();
 
-  // Get orders data from store to calculate unshipped count
+  // Get orders data from store to calculate active orders count
+  // Note: storeData.orders already contains only active orders (paid, not shipped, not canceled)
   const { data: storeData } = useDataStore();
   const orders = storeData.orders || [];
 
-  // Calculate unshipped orders count
-  const unshippedOrdersCount = useMemo(() => {
-    return orders.filter(order => !order.was_shipped && order.was_paid && !order.was_canceled).length;
+  // Active orders count (orders are already filtered in the API fetch)
+  const activeOrdersCount = useMemo(() => {
+    return orders.length;
   }, [orders]);
 
   // Hide sidebar and top nav on login and public pages
@@ -134,7 +135,7 @@ const AppLayout = memo(({ children }) => {
           activeTab={currentSubTab || currentTab}
           onTabChange={handleTabChange}
           onMenuToggle={toggleSidebar}
-          unshippedOrdersCount={unshippedOrdersCount}
+          unshippedOrdersCount={activeOrdersCount}
         />
 
         {/* Page Content */}

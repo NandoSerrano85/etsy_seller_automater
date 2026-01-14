@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import organizationService from '../services/organizationService';
 import useOrganizationStore from '../stores/organizationStore';
 import { useNotifications } from './NotificationSystem';
