@@ -4,7 +4,7 @@ import subscriptionService from '../services/subscriptionService';
 import { TierBadge } from '../components/subscription';
 
 // Initialize Stripe with your publishable key
-const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+const stripePromise = loadStripe(process.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
 const SubscriptionPage = () => {
   const [currentSubscription, setCurrentSubscription] = useState(null);
