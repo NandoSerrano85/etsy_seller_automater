@@ -36,8 +36,8 @@ class Subscription(Base):
     # Payment
     default_payment_method = Column(String(255), nullable=True)
 
-    # Metadata
-    metadata = Column(JSONB, default={})
+    # Additional data
+    extra_metadata = Column(JSONB, default={})
 
     # Audit fields
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -111,8 +111,8 @@ class BillingHistory(Base):
     # Description
     description = Column(String(500), nullable=True)
 
-    # Metadata
-    metadata = Column(JSONB, default={})
+    # Additional data
+    extra_metadata = Column(JSONB, default={})
 
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
