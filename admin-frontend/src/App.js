@@ -82,7 +82,7 @@ const AppLayout = memo(({ children }) => {
       const newParams = new URLSearchParams(searchParams);
       const currentMainTab = searchParams.get('tab');
 
-      if (currentMainTab === 'orders') {
+      if (currentMainTab === 'orders' || currentMainTab === 'products') {
         newParams.set('subtab', tabId);
       } else {
         newParams.set('tab', tabId);
