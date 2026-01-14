@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ProductMockupGallery from '../../components/ProductMockupGallery';
 import ProductDesignGallery from '../../components/ProductDesignGallery';
 import ProductUploadModal from '../../components/ProductUploadModal';
 import BackToTop from '../../components/BackToTop';
 
 const ProductsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh }) => {
+  const [searchParams] = useSearchParams();
+  const activeSubTab = searchParams.get('subtab') || 'productMockup';
   const [showProductUploadModal, setShowProductUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [productsTab, setProductsTab] = useState('productMockup');
   console.log(designs);
 
   if (!isConnected) {
@@ -46,52 +48,16 @@ const ProductsTab = ({ isConnected, authUrl, designs, loading, error, onRefresh 
   }
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Products Gallery</h2>
-        <p className="text-gray-600 text-sm sm:text-base">
-          Etsy store mockups and QNAP product files from your templates
-        </p>
-      </div>
-      {/* Sub-tabs for Product Mockup, Product Design, and Upload Product */}
-      <div className="flex space-x-2 mb-6 overflow-x-auto">
-        <button
-          className={`tab-button whitespace-nowrap text-sm sm:text-base ${productsTab === 'productMockup' ? 'active' : ''}`}
-          onClick={() => setProductsTab('productMockup')}
-          aria-label="View product mockups"
-          role="tab"
-          aria-selected={productsTab === 'productMockup'}
-        >
-          Product Mockup
-        </button>
-        <button
-          className={`tab-button whitespace-nowrap text-sm sm:text-base ${productsTab === 'productDesign' ? 'active' : ''}`}
-          onClick={() => setProductsTab('productDesign')}
-          aria-label="View product designs"
-          role="tab"
-          aria-selected={productsTab === 'productDesign'}
-        >
-          Product Design
-        </button>
-        <button
-          className={`tab-button whitespace-nowrap text-sm sm:text-base ${productsTab === 'upload' ? 'active' : ''}`}
-          onClick={() => setProductsTab('upload')}
-          aria-label="Upload new product"
-          role="tab"
-          aria-selected={productsTab === 'upload'}
-        >
-          Upload Product
-        </button>
-      </div>
       {/* Product Mockup Tab */}
-      {productsTab === 'productMockup' && (
+      {activeSubTab === 'productMockup' && (
         <ProductMockupGallery mockupImages={designs?.mockups || []} openImageModal={() => {}} />
       )}
       {/* Product Design Tab */}
-      {productsTab === 'productDesign' && (
+      {activeSubTab === 'productDesign' && (
         <ProductDesignGallery designFiles={designs?.files || []} openImageModal={() => {}} />
       )}
       {/* Upload Product Tab */}
-      {productsTab === 'upload' && (
+      {activeSubTab === 'upload' && (
         <div className="card p-6 sm:p-8 text-center">
           <div className="mb-6">
             <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
