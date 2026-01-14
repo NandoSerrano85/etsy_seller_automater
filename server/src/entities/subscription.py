@@ -4,9 +4,9 @@ Subscription Entity for Stripe Integration
 
 from sqlalchemy import Column, String, DateTime, Integer, Boolean, Numeric, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
+from typing import Dict, Any
 
 from ..database.core import Base
 
@@ -46,7 +46,7 @@ class Subscription(Base):
     def __repr__(self):
         return f"<Subscription(id={self.id}, user_id={self.user_id}, tier={self.tier}, status={self.status})>"
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {
             'id': str(self.id),
             'user_id': str(self.user_id),
@@ -54,12 +54,12 @@ class Subscription(Base):
             'stripe_subscription_id': self.stripe_subscription_id,
             'tier': self.tier,
             'status': self.status,
-            'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
-            'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
+            'current_period_start': self.current_period_start.isoformat() if self.current_period_start is not None else None,
+            'current_period_end': self.current_period_end.isoformat() if self.current_period_end is not None else None,
             'cancel_at_period_end': self.cancel_at_period_end,
-            'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
+            'canceled_at': self.canceled_at.isoformat() if self.canceled_at is not None else None,
+            'created_at': self.created_at.isoformat() if self.created_at is not None else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at is not None else None
         }
 
 
@@ -120,18 +120,18 @@ class BillingHistory(Base):
     def __repr__(self):
         return f"<BillingHistory(id={self.id}, user_id={self.user_id}, amount={self.amount}, status={self.status})>"
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {
             'id': str(self.id),
             'user_id': str(self.user_id),
             'stripe_invoice_id': self.stripe_invoice_id,
-            'amount': float(self.amount) if self.amount else 0,
+            'amount': float(self.amount) if self.amount is not None else 0,
             'currency': self.currency,
             'status': self.status,
-            'invoice_date': self.invoice_date.isoformat() if self.invoice_date else None,
-            'paid_at': self.paid_at.isoformat() if self.paid_at else None,
+            'invoice_date': self.invoice_date.isoformat() if self.invoice_date is not None else None,
+            'paid_at': self.paid_at.isoformat() if self.paid_at is not None else None,
             'invoice_pdf_url': self.invoice_pdf_url,
             'hosted_invoice_url': self.hosted_invoice_url,
             'description': self.description,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at is not None else None
         }
