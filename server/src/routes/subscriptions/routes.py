@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from server.src.database.core import get_db
 from server.src.routes.auth.service import CurrentUser
 from server.src.routes.subscriptions import model, service
+from server.src.entities.user import User
 from typing import List
 import stripe
 import os
@@ -26,15 +27,19 @@ async def create_checkout_session(
     """Create a Stripe checkout session for subscription"""
     try:
         user_id = current_user.get_uuid()
-        email = current_user.email
 
         if not user_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
 
+        # Get user email from database
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
         result = service.SubscriptionService.create_checkout_session(
             db=db,
             user_id=user_id,
-            email=email,
+            email=user.email,
             price_id=request_data.price_id,
             success_url=request_data.success_url,
             cancel_url=request_data.cancel_url
@@ -42,6 +47,8 @@ async def create_checkout_session(
 
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating checkout session: {e}")
         raise HTTPException(status_code=500, detail=str(e))

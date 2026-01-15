@@ -33,7 +33,7 @@ SUBSCRIPTION_TIERS = {
     },
     'starter': {
         'name': 'Starter',
-        'price': 14.99,
+        'price': 19.99,
         'stripe_price_id': os.getenv('STRIPE_STARTER_PRICE_ID'),
         'features': {
             'mockup_generator': True,
@@ -46,7 +46,7 @@ SUBSCRIPTION_TIERS = {
     },
     'pro': {
         'name': 'Pro',
-        'price': 29.99,
+        'price': 39.99,
         'stripe_price_id': os.getenv('STRIPE_PRO_PRICE_ID'),
         'features': {
             'mockup_generator': True,
@@ -61,7 +61,7 @@ SUBSCRIPTION_TIERS = {
     },
     'full': {
         'name': 'Full',
-        'price': 49.99,
+        'price': 99.99,
         'stripe_price_id': os.getenv('STRIPE_FULL_PRICE_ID'),
         'features': {
             'mockup_generator': True,
