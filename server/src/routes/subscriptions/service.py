@@ -31,10 +31,23 @@ SUBSCRIPTION_TIERS = {
             'etsy_dashboard': True
         }
     },
+    'starter': {
+        'name': 'Starter',
+        'price': 14.99,
+        'stripe_price_id': os.getenv('STRIPE_STARTER_PRICE_ID'),
+        'features': {
+            'mockup_generator': True,
+            'monthly_mockup_limit': 200,
+            'file_cleaner': True,
+            'etsy_dashboard': True,
+            'listing_templates': True,
+            'auto_naming': True
+        }
+    },
     'pro': {
         'name': 'Pro',
         'price': 29.99,
-        'stripe_price_id': os.getenv('STRIPE_PRO_PRICE_ID'),  # Set in environment
+        'stripe_price_id': os.getenv('STRIPE_PRO_PRICE_ID'),
         'features': {
             'mockup_generator': True,
             'monthly_mockup_limit': -1,  # Unlimited
@@ -46,10 +59,10 @@ SUBSCRIPTION_TIERS = {
             'file_resizing': True
         }
     },
-    'print_pro': {
-        'name': 'Print Pro',
+    'full': {
+        'name': 'Full',
         'price': 49.99,
-        'stripe_price_id': os.getenv('STRIPE_PRINT_PRO_PRICE_ID'),  # Set in environment
+        'stripe_price_id': os.getenv('STRIPE_FULL_PRICE_ID'),
         'features': {
             'mockup_generator': True,
             'monthly_mockup_limit': -1,

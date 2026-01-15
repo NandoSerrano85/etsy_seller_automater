@@ -24,7 +24,7 @@ class Subscription(Base):
     stripe_price_id = Column(String(255), nullable=True)
 
     # Subscription details
-    tier = Column(String(50), nullable=False, default='free')  # free, pro, print_pro
+    tier = Column(String(50), nullable=False, default='free')  # free, starter, pro, full
     status = Column(String(50), nullable=False, default='active')  # active, canceled, past_due, incomplete
 
     # Billing
