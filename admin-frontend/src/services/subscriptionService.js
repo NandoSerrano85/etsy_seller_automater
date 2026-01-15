@@ -4,6 +4,7 @@
  */
 
 import axios from 'axios';
+import useAuthStore from '../stores/authStore';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
 
@@ -13,6 +14,30 @@ class SubscriptionService {
       baseURL: `${API_BASE_URL}/api/subscriptions`,
       withCredentials: true,
     });
+
+    // Add auth interceptor
+    this.api.interceptors.request.use(
+      config => {
+        const { userToken } = useAuthStore.getState();
+        if (userToken) {
+          config.headers.Authorization = `Bearer ${userToken}`;
+        }
+        return config;
+      },
+      error => Promise.reject(error)
+    );
+
+    // Add response interceptor for error handling
+    this.api.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) {
+          // Token expired, clear auth
+          useAuthStore.getState().clearUserAuth();
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   /**
