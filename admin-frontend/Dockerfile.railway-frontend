@@ -8,7 +8,7 @@ COPY package*.json ./
 
 # Build arguments for React environment variables (baked in at build time)
 ARG REACT_APP_STRIPE_PUBLISHABLE_KEY
-ARG REACT_APP_API_BASE_URL=https://printer-automation-backend-production.up.railway.app/api
+ARG REACT_APP_API_BASE_URL=https://printer-automation-backend-production.up.railway.app
 
 ENV REACT_APP_STRIPE_PUBLISHABLE_KEY=${REACT_APP_STRIPE_PUBLISHABLE_KEY}
 ENV REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL}
