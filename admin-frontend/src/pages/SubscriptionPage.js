@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { loadStripe } from '@stripe/stripe-js';
 import subscriptionService from '../services/subscriptionService';
 
@@ -22,6 +23,7 @@ const FEATURE_LABELS = {
 };
 
 const SubscriptionPage = () => {
+  const navigate = useNavigate();
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [tiers, setTiers] = useState([]);
   const [billingHistory, setBillingHistory] = useState([]);
@@ -71,37 +73,13 @@ const SubscriptionPage = () => {
     }
   };
 
-  const handleSubscribe = async (tierId, priceId) => {
+  const handleSubscribe = (tierId, priceId) => {
     if (!priceId) {
       setError('This plan is not available for purchase yet.');
       return;
     }
-
-    try {
-      setProcessingCheckout(tierId);
-      setError(null);
-
-      const stripe = await stripePromise;
-
-      // Create checkout session
-      const { session_id } = await subscriptionService.createCheckoutSession(
-        priceId,
-        `${window.location.origin}/subscription?success=true`,
-        `${window.location.origin}/subscription?canceled=true`
-      );
-
-      // Redirect to Stripe Checkout
-      const result = await stripe.redirectToCheckout({ sessionId: session_id });
-
-      if (result.error) {
-        setError(result.error.message);
-      }
-    } catch (err) {
-      console.error('Error during checkout:', err);
-      setError('Failed to start checkout. Please try again.');
-    } finally {
-      setProcessingCheckout(null);
-    }
+    // Navigate to checkout page
+    navigate(`/subscription/checkout?plan=${tierId}`);
   };
 
   const handleUpgrade = async (tierId, newPriceId) => {

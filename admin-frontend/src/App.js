@@ -20,6 +20,9 @@ const OrganizationManagement = React.lazy(() => import('./pages/OrganizationMana
 const PrinterManagement = React.lazy(() => import('./pages/PrinterManagement'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const SubscriptionPage = React.lazy(() => import('./pages/SubscriptionPage'));
+const CheckoutPage = React.lazy(() => import('./pages/Subscription/CheckoutPage'));
+const PaymentSuccessPage = React.lazy(() => import('./pages/Subscription/PaymentSuccessPage'));
+const PaymentCanceledPage = React.lazy(() => import('./pages/Subscription/PaymentCanceledPage'));
 const ProductsTab = React.lazy(() => import('./pages/HomeTabs/ProductsTab'));
 const AnalyticsTab = React.lazy(() => import('./pages/HomeTabs/AnalyticsTab'));
 const OrdersTab = React.lazy(() => import('./pages/HomeTabs/OrdersTab'));
@@ -482,6 +485,30 @@ function App() {
               element={
                 <ProtectedRoute>
                   <SubscriptionPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/subscription/checkout"
+              element={
+                <ProtectedRoute>
+                  <CheckoutPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/subscription/success"
+              element={
+                <ProtectedRoute>
+                  <PaymentSuccessPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/subscription/canceled"
+              element={
+                <ProtectedRoute>
+                  <PaymentCanceledPage />
                 </ProtectedRoute>
               }
             />
