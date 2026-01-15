@@ -132,6 +132,7 @@ def discover_migrations():
         "create_email_tables",  # Creates email messaging system tables for transactional and marketing emails
 
         # User and subscription migrations
+        "create_subscription_tables",          # Creates subscriptions, subscription_usage, billing_history tables
         "add_subscription_plan_to_users",      # Adds subscription_plan column to users table
         "upgrade_users_to_pro_plan",           # Upgrades all users to Pro plan for CraftFlow Commerce access
         "add_user_id_to_ecommerce_products",   # Adds user_id column for multi-tenant isolation
