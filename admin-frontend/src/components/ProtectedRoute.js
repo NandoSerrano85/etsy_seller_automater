@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useSubscription } from '../hooks/useSubscription';
 
 const ProtectedRoute = ({ children }) => {
   const { isUserAuthenticated, userLoading } = useAuth();
+  const { fetchSubscription, initialized } = useSubscription();
   const location = useLocation();
+
+  // Fetch subscription data when user is authenticated
+  useEffect(() => {
+    if (isUserAuthenticated && !initialized) {
+      fetchSubscription();
+    }
+  }, [isUserAuthenticated, initialized, fetchSubscription]);
 
   if (userLoading) {
     return (

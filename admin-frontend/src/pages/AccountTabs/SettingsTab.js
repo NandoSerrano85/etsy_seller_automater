@@ -2,12 +2,15 @@ import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useApi } from '../../hooks/useApi';
 import useOrganizationStore from '../../stores/organizationStore';
+import { useSubscription } from '../../hooks/useSubscription';
+import { TierBadge } from '../../components/subscription';
 
 // Settings Tab Component
 const SettingsTab = () => {
   const { user, etsyUserInfo, etsyShopInfo } = useAuth();
   const api = useApi();
   const { currentOrganization, getUserRole } = useOrganizationStore();
+  const { tierConfig } = useSubscription();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -152,6 +155,19 @@ const SettingsTab = () => {
                       )}
                       {getUserRole().charAt(0).toUpperCase() + getUserRole().slice(1)}
                     </span>
+                  </div>
+                </div>
+
+                {/* Subscription Plan */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subscription Plan</label>
+                  <div className="flex items-center space-x-3">
+                    <TierBadge showPrice />
+                    {tierConfig && tierConfig.name !== 'Full' && (
+                      <a href="/subscription" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                        Upgrade
+                      </a>
+                    )}
                   </div>
                 </div>
 

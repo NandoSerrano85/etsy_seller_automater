@@ -242,7 +242,7 @@ const useSubscriptionStore = create(
         return tierConfig?.features[featureName] || false;
       },
 
-      canUseFeature: (featureName, requiredAmount = 1) => {
+      canUseFeature: (featureName, _requiredAmount = 1) => {
         const { currentTier, subscriptionActive, currentUsage } = get();
 
         if (!subscriptionActive) {

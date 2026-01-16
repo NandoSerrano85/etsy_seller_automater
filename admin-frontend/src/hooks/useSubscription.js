@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import useSubscriptionStore, { FEATURES, SUBSCRIPTION_TIERS } from '../stores/subscriptionStore';
 
 /**
@@ -12,6 +12,7 @@ export const useSubscription = () => {
     currentUsage,
     loading,
     error,
+    initialized,
     hasFeature,
     canUseFeature,
     getFeatureLimit,
@@ -21,13 +22,15 @@ export const useSubscription = () => {
     getUpgradeRecommendation,
     incrementMockupUsage,
     setCurrentUsage,
+    fetchSubscription,
   } = useSubscriptionStore();
 
   const tierConfig = useMemo(() => getTierConfig(), [currentTier, getTierConfig]);
 
   const isFreeTier = useMemo(() => currentTier === SUBSCRIPTION_TIERS.FREE, [currentTier]);
+  const isStarterTier = useMemo(() => currentTier === SUBSCRIPTION_TIERS.STARTER, [currentTier]);
   const isProTier = useMemo(() => currentTier === SUBSCRIPTION_TIERS.PRO, [currentTier]);
-  const isPrintProTier = useMemo(() => currentTier === SUBSCRIPTION_TIERS.PRINT_PRO, [currentTier]);
+  const isFullTier = useMemo(() => currentTier === SUBSCRIPTION_TIERS.FULL, [currentTier]);
 
   // Feature access helpers
   const canCreateMockups = useMemo(() => {
@@ -68,11 +71,13 @@ export const useSubscription = () => {
     subscriptionExpiresAt,
     loading,
     error,
+    initialized,
 
     // Tier checks
     isFreeTier,
+    isStarterTier,
     isProTier,
-    isPrintProTier,
+    isFullTier,
 
     // Usage state
     currentUsage,
@@ -95,6 +100,9 @@ export const useSubscription = () => {
     // Usage tracking
     trackMockupCreation,
     updateUsage,
+
+    // Fetch subscription from backend
+    fetchSubscription,
 
     // Constants for components
     FEATURES,
