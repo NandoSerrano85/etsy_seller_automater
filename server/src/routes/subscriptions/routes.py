@@ -62,22 +62,23 @@ async def get_current_subscription(
     """Get current user's subscription"""
     try:
         user_id = current_user.get_uuid()
+        logger.info(f"Getting subscription for user_id: {user_id}")
 
         if not user_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
 
         subscription = service.SubscriptionService.get_subscription(db, user_id)
+        logger.info(f"Subscription found: {subscription is not None}, tier: {subscription.tier if subscription else 'N/A'}")
 
         if not subscription:
-            # Check user's subscription_plan field as fallback
+            # No subscription record exists - fallback to user.subscription_plan
             user = db.query(User).filter(User.id == user_id).first()
-            user_tier = user.subscription_plan if user and user.subscription_plan else "free"
-
-            # Return subscription based on user's subscription_plan
+            fallback_tier = user.subscription_plan if user and user.subscription_plan else "free"
+            logger.warning(f"No subscription found for user {user_id}, using fallback tier: {fallback_tier}")
             return model.SubscriptionResponse(
                 id="",
                 user_id=str(user_id),
-                tier=user_tier,
+                tier=fallback_tier,
                 status="active",
                 current_period_start=None,
                 current_period_end=None,

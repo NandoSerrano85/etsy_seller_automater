@@ -272,9 +272,15 @@ class SubscriptionService:
     @staticmethod
     def get_subscription(db: Session, user_id: UUID) -> Optional[Subscription]:
         """Get user's subscription"""
-        return db.query(Subscription).filter(
+        logger.info(f"Querying subscription for user_id: {user_id} (type: {type(user_id)})")
+        subscription = db.query(Subscription).filter(
             Subscription.user_id == user_id
         ).first()
+        if subscription:
+            logger.info(f"Found subscription: id={subscription.id}, tier={subscription.tier}, user_id={subscription.user_id}")
+        else:
+            logger.info(f"No subscription found for user_id: {user_id}")
+        return subscription
 
     @staticmethod
     def update_subscription_from_stripe(
@@ -544,13 +550,7 @@ class SubscriptionService:
                 Subscription.user_id == user_id
             ).first()
 
-            # Check subscription table first, then fall back to user's subscription_plan
-            if subscription:
-                tier = subscription.tier
-            else:
-                user = db.query(User).filter(User.id == user_id).first()
-                tier = user.subscription_plan if user and user.subscription_plan else 'free'
-
+            tier = subscription.tier if subscription else 'free'
             tier_config = SUBSCRIPTION_TIERS.get(tier, SUBSCRIPTION_TIERS['free'])
             limits = tier_config.get('limits', {})
 

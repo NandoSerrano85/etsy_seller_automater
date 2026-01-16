@@ -353,12 +353,10 @@ const useSubscriptionStore = create(
     {
       name: 'subscription-store',
       partialize: state => ({
-        currentTier: state.currentTier,
-        subscriptionActive: state.subscriptionActive,
-        subscriptionStatus: state.subscriptionStatus,
-        subscriptionExpiresAt: state.subscriptionExpiresAt,
+        // Only persist usage data, not subscription tier (always fetch fresh from backend)
         currentUsage: state.currentUsage,
-        initialized: state.initialized,
+        // Don't persist: currentTier, subscriptionActive, subscriptionStatus, subscriptionExpiresAt, initialized
+        // This ensures we always fetch fresh subscription data on each session
       }),
     }
   )
