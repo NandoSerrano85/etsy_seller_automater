@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import useOrganizationStore from '../stores/organizationStore';
 import useAuthStore from '../stores/authStore';
 import { useNotifications } from '../components/NotificationSystem';
 import SystemOverview from '../components/admin/SystemOverview';
-import OrganizationAdmin from '../components/admin/OrganizationAdmin';
 import UserManagement from '../components/admin/UserManagement';
 import SystemLogs from '../components/admin/SystemLogs';
 import PrintJobMonitor from '../components/admin/PrintJobMonitor';
@@ -16,7 +14,6 @@ const AdminDashboard = () => {
 
   const { addNotification } = useNotifications();
   const { isUserAuthenticated, user } = useAuthStore();
-  const { hasAdminAccess, currentOrganization } = useOrganizationStore();
 
   // Update URL when tab changes
   useEffect(() => {
@@ -24,7 +21,7 @@ const AdminDashboard = () => {
   }, [activeTab, setSearchParams]);
 
   // Check if user has admin access
-  const isAuthorized = hasAdminAccess() || user?.role === 'admin' || user?.role === 'super_admin';
+  const isAuthorized = user?.role === 'admin' || user?.role === 'super_admin';
 
   if (!isUserAuthenticated) {
     return (
@@ -60,7 +57,6 @@ const AdminDashboard = () => {
 
   const tabs = [
     { id: 'overview', name: 'System Overview', icon: '📊' },
-    { id: 'organizations', name: 'Organizations', icon: '🏢' },
     { id: 'users', name: 'User Management', icon: '👥' },
     { id: 'print-jobs', name: 'Print Jobs', icon: '🖨️' },
     { id: 'logs', name: 'System Logs', icon: '📋' },
@@ -70,8 +66,6 @@ const AdminDashboard = () => {
     switch (activeTab) {
       case 'overview':
         return <SystemOverview />;
-      case 'organizations':
-        return <OrganizationAdmin />;
       case 'users':
         return <UserManagement />;
       case 'print-jobs':
@@ -92,11 +86,6 @@ const AdminDashboard = () => {
             <div>
               <h1 className="text-3xl font-bold text-slate-900">Admin Dashboard</h1>
               <p className="text-slate-600 mt-2">System administration and operations management</p>
-              {currentOrganization && (
-                <p className="text-sm text-slate-500 mt-1">
-                  Organization: <span className="font-medium">{currentOrganization.name}</span>
-                </p>
-              )}
             </div>
 
             <div className="flex items-center space-x-4">

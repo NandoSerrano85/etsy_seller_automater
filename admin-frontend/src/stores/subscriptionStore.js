@@ -153,8 +153,6 @@ const useSubscriptionStore = create(
       currentUsage: {
         mockupsThisMonth: 0,
         designsThisMonth: 0,
-        shopsConnected: 0,
-        usersInOrg: 1,
       },
 
       // Loading states
@@ -261,12 +259,6 @@ const useSubscriptionStore = create(
           case FEATURES.MOCKUP_GENERATOR:
             if (tierConfig.limits.mockupsPerMonth !== -1) {
               return currentUsage.mockupsThisMonth < tierConfig.limits.mockupsPerMonth;
-            }
-            return true;
-
-          case FEATURES.MULTI_SHOP_SUPPORT:
-            if (tierConfig.limits.maxShops && tierConfig.limits.maxShops !== -1) {
-              return currentUsage.shopsConnected < tierConfig.limits.maxShops;
             }
             return true;
 

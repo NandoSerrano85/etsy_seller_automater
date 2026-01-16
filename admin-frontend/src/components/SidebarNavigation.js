@@ -3,12 +3,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useSubscription } from '../hooks/useSubscription';
 import { TierBadge } from './subscription';
-import OrganizationSelector from './OrganizationSelector';
-import useOrganizationStore from '../stores/organizationStore';
 
 const SidebarNavigation = ({ isOpen, onToggle }) => {
   const { user, isUserAuthenticated, logout } = useAuth();
-  const { hasAdminAccess } = useOrganizationStore();
   const { currentTier } = useSubscription();
   const location = useLocation();
   const navigate = useNavigate();
@@ -259,7 +256,7 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
               ))}
 
               {/* Admin Dashboard - Only show if user has admin access */}
-              {(hasAdminAccess() || user?.role === 'admin' || user?.role === 'super_admin') && (
+              {(user?.role === 'admin' || user?.role === 'super_admin') && (
                 <div className="pt-4 mt-4 border-t border-sage-200">
                   <p className="px-3 text-xs font-semibold text-sage-500 uppercase tracking-wider mb-2">
                     Administration
@@ -300,13 +297,7 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
 
         {/* User Profile Section */}
         {isUserAuthenticated && (
-          <div className="p-4 border-t border-sage-200 space-y-4">
-            {/* Organization Selector */}
-            <div className="px-1">
-              <p className="text-xs font-semibold text-sage-500 uppercase tracking-wider mb-2">Organization</p>
-              <OrganizationSelector className="w-full" />
-            </div>
-
+          <div className="p-4 border-t border-sage-200">
             {/* User Profile */}
             <div className="flex items-center space-x-3 p-3 rounded-xl bg-gradient-to-r from-sage-50 to-mint-50">
               <div className="w-8 h-8 bg-gradient-to-br from-mint-400 to-mint-500 rounded-full flex items-center justify-center">

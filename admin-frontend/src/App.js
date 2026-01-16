@@ -9,14 +9,12 @@ import useDataStore from './stores/dataStore';
 // Critical components (loaded immediately)
 import LoginRegister from './pages/LoginRegister';
 import OAuthRedirect from './pages/OAuthRedirect';
-import OrganizationSelection from './pages/OrganizationSelection';
 
 // Lazy loaded components for better performance
 const Home = React.lazy(() => import('./pages/SimpleHome'));
 const MockupCreator = React.lazy(() => import('./pages/MockupCreator'));
 const ConnectEtsy = React.lazy(() => import('./pages/ConnectEtsy'));
 const Account = React.lazy(() => import('./pages/Account'));
-const OrganizationManagement = React.lazy(() => import('./pages/OrganizationManagement'));
 const PrinterManagement = React.lazy(() => import('./pages/PrinterManagement'));
 const AdminDashboard = React.lazy(() => import('./pages/AdminDashboard'));
 const SubscriptionPage = React.lazy(() => import('./pages/SubscriptionPage'));
@@ -84,7 +82,7 @@ const AppLayout = memo(({ children }) => {
 
   // Hide sidebar and top nav on login and public pages
   const isPublicPage = useMemo(
-    () => ['/login', '/oauth/redirect', '/welcome', '/organization-select'].includes(location.pathname),
+    () => ['/login', '/oauth/redirect', '/welcome'].includes(location.pathname),
     [location.pathname]
   );
 
@@ -163,7 +161,6 @@ function App() {
             <Route path="/login" element={<LoginRegister />} />
             <Route path="/welcome" element={<Navigate to="/" replace />} />
             <Route path="/oauth/redirect" element={<OAuthRedirect />} />
-            <Route path="/organization-select" element={<OrganizationSelection />} />
 
             {/* Protected routes */}
             {/* Main Dashboard */}
@@ -445,16 +442,6 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CraftFlowEmailCampaigns />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Organization Management */}
-            <Route
-              path="/organizations"
-              element={
-                <ProtectedRoute>
-                  <OrganizationManagement />
                 </ProtectedRoute>
               }
             />

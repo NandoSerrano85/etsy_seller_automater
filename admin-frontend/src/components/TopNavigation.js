@@ -1,6 +1,5 @@
 import React from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import OrganizationSelector from './OrganizationSelector';
 
 const TopNavigation = ({
   sectionTitle,
@@ -211,11 +210,8 @@ const TopNavigation = ({
             </div>
           </div>
 
-          {/* Right side - Organization Selector and Actions */}
+          {/* Right side - Actions */}
           <div className="flex items-center space-x-4">
-            {/* Organization Selector */}
-            <OrganizationSelector className="hidden md:block" />
-
             {/* Actions */}
             {actions.length > 0 && (
               <div className="flex items-center space-x-3">

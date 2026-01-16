@@ -4,7 +4,6 @@ import { useNotifications } from '../NotificationSystem';
 const SystemOverview = () => {
   const [systemStats, setSystemStats] = useState({
     totalUsers: 0,
-    totalOrganizations: 0,
     activePrintJobs: 0,
     totalPrinters: 0,
     systemUptime: '0 days',
@@ -34,7 +33,6 @@ const SystemOverview = () => {
 
       setSystemStats({
         totalUsers: 127,
-        totalOrganizations: 23,
         activePrintJobs: 8,
         totalPrinters: 45,
         systemUptime: '12 days, 4 hours',
@@ -56,18 +54,12 @@ const SystemOverview = () => {
         },
         {
           id: 3,
-          type: 'organization',
-          message: 'Organization "Acme Corp" upgraded plan',
-          timestamp: new Date(Date.now() - 30 * 60 * 1000),
-        },
-        {
-          id: 4,
           type: 'system',
           message: 'System backup completed successfully',
           timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
         },
         {
-          id: 5,
+          id: 4,
           type: 'printer',
           message: 'Printer "HP LaserJet Pro" went offline',
           timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
@@ -109,8 +101,6 @@ const SystemOverview = () => {
         return '🖨️';
       case 'user_login':
         return '👤';
-      case 'organization':
-        return '🏢';
       case 'system':
         return '⚙️';
       case 'printer':
@@ -136,8 +126,8 @@ const SystemOverview = () => {
   if (loading) {
     return (
       <div className="animate-pulse space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1, 2, 3, 4].map(i => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map(i => (
             <div key={i} className="h-24 bg-slate-200 rounded-lg"></div>
           ))}
         </div>
@@ -152,7 +142,7 @@ const SystemOverview = () => {
   return (
     <div className="space-y-6">
       {/* System Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white border border-slate-200 rounded-lg p-6">
           <div className="flex items-center">
             <div className="flex-shrink-0">
@@ -163,20 +153,6 @@ const SystemOverview = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-slate-600">Total Users</p>
               <p className="text-2xl font-semibold text-slate-900">{systemStats.totalUsers}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white border border-slate-200 rounded-lg p-6">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-green-100 rounded-md flex items-center justify-center">
-                <span className="text-green-600">🏢</span>
-              </div>
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-slate-600">Organizations</p>
-              <p className="text-2xl font-semibold text-slate-900">{systemStats.totalOrganizations}</p>
             </div>
           </div>
         </div>

@@ -11,9 +11,6 @@ const LoginRegister = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [shopName, setShopName] = useState('');
-  const [organizationName, setOrganizationName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
-  const [registrationMode, setRegistrationMode] = useState('create'); // 'create' or 'join'
 
   const { login, register, isUserAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -45,14 +42,6 @@ const LoginRegister = () => {
       setError('Passwords do not match.');
       return false;
     }
-    if (tab === 'register' && registrationMode === 'create' && !organizationName.trim()) {
-      setError('Organization name is required.');
-      return false;
-    }
-    if (tab === 'register' && registrationMode === 'join' && !inviteCode.trim()) {
-      setError('Invite code is required to join an organization.');
-      return false;
-    }
     setError('');
     return true;
   };
@@ -67,12 +56,8 @@ const LoginRegister = () => {
       if (tab === 'login') {
         const result = await login(email, password);
         if (result.success) {
-          if (result.needsOrganizationSelection) {
-            navigate('/organization-select', { replace: true });
-          } else {
-            // Redirect to dashboard overview after login
-            navigate('/?tab=overview', { replace: true });
-          }
+          // Redirect to dashboard overview after login
+          navigate('/?tab=overview', { replace: true });
         } else {
           setError(result.error);
         }
@@ -81,8 +66,6 @@ const LoginRegister = () => {
           email,
           password,
           shop_name: shopName,
-          registration_mode: registrationMode,
-          ...(registrationMode === 'create' ? { organization_name: organizationName } : { invite_code: inviteCode }),
         };
         const result = await register(registrationData);
         if (result.success) {
@@ -116,7 +99,6 @@ const LoginRegister = () => {
             onClick={() => {
               setTab('register');
               setError('');
-              setRegistrationMode('create');
             }}
           >
             Register
@@ -174,7 +156,7 @@ const LoginRegister = () => {
             </div>
           </div>
           {tab === 'register' && (
-            <div>
+            <>
               <div>
                 <label className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">Confirm Password</label>
                 <input
@@ -187,71 +169,7 @@ const LoginRegister = () => {
                 />
               </div>
 
-              {/* Registration Mode Selection */}
-              <div className="mb-4">
-                <label className="block text-gray-700 font-medium mb-2 text-sm sm:text-base">Registration Type</label>
-                <div className="flex space-x-4">
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      value="create"
-                      checked={registrationMode === 'create'}
-                      onChange={e => setRegistrationMode(e.target.value)}
-                      className="mr-2"
-                    />
-                    <span className="text-sm">Create New Organization</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input
-                      type="radio"
-                      value="join"
-                      checked={registrationMode === 'join'}
-                      onChange={e => setRegistrationMode(e.target.value)}
-                      className="mr-2"
-                    />
-                    <span className="text-sm">Join Existing Organization</span>
-                  </label>
-                </div>
-              </div>
-
-              {registrationMode === 'create' && (
-                <div className="mb-4">
-                  <label
-                    htmlFor="organization-name"
-                    className="block text-gray-700 font-medium mb-1 text-sm sm:text-base"
-                  >
-                    Organization Name
-                  </label>
-                  <input
-                    id="organization-name"
-                    type="text"
-                    value={organizationName}
-                    onChange={e => setOrganizationName(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
-                    placeholder="Enter your organization name"
-                    required
-                  />
-                </div>
-              )}
-
-              {registrationMode === 'join' && (
-                <div className="mb-4">
-                  <label htmlFor="invite-code" className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">
-                    Invite Code
-                  </label>
-                  <input
-                    id="invite-code"
-                    type="text"
-                    value={inviteCode}
-                    onChange={e => setInviteCode(e.target.value)}
-                    className="w-full px-3 sm:px-4 py-2 border border-sage-300 rounded-lg focus:ring-2 focus:ring-lavender-500 focus:border-lavender-500 text-sm sm:text-base"
-                    placeholder="Enter your invite code"
-                    required
-                  />
-                </div>
-              )}
-
-              <div className="mb-4">
+              <div>
                 <label htmlFor="shop-name" className="block text-gray-700 font-medium mb-1 text-sm sm:text-base">
                   Shop Name
                 </label>
@@ -265,7 +183,7 @@ const LoginRegister = () => {
                   placeholder="Enter your shop name"
                 />
               </div>
-            </div>
+            </>
           )}
           {error && <div className="bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm">{error}</div>}
           <button

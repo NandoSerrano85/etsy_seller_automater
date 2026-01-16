@@ -545,12 +545,9 @@ class SubscriptionService:
                 DesignImages.created_at >= month_start
             ).scalar() or 0
 
-            # Get subscription to determine limits
-            subscription = db.query(Subscription).filter(
-                Subscription.user_id == user_id
-            ).first()
-
-            tier = subscription.tier if subscription else 'free'
+            # Get tier from users.subscription_plan (single source of truth)
+            user = db.query(User).filter(User.id == user_id).first()
+            tier = user.subscription_plan if user and user.subscription_plan else 'free'
             tier_config = SUBSCRIPTION_TIERS.get(tier, SUBSCRIPTION_TIERS['free'])
             limits = tier_config.get('limits', {})
 

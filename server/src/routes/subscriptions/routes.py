@@ -59,48 +59,35 @@ async def get_current_subscription(
     current_user: CurrentUser,
     db: Session = Depends(get_db)
 ):
-    """Get current user's subscription"""
+    """Get current user's subscription from users.subscription_plan (single source of truth)"""
     try:
         user_id = current_user.get_uuid()
-        logger.info(f"Getting subscription for user_id: {user_id}")
 
         if not user_id:
             raise HTTPException(status_code=401, detail="User not authenticated")
 
-        subscription = service.SubscriptionService.get_subscription(db, user_id)
-        logger.info(f"Subscription found: {subscription is not None}, tier: {subscription.tier if subscription else 'N/A'}")
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-        if not subscription:
-            # No subscription record exists - fallback to user.subscription_plan
-            user = db.query(User).filter(User.id == user_id).first()
-            fallback_tier = user.subscription_plan if user and user.subscription_plan else "free"
-            logger.warning(f"No subscription found for user {user_id}, using fallback tier: {fallback_tier}")
-            return model.SubscriptionResponse(
-                id="",
-                user_id=str(user_id),
-                tier=fallback_tier,
-                status="active",
-                current_period_start=None,
-                current_period_end=None,
-                cancel_at_period_end=False,
-                canceled_at=None,
-                stripe_customer_id=None,
-                stripe_subscription_id=None
-            )
+        tier = user.subscription_plan or "free"
+        logger.info(f"User {user_id} subscription tier: {tier}")
 
         return model.SubscriptionResponse(
-            id=str(subscription.id),
-            user_id=str(subscription.user_id),
-            tier=subscription.tier,
-            status=subscription.status,
-            current_period_start=subscription.current_period_start,
-            current_period_end=subscription.current_period_end,
-            cancel_at_period_end=subscription.cancel_at_period_end,
-            canceled_at=subscription.canceled_at,
-            stripe_customer_id=subscription.stripe_customer_id,
-            stripe_subscription_id=subscription.stripe_subscription_id
+            id="",
+            user_id=str(user_id),
+            tier=tier,
+            status="active",
+            current_period_start=None,
+            current_period_end=None,
+            cancel_at_period_end=False,
+            canceled_at=None,
+            stripe_customer_id=None,
+            stripe_subscription_id=None
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting subscription: {e}")
         raise HTTPException(status_code=500, detail=str(e))
