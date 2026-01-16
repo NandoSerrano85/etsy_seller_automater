@@ -2,8 +2,7 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import SettingsTab from './AccountTabs/SettingsTab';
-import TemplatesTab from './AccountTabs/TemplatesTab';
-import ResizingTab from './AccountTabs/ResizingTab';
+import TemplatesWithSubtabs from './AccountTabs/TemplatesWithSubtabs';
 import IntegrationsTab from './AccountTabs/IntegrationsTab';
 import OrganizationTab from './AccountTabs/OrganizationTab';
 import PrinterTab from './AccountTabs/PrinterTab';
@@ -33,11 +32,9 @@ const Account = () => {
       case 'profile':
         return <SettingsTab />;
       case 'templates':
-        return <TemplatesTab />;
+        return <TemplatesWithSubtabs />;
       case 'integrations':
         return <IntegrationsTab />;
-      case 'preferences':
-        return <ResizingTab />;
       case 'organizations':
         return <OrganizationTab />;
       case 'printers':

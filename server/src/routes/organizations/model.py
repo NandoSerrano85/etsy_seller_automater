@@ -10,12 +10,11 @@ from typing import Optional, List, Dict, Any
 # Request Models
 class OrganizationCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255, description="Organization name")
-    shop_name: str = Field(..., min_length=1, max_length=255, description="Shop name for NAS directory")
+    description: Optional[str] = Field(None, max_length=1000, description="Organization description")
 
 class OrganizationUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    shop_name: Optional[str] = Field(None, min_length=1, max_length=255)
-    billing_customer_id: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=1000)
 
 class OrganizationFeatureUpdate(BaseModel):
     features: Dict[str, bool] = Field(..., description="Feature flags to update")
@@ -24,12 +23,10 @@ class OrganizationFeatureUpdate(BaseModel):
 class OrganizationResponse(BaseModel):
     id: UUID
     name: str
-    shop_name: str
-    owner_user_id: Optional[UUID] = None
-    billing_customer_id: Optional[str] = None
+    description: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -39,7 +36,7 @@ class OrganizationWithFeaturesResponse(OrganizationResponse):
 class OrganizationStatsResponse(BaseModel):
     id: UUID
     name: str
-    shop_name: str
+    description: Optional[str] = None
     stats: Dict[str, Any] = {}
     
 class OrganizationListResponse(BaseModel):

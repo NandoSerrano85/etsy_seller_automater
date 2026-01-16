@@ -32,12 +32,11 @@ class OrganizationService:
         try:
             org = Organization(
                 name=org_data.name,
-                shop_name=org_data.shop_name,
-                owner_user_id=owner_user_id
+                description=org_data.description
             )
             db.add(org)
             db.flush()  # Get the ID
-            
+
             # Create default features
             features = OrgFeatures(
                 org_id=org.id,
@@ -50,7 +49,17 @@ class OrganizationService:
                 }
             )
             db.add(features)
-            
+
+            # Add the creator as an owner member of the organization
+            if owner_user_id:
+                owner_member = OrganizationMember(
+                    organization_id=org.id,
+                    user_id=owner_user_id,
+                    role='owner'
+                )
+                db.add(owner_member)
+                logger.info(f"Added user {owner_user_id} as owner of organization {org.id}")
+
             # Log event
             event = Event.create_event(
                 event_type=EventTypes.SYSTEM_INFO,
@@ -61,13 +70,13 @@ class OrganizationService:
                 payload={"action": "organization_created", "name": org_data.name}
             )
             db.add(event)
-            
+
             db.commit()
             db.refresh(org)
-            
+
             logger.info(f"Created organization: {org.id} - {org.name}")
             return org
-            
+
         except Exception as e:
             db.rollback()
             logger.error(f"Error creating organization: {e}")

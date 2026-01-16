@@ -126,9 +126,9 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
       gradient: 'from-sage-100 to-sage-200',
       submenu: [
         { label: 'Profile', path: '/account?tab=profile' },
+        { label: 'Templates', path: '/account?tab=templates' },
         { label: 'Subscription', path: '/subscription' },
         { label: 'Integrations', path: '/account?tab=integrations' },
-        { label: 'Preferences', path: '/account?tab=preferences' },
         { label: 'Printer Management', path: '/account?tab=printers' },
         { label: 'Organizations', path: '/account?tab=organizations' },
       ],
