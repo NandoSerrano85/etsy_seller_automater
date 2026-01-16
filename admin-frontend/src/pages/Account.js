@@ -86,12 +86,6 @@ const Account = () => {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-1">Manage your account settings and preferences</p>
-      </div>
-
       {/* Tab Navigation */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2">
         <div className="flex flex-wrap gap-1">

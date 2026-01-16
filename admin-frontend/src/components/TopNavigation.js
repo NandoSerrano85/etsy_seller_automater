@@ -145,12 +145,6 @@ const TopNavigation = ({
           { label: 'Dashboard', href: '/' },
           { label: 'Settings', active: true },
         ],
-        tabs: [
-          { id: 'profile', label: 'Profile', icon: '👤' },
-          { id: 'templates', label: 'Template', icon: '📋' },
-          { id: 'integrations', label: 'Integrations', icon: '🔌' },
-          { id: 'preferences', label: 'Preferences', icon: '⚙️' },
-        ],
       };
     }
 
