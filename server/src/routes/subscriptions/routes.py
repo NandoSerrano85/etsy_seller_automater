@@ -256,6 +256,27 @@ async def get_subscription_tiers():
     }
 
 
+@router.get("/usage")
+async def get_usage_stats(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Get current month's usage statistics"""
+    try:
+        user_id = current_user.get_uuid()
+
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User not authenticated")
+
+        usage = service.SubscriptionService.get_usage_stats(db, user_id)
+
+        return usage
+
+    except Exception as e:
+        logger.error(f"Error getting usage stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/webhook")
 async def stripe_webhook(
     request: Request,

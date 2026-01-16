@@ -142,6 +142,19 @@ class SubscriptionService {
       throw error;
     }
   }
+
+  /**
+   * Get usage statistics for current month
+   */
+  async getUsageStats() {
+    try {
+      const response = await this.api.get('/usage');
+      return response.data;
+    } catch (error) {
+      console.error('Error getting usage stats:', error);
+      throw error;
+    }
+  }
 }
 
 export default new SubscriptionService();

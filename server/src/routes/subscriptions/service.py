@@ -511,3 +511,67 @@ class SubscriptionService:
     def get_all_tier_configs() -> dict:
         """Get all tier configurations"""
         return SUBSCRIPTION_TIERS
+
+    @staticmethod
+    def get_usage_stats(db: Session, user_id: UUID) -> dict:
+        """Get usage statistics for the current month"""
+        from sqlalchemy import func
+        from server.src.entities.mockup import Mockups
+        from server.src.entities.designs import DesignImages
+
+        try:
+            now = datetime.now(timezone.utc)
+            current_month = now.month
+            current_year = now.year
+
+            # Get start of current month
+            month_start = datetime(current_year, current_month, 1, tzinfo=timezone.utc)
+
+            # Count mockups created this month
+            mockups_count = db.query(func.count(Mockups.id)).filter(
+                Mockups.user_id == user_id,
+                Mockups.created_at >= month_start
+            ).scalar() or 0
+
+            # Count designs uploaded this month
+            designs_count = db.query(func.count(DesignImages.id)).filter(
+                DesignImages.user_id == user_id,
+                DesignImages.created_at >= month_start
+            ).scalar() or 0
+
+            # Get subscription to determine limits
+            subscription = db.query(Subscription).filter(
+                Subscription.user_id == user_id
+            ).first()
+
+            tier = subscription.tier if subscription else 'free'
+            tier_config = SUBSCRIPTION_TIERS.get(tier, SUBSCRIPTION_TIERS['free'])
+            limits = tier_config.get('limits', {})
+
+            # Calculate next billing date (1st of next month)
+            if current_month == 12:
+                next_billing_date = datetime(current_year + 1, 1, 1, tzinfo=timezone.utc)
+            else:
+                next_billing_date = datetime(current_year, current_month + 1, 1, tzinfo=timezone.utc)
+
+            return {
+                "mockups_created": mockups_count,
+                "designs_uploaded": designs_count,
+                "mockups_limit": limits.get('monthly_mockups', -1),
+                "month": current_month,
+                "year": current_year,
+                "tier": tier,
+                "next_billing_date": next_billing_date.isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting usage stats: {e}")
+            return {
+                "mockups_created": 0,
+                "designs_uploaded": 0,
+                "mockups_limit": -1,
+                "month": datetime.now(timezone.utc).month,
+                "year": datetime.now(timezone.utc).year,
+                "tier": "free",
+                "next_billing_date": None
+            }
