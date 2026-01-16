@@ -1,25 +1,94 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadStripe } from '@stripe/stripe-js';
 import subscriptionService from '../services/subscriptionService';
 
-// Initialize Stripe with your publishable key
-const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
+// Helper function to format feature display based on tier limits
+const formatTierFeatures = tier => {
+  const features = tier.features || {};
+  const limits = tier.limits || {};
+  const displayFeatures = [];
 
-// Feature descriptions for display
-const FEATURE_LABELS = {
-  mockup_generator: 'Mockup Generator',
-  monthly_mockup_limit: 'Monthly Mockups',
-  file_cleaner: 'File Cleaner',
-  etsy_dashboard: 'Etsy Dashboard',
-  listing_templates: 'Listing Templates',
-  auto_naming: 'Auto Naming',
-  batch_uploads: 'Batch Uploads',
-  file_resizing: 'File Resizing',
-  print_file_generator: 'Print File Generator',
-  advanced_resizing: 'Advanced Resizing',
-  csv_export: 'CSV Export',
-  multi_shop_support: 'Multi-Shop Support',
+  // Mockup Generator features
+  if (features.mockup_generator) {
+    const mockupLimit = limits.monthly_mockups;
+    if (mockupLimit === -1) {
+      displayFeatures.push({ label: 'Unlimited mockups/month', included: true });
+    } else {
+      displayFeatures.push({ label: `${mockupLimit} mockups/month`, included: true });
+    }
+
+    const batchLimit = limits.mockups_per_batch;
+    if (batchLimit === -1) {
+      displayFeatures.push({ label: 'Unlimited batch creation', included: true });
+    } else if (batchLimit === 1) {
+      displayFeatures.push({ label: '1 mockup at a time', included: true });
+    } else {
+      displayFeatures.push({ label: `${batchLimit} mockups per batch`, included: true });
+    }
+
+    const templateLimit = limits.templates;
+    if (templateLimit === -1) {
+      displayFeatures.push({ label: 'Unlimited templates', included: true });
+    } else {
+      displayFeatures.push({ label: `${templateLimit} template${templateLimit > 1 ? 's' : ''}`, included: true });
+    }
+
+    const canvasLimit = limits.canvas;
+    if (canvasLimit === -1) {
+      displayFeatures.push({ label: 'Unlimited canvas sizes', included: true });
+    } else {
+      displayFeatures.push({ label: `${canvasLimit} canvas size${canvasLimit > 1 ? 's' : ''}`, included: true });
+    }
+  }
+
+  // Etsy features
+  if (features.etsy_integration) {
+    displayFeatures.push({ label: 'Etsy Integration', included: true, highlight: true });
+    displayFeatures.push({ label: 'View & edit listings', included: true });
+    displayFeatures.push({ label: 'View orders', included: true });
+  }
+
+  // Shopify
+  if (features.shopify_integration) {
+    displayFeatures.push({ label: 'Shopify Integration', included: true, highlight: true });
+  } else if (tier.id !== 'free') {
+    displayFeatures.push({ label: 'Shopify Integration', included: false });
+  }
+
+  // CraftFlow Commerce
+  if (features.craftflow_commerce) {
+    displayFeatures.push({ label: 'CraftFlow Commerce', included: true, highlight: true });
+  } else if (tier.id !== 'free' && tier.id !== 'starter') {
+    displayFeatures.push({ label: 'CraftFlow Commerce', included: false });
+  }
+
+  // Additional features
+  if (features.file_cleaner) {
+    displayFeatures.push({ label: 'File Cleaner', included: true });
+  }
+  if (features.auto_naming) {
+    displayFeatures.push({ label: 'Auto Naming', included: true });
+  }
+  if (features.batch_uploads) {
+    displayFeatures.push({ label: 'Batch Uploads', included: true });
+  }
+  if (features.advanced_resizing) {
+    displayFeatures.push({ label: 'Advanced Resizing', included: true });
+  }
+  if (features.print_file_generator) {
+    displayFeatures.push({ label: 'Print File Generator', included: true });
+  }
+  if (features.csv_export) {
+    displayFeatures.push({ label: 'CSV Export', included: true });
+  }
+  if (features.multi_shop_support) {
+    displayFeatures.push({ label: 'Multi-Shop Support', included: true });
+  }
+  if (features.priority_support) {
+    displayFeatures.push({ label: 'Priority Support', included: true });
+  }
+
+  return displayFeatures;
 };
 
 const SubscriptionPage = () => {
@@ -345,23 +414,20 @@ const SubscriptionPage = () => {
                   </div>
                 </div>
 
+                {/* Description */}
+                {tier.description && <p className="px-6 pt-4 text-sm text-gray-600">{tier.description}</p>}
+
                 {/* Features */}
                 <div className="p-6">
-                  <ul className="space-y-3 mb-6">
-                    {Object.entries(tier.features).map(([feature, value]) => {
-                      if (value === false) return null;
-
-                      let displayValue = '';
-                      if (feature === 'monthly_mockup_limit') {
-                        displayValue = value === -1 ? 'Unlimited mockups' : `${value} mockups/month`;
-                      } else {
-                        displayValue = FEATURE_LABELS[feature] || feature.replace(/_/g, ' ');
-                      }
-
-                      return (
-                        <li key={feature} className="flex items-start text-sm">
+                  <ul className="space-y-2 mb-6">
+                    {formatTierFeatures(tier).map((feature, index) => (
+                      <li
+                        key={index}
+                        className={`flex items-start text-sm ${feature.highlight ? 'mt-3 pt-3 border-t border-gray-100' : ''}`}
+                      >
+                        {feature.included ? (
                           <svg
-                            className="w-5 h-5 text-green-500 mr-2 flex-shrink-0"
+                            className={`w-5 h-5 mr-2 flex-shrink-0 ${feature.highlight ? 'text-blue-500' : 'text-green-500'}`}
                             fill="currentColor"
                             viewBox="0 0 20 20"
                           >
@@ -371,10 +437,32 @@ const SubscriptionPage = () => {
                               clipRule="evenodd"
                             />
                           </svg>
-                          <span className="text-gray-700 capitalize">{displayValue}</span>
-                        </li>
-                      );
-                    })}
+                        ) : (
+                          <svg
+                            className="w-5 h-5 text-gray-300 mr-2 flex-shrink-0"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                        <span
+                          className={
+                            feature.included
+                              ? feature.highlight
+                                ? 'text-gray-900 font-medium'
+                                : 'text-gray-700'
+                              : 'text-gray-400'
+                          }
+                        >
+                          {feature.label}
+                        </span>
+                      </li>
+                    ))}
                   </ul>
 
                   {/* Action Button */}

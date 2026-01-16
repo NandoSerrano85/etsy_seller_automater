@@ -5,20 +5,48 @@ import subscriptionService from '../../services/subscriptionService';
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
-// Feature labels for display
-const FEATURE_LABELS = {
-  mockup_generator: 'Mockup Generator',
-  monthly_mockup_limit: 'Monthly Mockups',
-  file_cleaner: 'File Cleaner',
-  etsy_dashboard: 'Etsy Dashboard',
-  listing_templates: 'Listing Templates',
-  auto_naming: 'Auto Naming',
-  batch_uploads: 'Batch Uploads',
-  file_resizing: 'File Resizing',
-  print_file_generator: 'Print File Generator',
-  advanced_resizing: 'Advanced Resizing',
-  csv_export: 'CSV Export',
-  multi_shop_support: 'Multi-Shop Support',
+// Format tier features for display
+const formatTierFeatures = tier => {
+  const features = tier.features || {};
+  const limits = tier.limits || {};
+  const displayFeatures = [];
+
+  // Mockup Generator features
+  if (features.mockup_generator) {
+    const mockupLimit = limits.monthly_mockups;
+    displayFeatures.push(mockupLimit === -1 ? 'Unlimited mockups/month' : `${mockupLimit} mockups/month`);
+
+    const batchLimit = limits.mockups_per_batch;
+    if (batchLimit === -1) {
+      displayFeatures.push('Unlimited batch creation');
+    } else if (batchLimit === 1) {
+      displayFeatures.push('1 mockup at a time');
+    } else {
+      displayFeatures.push(`${batchLimit} mockups per batch`);
+    }
+
+    const templateLimit = limits.templates;
+    displayFeatures.push(
+      templateLimit === -1 ? 'Unlimited templates' : `${templateLimit} template${templateLimit > 1 ? 's' : ''}`
+    );
+  }
+
+  // Integrations
+  if (features.etsy_integration) displayFeatures.push('Etsy Integration');
+  if (features.shopify_integration) displayFeatures.push('Shopify Integration');
+  if (features.craftflow_commerce) displayFeatures.push('CraftFlow Commerce');
+
+  // Additional features
+  if (features.file_cleaner) displayFeatures.push('File Cleaner');
+  if (features.auto_naming) displayFeatures.push('Auto Naming');
+  if (features.batch_uploads) displayFeatures.push('Batch Uploads');
+  if (features.advanced_resizing) displayFeatures.push('Advanced Resizing');
+  if (features.print_file_generator) displayFeatures.push('Print File Generator');
+  if (features.csv_export) displayFeatures.push('CSV Export');
+  if (features.multi_shop_support) displayFeatures.push('Multi-Shop Support');
+  if (features.priority_support) displayFeatures.push('Priority Support');
+
+  return displayFeatures;
 };
 
 const CheckoutPage = () => {
@@ -167,33 +195,22 @@ const CheckoutPage = () => {
               <div className="mb-6">
                 <h4 className="font-semibold text-gray-900 mb-3">What's included:</h4>
                 <ul className="space-y-2">
-                  {Object.entries(selectedTier.features).map(([feature, value]) => {
-                    if (value === false) return null;
-
-                    let displayValue = '';
-                    if (feature === 'monthly_mockup_limit') {
-                      displayValue = value === -1 ? 'Unlimited mockups' : `${value} mockups/month`;
-                    } else {
-                      displayValue = FEATURE_LABELS[feature] || feature.replace(/_/g, ' ');
-                    }
-
-                    return (
-                      <li key={feature} className="flex items-center text-sm text-gray-600">
-                        <svg
-                          className="w-4 h-4 text-green-500 mr-2 flex-shrink-0"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                        <span className="capitalize">{displayValue}</span>
-                      </li>
-                    );
-                  })}
+                  {formatTierFeatures(selectedTier).map((feature, index) => (
+                    <li key={index} className="flex items-center text-sm text-gray-600">
+                      <svg
+                        className="w-4 h-4 text-green-500 mr-2 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <span>{feature}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
 

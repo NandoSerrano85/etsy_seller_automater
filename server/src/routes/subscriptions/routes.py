@@ -247,7 +247,9 @@ async def get_subscription_tiers():
                 "name": tier_config['name'],
                 "price": tier_config['price'],
                 "stripe_price_id": tier_config.get('stripe_price_id'),
-                "features": tier_config['features']
+                "description": tier_config.get('description', ''),
+                "features": tier_config['features'],
+                "limits": tier_config.get('limits', {})
             }
             for tier_key, tier_config in tiers.items()
         ]

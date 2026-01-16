@@ -24,58 +24,168 @@ SUBSCRIPTION_TIERS = {
         'name': 'Free',
         'price': 0,
         'stripe_price_id': None,
+        'description': 'Get started with basic mockup creation',
         'features': {
+            # Mockup Generator - Limited
             'mockup_generator': True,
-            'monthly_mockup_limit': 50,
-            'file_cleaner': True,
-            'etsy_dashboard': True
+            'monthly_mockup_limit': 15,
+            'mockups_per_batch': 1,  # Can only create 1 mockup at a time
+            'max_templates': 1,
+            'max_canvas': 1,
+            'max_sizes': 1,
+            # Etsy - View & Edit
+            'etsy_integration': True,
+            'etsy_view_mockups': True,
+            'etsy_view_designs': True,
+            'etsy_view_listings': True,
+            'etsy_edit_listings': True,
+            'etsy_view_orders': True,
+            # Not included
+            'shopify_integration': False,
+            'craftflow_commerce': False,
+            'batch_uploads': False,
+            'file_cleaner': False,
+            'auto_naming': False,
+            'advanced_resizing': False,
+            'print_file_generator': False,
+            'csv_export': False,
+            'multi_shop_support': False,
+            'priority_support': False
+        },
+        'limits': {
+            'monthly_mockups': 15,
+            'mockups_per_batch': 1,
+            'templates': 1,
+            'canvas': 1,
+            'sizes': 1
         }
     },
     'starter': {
         'name': 'Starter',
         'price': 19.99,
         'stripe_price_id': os.getenv('STRIPE_STARTER_PRICE_ID'),
+        'description': 'Perfect for growing sellers',
         'features': {
+            # Mockup Generator - Enhanced
             'mockup_generator': True,
-            'monthly_mockup_limit': 200,
+            'monthly_mockup_limit': 100,
+            'mockups_per_batch': 10,
+            'max_templates': 10,
+            'max_canvas': 5,
+            'max_sizes': 10,
+            # Etsy - Full access
+            'etsy_integration': True,
+            'etsy_view_mockups': True,
+            'etsy_view_designs': True,
+            'etsy_view_listings': True,
+            'etsy_edit_listings': True,
+            'etsy_view_orders': True,
+            'etsy_manage_orders': True,
+            # Additional features
             'file_cleaner': True,
-            'etsy_dashboard': True,
-            'listing_templates': True,
-            'auto_naming': True
+            'auto_naming': True,
+            'batch_uploads': True,
+            # Not included
+            'shopify_integration': False,
+            'craftflow_commerce': False,
+            'advanced_resizing': False,
+            'print_file_generator': False,
+            'csv_export': False,
+            'multi_shop_support': False,
+            'priority_support': False
+        },
+        'limits': {
+            'monthly_mockups': 100,
+            'mockups_per_batch': 10,
+            'templates': 10,
+            'canvas': 5,
+            'sizes': 10
         }
     },
     'pro': {
         'name': 'Pro',
         'price': 39.99,
         'stripe_price_id': os.getenv('STRIPE_PRO_PRICE_ID'),
+        'description': 'For serious sellers who want more',
         'features': {
+            # Mockup Generator - Unlimited
             'mockup_generator': True,
             'monthly_mockup_limit': -1,  # Unlimited
+            'mockups_per_batch': 50,
+            'max_templates': -1,  # Unlimited
+            'max_canvas': -1,
+            'max_sizes': -1,
+            # Etsy - Full access
+            'etsy_integration': True,
+            'etsy_view_mockups': True,
+            'etsy_view_designs': True,
+            'etsy_view_listings': True,
+            'etsy_edit_listings': True,
+            'etsy_view_orders': True,
+            'etsy_manage_orders': True,
+            # Shopify integration
+            'shopify_integration': True,
+            # All additional features
             'file_cleaner': True,
-            'etsy_dashboard': True,
-            'listing_templates': True,
             'auto_naming': True,
             'batch_uploads': True,
-            'file_resizing': True
+            'advanced_resizing': True,
+            'print_file_generator': True,
+            'csv_export': True,
+            # Not included
+            'craftflow_commerce': False,
+            'multi_shop_support': False,
+            'priority_support': False
+        },
+        'limits': {
+            'monthly_mockups': -1,
+            'mockups_per_batch': 50,
+            'templates': -1,
+            'canvas': -1,
+            'sizes': -1
         }
     },
     'full': {
         'name': 'Full',
         'price': 99.99,
         'stripe_price_id': os.getenv('STRIPE_FULL_PRICE_ID'),
+        'description': 'Everything you need to scale',
         'features': {
+            # Mockup Generator - Unlimited
             'mockup_generator': True,
             'monthly_mockup_limit': -1,
+            'mockups_per_batch': -1,  # Unlimited
+            'max_templates': -1,
+            'max_canvas': -1,
+            'max_sizes': -1,
+            # Etsy - Full access
+            'etsy_integration': True,
+            'etsy_view_mockups': True,
+            'etsy_view_designs': True,
+            'etsy_view_listings': True,
+            'etsy_edit_listings': True,
+            'etsy_view_orders': True,
+            'etsy_manage_orders': True,
+            # Shopify integration
+            'shopify_integration': True,
+            # CraftFlow Commerce
+            'craftflow_commerce': True,
+            # All features
             'file_cleaner': True,
-            'etsy_dashboard': True,
-            'listing_templates': True,
             'auto_naming': True,
             'batch_uploads': True,
-            'file_resizing': True,
-            'print_file_generator': True,
             'advanced_resizing': True,
+            'print_file_generator': True,
             'csv_export': True,
-            'multi_shop_support': True
+            'multi_shop_support': True,
+            'priority_support': True
+        },
+        'limits': {
+            'monthly_mockups': -1,
+            'mockups_per_batch': -1,
+            'templates': -1,
+            'canvas': -1,
+            'sizes': -1
         }
     }
 }
