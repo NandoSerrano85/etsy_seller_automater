@@ -69,11 +69,15 @@ async def get_current_subscription(
         subscription = service.SubscriptionService.get_subscription(db, user_id)
 
         if not subscription:
-            # Return a default free subscription
+            # Check user's subscription_plan field as fallback
+            user = db.query(User).filter(User.id == user_id).first()
+            user_tier = user.subscription_plan if user and user.subscription_plan else "free"
+
+            # Return subscription based on user's subscription_plan
             return model.SubscriptionResponse(
                 id="",
                 user_id=str(user_id),
-                tier="free",
+                tier=user_tier,
                 status="active",
                 current_period_start=None,
                 current_period_end=None,

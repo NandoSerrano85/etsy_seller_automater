@@ -544,7 +544,13 @@ class SubscriptionService:
                 Subscription.user_id == user_id
             ).first()
 
-            tier = subscription.tier if subscription else 'free'
+            # Check subscription table first, then fall back to user's subscription_plan
+            if subscription:
+                tier = subscription.tier
+            else:
+                user = db.query(User).filter(User.id == user_id).first()
+                tier = user.subscription_plan if user and user.subscription_plan else 'free'
+
             tier_config = SUBSCRIPTION_TIERS.get(tier, SUBSCRIPTION_TIERS['free'])
             limits = tier_config.get('limits', {})
 
