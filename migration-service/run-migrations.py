@@ -124,6 +124,7 @@ def discover_migrations():
         "create_ecommerce_tables",        # Creates all ecommerce tables for storefront
         "fix_storefront_settings_user_id_type",  # Fixes user_id column type from INTEGER to UUID
         "add_updated_at_to_product_reviews",  # Adds missing updated_at column to product reviews
+        "add_updated_at_to_customer_addresses",  # Adds missing updated_at column to customer addresses
         "remove_updated_at_from_order_items",  # Removes updated_at column from order items (not in schema)
         "fix_cart_item_ids",  # Fixes cart items missing unique IDs that cause 404 errors on removal
         "add_shipping_config_to_storefront_settings",  # Adds shipping origin address and package defaults
