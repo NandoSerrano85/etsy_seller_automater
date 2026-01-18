@@ -174,7 +174,7 @@ export const customerApi = {
 
   login: async (email: string, password: string): Promise<AuthResponse> => {
     const { data } = await api.post("/api/storefront/customers/login", {
-      username: email,
+      email,
       password,
     });
 
