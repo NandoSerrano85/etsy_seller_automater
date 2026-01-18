@@ -15,7 +15,8 @@ const CraftFlowProductCreator = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [designs, setDesigns] = useState([]);
-  const [imageUrls, setImageUrls] = useState(['']);
+  const [imageUrls, setImageUrls] = useState(['']); // URLs from server (existing images)
+  const [pendingImages, setPendingImages] = useState([]); // { file: File, previewUrl: string } - images to upload on save
   const [uploadingImages, setUploadingImages] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -52,6 +53,17 @@ const CraftFlowProductCreator = () => {
     loadDesigns();
     loadTemplates();
   }, [id]);
+
+  // Clean up blob URLs when component unmounts
+  useEffect(() => {
+    return () => {
+      pendingImages.forEach(img => {
+        if (img.previewUrl) {
+          URL.revokeObjectURL(img.previewUrl);
+        }
+      });
+    };
+  }, [pendingImages]);
 
   const loadProduct = async () => {
     try {
@@ -228,7 +240,7 @@ const CraftFlowProductCreator = () => {
     }
   };
 
-  const handleImageUpload = async e => {
+  const handleImageUpload = e => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
@@ -237,6 +249,7 @@ const CraftFlowProductCreator = () => {
     const invalidFiles = files.filter(f => !validTypes.includes(f.type));
     if (invalidFiles.length > 0) {
       addNotification('error', 'Only JPG, PNG, WEBP and GIF images are allowed');
+      e.target.value = '';
       return;
     }
 
@@ -245,40 +258,54 @@ const CraftFlowProductCreator = () => {
     const oversizedFiles = files.filter(f => f.size > maxSize);
     if (oversizedFiles.length > 0) {
       addNotification('error', 'Images must be less than 10MB');
+      e.target.value = '';
       return;
     }
 
-    setUploadingImages(true);
-    try {
-      const uploadPromises = files.map(async file => {
-        const formData = new FormData();
-        formData.append('file', file);
+    // Create blob URLs for immediate preview (stored in RAM)
+    const newPendingImages = files.map(file => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+      name: file.name,
+    }));
 
-        const response = await axios.post(`${API_BASE_URL}/api/ecommerce/admin/product-images/upload`, formData, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'multipart/form-data',
-          },
-        });
+    setPendingImages(prev => [...prev, ...newPendingImages]);
+    addNotification('info', `${files.length} image(s) ready for preview. Save product to upload.`);
 
-        return response.data.url;
+    // Reset file input
+    e.target.value = '';
+  };
+
+  // Clean up blob URLs when component unmounts or when images are removed
+  const removePendingImage = index => {
+    setPendingImages(prev => {
+      const imageToRemove = prev[index];
+      if (imageToRemove?.previewUrl) {
+        URL.revokeObjectURL(imageToRemove.previewUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  // Upload pending images to server
+  const uploadPendingImages = async () => {
+    if (pendingImages.length === 0) return [];
+
+    const uploadPromises = pendingImages.map(async ({ file }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await axios.post(`${API_BASE_URL}/api/ecommerce/admin/product-images/upload`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      const uploadedUrls = await Promise.all(uploadPromises);
+      return response.data.url;
+    });
 
-      // Add uploaded URLs to image list, filtering out empty ones
-      setImageUrls(prev => [...prev.filter(url => url), ...uploadedUrls]);
-
-      addNotification('success', `Uploaded ${uploadedUrls.length} image(s) successfully`);
-    } catch (error) {
-      console.error('Error uploading images:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to upload images';
-      addNotification('error', errorMessage);
-    } finally {
-      setUploadingImages(false);
-      // Reset file input
-      e.target.value = '';
-    }
+    return Promise.all(uploadPromises);
   };
 
   const handleSubmit = async e => {
@@ -298,8 +325,24 @@ const CraftFlowProductCreator = () => {
     try {
       setSaving(true);
 
-      // Filter out empty image URLs
-      const validImages = imageUrls.filter(url => url.trim());
+      // Upload pending images first
+      let uploadedUrls = [];
+      if (pendingImages.length > 0) {
+        addNotification('info', `Uploading ${pendingImages.length} image(s)...`);
+        uploadedUrls = await uploadPendingImages();
+
+        // Clean up blob URLs after successful upload
+        pendingImages.forEach(img => {
+          if (img.previewUrl) {
+            URL.revokeObjectURL(img.previewUrl);
+          }
+        });
+        setPendingImages([]);
+      }
+
+      // Combine existing URLs with newly uploaded URLs
+      const validExistingImages = imageUrls.filter(url => url.trim());
+      const allImages = [...validExistingImages, ...uploadedUrls];
 
       const productData = {
         ...formData,
@@ -307,8 +350,8 @@ const CraftFlowProductCreator = () => {
         compare_at_price: formData.compare_at_price ? parseFloat(formData.compare_at_price) : null,
         cost: formData.cost ? parseFloat(formData.cost) : null,
         inventory_quantity: parseInt(formData.inventory_quantity) || 0,
-        images: validImages,
-        featured_image: validImages[0] || null,
+        images: allImages,
+        featured_image: allImages[0] || null,
       };
 
       let response;
@@ -802,28 +845,71 @@ const CraftFlowProductCreator = () => {
               ))}
             </div>
 
-            {imageUrls.some(url => url) && (
-              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {imageUrls
-                  .filter(url => url)
-                  .map((url, index) => (
-                    <div key={index} className="relative group">
+            {/* Image Preview Section */}
+            {(imageUrls.some(url => url) || pendingImages.length > 0) && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Image Preview</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Existing/uploaded images */}
+                  {imageUrls
+                    .filter(url => url)
+                    .map((url, index) => (
+                      <div key={`existing-${index}`} className="relative group">
+                        <img
+                          src={url}
+                          alt={`Uploaded ${index + 1}`}
+                          className="w-full h-32 object-cover rounded-md border border-gray-300"
+                          onError={e => {
+                            e.target.src =
+                              'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIEVycm9yPC90ZXh0Pjwvc3ZnPg==';
+                          }}
+                        />
+                        {index === 0 && pendingImages.length === 0 && (
+                          <div className="absolute top-2 left-2 px-2 py-1 bg-sage-600 text-white text-xs rounded">
+                            Featured
+                          </div>
+                        )}
+                        <div className="absolute bottom-2 left-2 px-2 py-1 bg-green-600 text-white text-xs rounded">
+                          Saved
+                        </div>
+                      </div>
+                    ))}
+
+                  {/* Pending images (from RAM - not yet uploaded) */}
+                  {pendingImages.map((img, index) => (
+                    <div key={`pending-${index}`} className="relative group">
                       <img
-                        src={url}
-                        alt={`Preview ${index + 1}`}
-                        className="w-full h-32 object-cover rounded-md border border-gray-300"
-                        onError={e => {
-                          e.target.src =
-                            'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIEVycm9yPC90ZXh0Pjwvc3ZnPg==';
-                        }}
+                        src={img.previewUrl}
+                        alt={`Pending ${img.name}`}
+                        className="w-full h-32 object-cover rounded-md border-2 border-dashed border-blue-400"
                       />
-                      {index === 0 && (
+                      {index === 0 && imageUrls.filter(url => url).length === 0 && (
                         <div className="absolute top-2 left-2 px-2 py-1 bg-sage-600 text-white text-xs rounded">
                           Featured
                         </div>
                       )}
+                      <div className="absolute bottom-2 left-2 px-2 py-1 bg-blue-500 text-white text-xs rounded">
+                        Pending
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePendingImage(index)}
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <XMarkIcon className="w-4 h-4" />
+                      </button>
+                      <p className="text-xs text-gray-500 mt-1 truncate" title={img.name}>
+                        {img.name}
+                      </p>
                     </div>
                   ))}
+                </div>
+
+                {pendingImages.length > 0 && (
+                  <p className="text-sm text-blue-600 mt-3">
+                    {pendingImages.length} image(s) pending upload. Click "Save" to upload and save the product.
+                  </p>
+                )}
               </div>
             )}
           </div>

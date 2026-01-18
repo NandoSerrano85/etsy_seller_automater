@@ -36,7 +36,8 @@ async def upload_product_image(
     """
     Upload a product mockup image.
 
-    Stores the image and returns a URL that can be used in the product images array.
+    Stores the image in a user-specific folder and returns a URL that can be used
+    in the product images array and accessed by the storefront.
     In production, this should store to NAS. For now, stores locally.
 
     Requires: Pro plan or higher
@@ -63,6 +64,9 @@ async def upload_product_image(
     file_extension = Path(file.filename).suffix if file.filename else '.jpg'
     unique_filename = f"product_{uuid.uuid4().hex}{file_extension}"
 
+    # User-specific folder path
+    user_folder = str(current_user.id)
+
     # Check if NAS storage is available
     nas_enabled = os.getenv('QNAP_HOST') and os.getenv('QNAP_USERNAME') and os.getenv('QNAP_PASSWORD')
 
@@ -72,19 +76,19 @@ async def upload_product_image(
             from server.src.services.nas_service import get_nas_service
             nas_service = get_nas_service()
 
-            # Upload to NAS in product_images folder
-            nas_path = f"product_images/{unique_filename}"
+            # Upload to NAS in user-specific product_mockups folder
+            nas_path = f"product_mockups/{user_folder}/{unique_filename}"
             nas_service.upload_file(content, nas_path)
 
             # Return NAS URL
-            file_url = f"/nas/product_images/{unique_filename}"
+            file_url = f"/nas/product_mockups/{user_folder}/{unique_filename}"
         except Exception as e:
             # Fallback to local storage if NAS fails
             print(f"NAS upload failed: {e}. Falling back to local storage.")
-            file_url = _store_locally(content, unique_filename)
+            file_url = _store_locally(content, unique_filename, user_folder)
     else:
         # Store locally if NAS not configured
-        file_url = _store_locally(content, unique_filename)
+        file_url = _store_locally(content, unique_filename, user_folder)
 
     return ImageUploadResponse(
         url=file_url,
@@ -93,10 +97,10 @@ async def upload_product_image(
     )
 
 
-def _store_locally(content: bytes, filename: str) -> str:
-    """Store file locally as fallback."""
-    # Create uploads directory if it doesn't exist
-    upload_dir = Path("uploads/product_images")
+def _store_locally(content: bytes, filename: str, user_folder: str) -> str:
+    """Store file locally in user-specific folder."""
+    # Create user-specific uploads directory if it doesn't exist
+    upload_dir = Path(f"uploads/product_mockups/{user_folder}")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     # Save file
@@ -105,7 +109,7 @@ def _store_locally(content: bytes, filename: str) -> str:
         f.write(content)
 
     # Return relative URL
-    return f"/uploads/product_images/{filename}"
+    return f"/uploads/product_mockups/{user_folder}/{filename}"
 
 
 @router.post('/upload-multiple', response_model=List[ImageUploadResponse])
