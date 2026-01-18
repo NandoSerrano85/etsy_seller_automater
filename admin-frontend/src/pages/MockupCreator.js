@@ -475,7 +475,7 @@ const MockupCreator = () => {
       }
 
       setMessage('Mockup created successfully!');
-      trackMockupCreation(); // Track usage for subscription limits
+      trackMockupCreation(imageFiles.length); // Track usage for subscription limits (includes image count)
       setShowModal(false);
       loadExistingMockups(); // Refresh the mockups list
     } catch (error) {
@@ -842,12 +842,10 @@ const MockupCreator = () => {
           <h1 className="text-3xl font-bold text-gray-900 mb-4">Mockup Creator</h1>
           <p className="text-gray-600 mb-6">Create professional mockups with custom masks and templates</p>
 
-          {/* Usage Indicator for Free Tier */}
-          {isFreeTier && (
-            <div className="max-w-md mx-auto mb-6">
-              <UsageIndicator feature={FEATURES.MOCKUP_GENERATOR} size="default" />
-            </div>
-          )}
+          {/* Usage Indicator - shows total counts for all tiers, monthly limits for free tier */}
+          <div className="max-w-md mx-auto mb-6">
+            <UsageIndicator feature={FEATURES.MOCKUP_GENERATOR} size="default" />
+          </div>
 
           <FeatureGate feature={FEATURES.MOCKUP_GENERATOR} showUpgradePrompt={false}>
             <button

@@ -21,6 +21,7 @@ export const useSubscription = () => {
     getAllTierConfigs,
     getUpgradeRecommendation,
     incrementMockupUsage,
+    incrementMockupImagesUsage,
     setCurrentUsage,
     fetchSubscription,
   } = useSubscriptionStore();
@@ -55,12 +56,25 @@ export const useSubscription = () => {
   };
 
   // Usage tracking
-  const trackMockupCreation = () => {
+  const trackMockupCreation = (imageCount = 0) => {
+    // Increment locally for immediate UI feedback
     incrementMockupUsage();
+    if (imageCount > 0) {
+      incrementMockupImagesUsage(imageCount);
+    }
+    // Refresh from backend after a short delay to ensure accuracy
+    setTimeout(() => {
+      fetchSubscription();
+    }, 1000);
   };
 
   const updateUsage = usageData => {
     setCurrentUsage(usageData);
+  };
+
+  // Refresh usage from backend (useful after operations that affect counts)
+  const refreshUsage = () => {
+    fetchSubscription();
   };
 
   return {
@@ -100,6 +114,7 @@ export const useSubscription = () => {
     // Usage tracking
     trackMockupCreation,
     updateUsage,
+    refreshUsage,
 
     // Fetch subscription from backend
     fetchSubscription,

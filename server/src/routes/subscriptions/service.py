@@ -522,7 +522,7 @@ class SubscriptionService:
     def get_usage_stats(db: Session, user_id: UUID) -> dict:
         """Get usage statistics for the current month"""
         from sqlalchemy import func
-        from server.src.entities.mockup import Mockups
+        from server.src.entities.mockup import Mockups, MockupImage
         from server.src.entities.designs import DesignImages
 
         try:
@@ -537,6 +537,18 @@ class SubscriptionService:
             mockups_count = db.query(func.count(Mockups.id)).filter(
                 Mockups.user_id == user_id,
                 Mockups.created_at >= month_start
+            ).scalar() or 0
+
+            # Count total mockups (all-time)
+            total_mockups = db.query(func.count(Mockups.id)).filter(
+                Mockups.user_id == user_id
+            ).scalar() or 0
+
+            # Count total mockup images/options (all-time)
+            total_mockup_images = db.query(func.count(MockupImage.id)).join(
+                Mockups, MockupImage.mockups_id == Mockups.id
+            ).filter(
+                Mockups.user_id == user_id
             ).scalar() or 0
 
             # Count designs uploaded this month
@@ -559,6 +571,8 @@ class SubscriptionService:
 
             return {
                 "mockups_created": mockups_count,
+                "total_mockups": total_mockups,
+                "total_mockup_images": total_mockup_images,
                 "designs_uploaded": designs_count,
                 "mockups_limit": limits.get('monthly_mockups', -1),
                 "month": current_month,
@@ -571,6 +585,8 @@ class SubscriptionService:
             logger.error(f"Error getting usage stats: {e}")
             return {
                 "mockups_created": 0,
+                "total_mockups": 0,
+                "total_mockup_images": 0,
                 "designs_uploaded": 0,
                 "mockups_limit": -1,
                 "month": datetime.now(timezone.utc).month,

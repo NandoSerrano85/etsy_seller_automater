@@ -152,6 +152,8 @@ const useSubscriptionStore = create(
       // Usage tracking
       currentUsage: {
         mockupsThisMonth: 0,
+        totalMockups: 0,
+        totalMockupImages: 0,
         designsThisMonth: 0,
       },
 
@@ -185,6 +187,16 @@ const useSubscriptionStore = create(
           currentUsage: {
             ...state.currentUsage,
             mockupsThisMonth: state.currentUsage.mockupsThisMonth + 1,
+            totalMockups: state.currentUsage.totalMockups + 1,
+          },
+        })),
+
+      // Increment mockup images count (called when mockup images are added)
+      incrementMockupImagesUsage: (count = 1) =>
+        set(state => ({
+          currentUsage: {
+            ...state.currentUsage,
+            totalMockupImages: state.currentUsage.totalMockupImages + count,
           },
         })),
 
@@ -215,6 +227,8 @@ const useSubscriptionStore = create(
               currentUsage: {
                 ...get().currentUsage,
                 mockupsThisMonth: usage.mockups_created || 0,
+                totalMockups: usage.total_mockups || 0,
+                totalMockupImages: usage.total_mockup_images || 0,
                 designsThisMonth: usage.designs_uploaded || 0,
               },
             });
