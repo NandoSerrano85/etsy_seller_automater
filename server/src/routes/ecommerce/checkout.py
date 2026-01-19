@@ -267,16 +267,27 @@ def generate_order_number() -> str:
 
 def get_cart_by_session(db: Session, session_id: str, customer_id: Optional[str] = None) -> ShoppingCart:
     """Get cart by session ID or customer ID."""
+    cart = None
+
+    # First try to find by customer_id if provided
     if customer_id:
         cart = db.query(ShoppingCart).filter(
             ShoppingCart.customer_id == uuid.UUID(customer_id),
             ShoppingCart.is_active == True
         ).first()
-    else:
+
+    # If no cart found by customer_id, try by session_id
+    if not cart and session_id:
         cart = db.query(ShoppingCart).filter(
             ShoppingCart.session_id == session_id,
             ShoppingCart.is_active == True
         ).first()
+
+        # If found by session and customer is logged in, link the cart to the customer
+        if cart and customer_id:
+            cart.customer_id = uuid.UUID(customer_id)
+            db.commit()
+            db.refresh(cart)
 
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
