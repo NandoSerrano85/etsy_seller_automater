@@ -28,7 +28,7 @@ def upgrade(connection):
             CREATE TABLE IF NOT EXISTS platform_connections (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                platform VARCHAR(20) NOT NULL CHECK (platform IN ('etsy', 'shopify', 'amazon', 'ebay')),
+                platform VARCHAR(20) NOT NULL CHECK (platform IN ('ETSY', 'SHOPIFY', 'AMAZON', 'EBAY')),
                 connection_type VARCHAR(20) NOT NULL DEFAULT 'oauth2' CHECK (connection_type IN ('oauth2', 'api_key', 'basic_auth')),
                 access_token TEXT,
                 refresh_token TEXT,
@@ -106,7 +106,7 @@ def upgrade(connection):
                 connection_result = connection.execute(text("""
                     INSERT INTO platform_connections
                     (user_id, platform, connection_type, access_token, refresh_token, token_expires_at, is_active)
-                    VALUES (:user_id, 'etsy', 'oauth2', :access_token, :refresh_token, :expires_at, true)
+                    VALUES (:user_id, 'ETSY', 'oauth2', :access_token, :refresh_token, :expires_at, true)
                     RETURNING id
                 """), {
                     "user_id": user_id,
@@ -175,7 +175,7 @@ def upgrade(connection):
                 connection_result = connection.execute(text("""
                     INSERT INTO platform_connections
                     (user_id, platform, connection_type, access_token, is_active)
-                    VALUES (:user_id, 'shopify', 'oauth2', :access_token, true)
+                    VALUES (:user_id, 'SHOPIFY', 'oauth2', :access_token, true)
                     RETURNING id
                 """), {
                     "user_id": user_id,
