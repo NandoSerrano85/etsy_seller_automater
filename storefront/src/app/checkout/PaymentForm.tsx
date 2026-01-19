@@ -8,7 +8,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import { useStore } from "@/store/useStore";
-import { checkoutApi } from "@/lib/api";
+import { checkoutApi, customerApi } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { Loader2, CreditCard } from "lucide-react";
@@ -89,6 +89,40 @@ export default function PaymentForm({
           },
           guest_email: !isAuthenticated ? shippingForm.email : undefined,
         });
+
+        // Auto-save address for authenticated customers (no checkbox needed)
+        if (isAuthenticated) {
+          try {
+            // Check if this address already exists
+            const existingAddresses = await customerApi.getAddresses();
+            const addressExists = existingAddresses.some(
+              (addr: any) =>
+                addr.address1 === shippingForm.address1 &&
+                addr.city === shippingForm.city &&
+                addr.zip_code === shippingForm.zip_code,
+            );
+
+            // Only save if it's a new address
+            if (!addressExists) {
+              await customerApi.addAddress({
+                first_name: shippingForm.first_name,
+                last_name: shippingForm.last_name,
+                address1: shippingForm.address1,
+                address2: shippingForm.address2 || undefined,
+                city: shippingForm.city,
+                state: shippingForm.state,
+                zip_code: shippingForm.zip_code,
+                country: shippingForm.country,
+                phone: shippingForm.phone || undefined,
+                is_default_shipping: existingAddresses.length === 0, // Set as default if first address
+                is_default_billing: existingAddresses.length === 0,
+              });
+            }
+          } catch (error) {
+            // Don't fail the checkout if address save fails
+            console.error("Failed to save address:", error);
+          }
+        }
 
         // Clear cart
         await clearCart();

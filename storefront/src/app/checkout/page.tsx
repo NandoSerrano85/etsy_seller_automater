@@ -6,10 +6,11 @@ import dynamicImport from "next/dynamic";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements } from "@stripe/react-stripe-js";
 import { useStore } from "@/store/useStore";
-import { checkoutApi } from "@/lib/api";
+import { checkoutApi, customerApi } from "@/lib/api";
 import { formatPrice } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { Loader2, CheckCircle, Truck, Clock } from "lucide-react";
+import type { CustomerAddress } from "@/types";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -348,6 +349,50 @@ export default function CheckoutPage() {
     country: "United States",
     use_different_billing: false,
   });
+  const [savedAddresses, setSavedAddresses] = useState<CustomerAddress[]>([]);
+  const [addressLoaded, setAddressLoaded] = useState(false);
+
+  // Load saved addresses for authenticated customers
+  useEffect(() => {
+    const loadSavedAddresses = async () => {
+      if (isAuthenticated && !addressLoaded) {
+        try {
+          const addresses = await customerApi.getAddresses();
+          setSavedAddresses(addresses);
+
+          // Pre-fill with default shipping address or first address
+          const defaultAddress =
+            addresses.find((a: CustomerAddress) => a.is_default_shipping) ||
+            addresses[0];
+          if (defaultAddress) {
+            setShippingForm((prev) => ({
+              ...prev,
+              first_name:
+                defaultAddress.first_name ||
+                customer?.first_name ||
+                prev.first_name,
+              last_name:
+                defaultAddress.last_name ||
+                customer?.last_name ||
+                prev.last_name,
+              phone: defaultAddress.phone || customer?.phone || prev.phone,
+              address1: defaultAddress.address1 || "",
+              address2: defaultAddress.address2 || "",
+              city: defaultAddress.city || "",
+              state: defaultAddress.state || "",
+              zip_code: defaultAddress.zip_code || "",
+              country: defaultAddress.country || "United States",
+            }));
+          }
+          setAddressLoaded(true);
+        } catch (error) {
+          console.error("Failed to load addresses:", error);
+          setAddressLoaded(true);
+        }
+      }
+    };
+    loadSavedAddresses();
+  }, [isAuthenticated, customer, addressLoaded]);
 
   // Redirect if cart is empty
   useEffect(() => {
