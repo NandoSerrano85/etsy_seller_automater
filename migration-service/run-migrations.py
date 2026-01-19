@@ -139,6 +139,7 @@ def discover_migrations():
         "add_user_id_to_ecommerce_products",   # Adds user_id column for multi-tenant isolation
         "add_user_id_to_ecommerce_customers",  # Adds user_id column to customers table
         "add_user_id_to_ecommerce_orders",     # Adds user_id column to orders table
+        "link_guest_orders_to_customers",      # Links guest orders to registered customers by email
 
         # Data migrations (triggered by env vars)
         "regenerate_etsy_mockups_with_watermark",  # Regenerates Etsy mockups with watermarks (REGENERATE_ETSY_MOCKUPS=true)
