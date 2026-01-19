@@ -101,6 +101,7 @@ def discover_migrations():
 
         # Platform-specific migrations
         "add_etsy_shop_id",               # Adds Etsy shop ID fields
+        "fix_platform_constraint_case",    # Fix constraint to accept both cases BEFORE migrations
         "separate_platform_connections",   # Separates platform connections
         "fix_platform_enum_case",          # Ensures platform values are uppercase
         "remove_shopify_unique_constraint", # Removes Shopify constraints
