@@ -148,6 +148,25 @@ def register_routes(app: FastAPI):
         """Readiness check for Railway"""
         return {"status": "ready", "timestamp": int(time.time())}
 
+    # Debug endpoint to list all routes
+    @app.get("/api/debug/routes")
+    async def debug_routes():
+        """List all registered routes for debugging"""
+        routes = []
+        for route in app.routes:
+            if hasattr(route, 'path') and hasattr(route, 'methods'):
+                routes.append({
+                    "path": route.path,
+                    "methods": list(route.methods) if route.methods else [],
+                    "name": route.name if hasattr(route, 'name') else None
+                })
+        # Filter to show storefront routes
+        storefront_routes = [r for r in routes if '/storefront/' in r['path']]
+        return {
+            "total_routes": len(routes),
+            "storefront_routes": storefront_routes
+        }
+
     # Root endpoint
     @app.get("/")
     async def root():
@@ -184,6 +203,7 @@ def register_routes(app: FastAPI):
     app.include_router(ecommerce_customers_router)
     app.include_router(ecommerce_orders_router)
     app.include_router(ecommerce_checkout_router)
+    print(f"✅ Checkout router registered with {len(ecommerce_checkout_router.routes)} routes")
     app.include_router(ecommerce_storefront_settings_router)
     app.include_router(ecommerce_admin_products_router)
     app.include_router(ecommerce_admin_orders_router)
