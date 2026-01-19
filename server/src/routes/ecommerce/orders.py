@@ -157,11 +157,12 @@ def format_order_list_response(order: Order) -> OrderListResponse:
 # Customer Order Endpoints
 # ============================================================================
 
+@router.get('', response_model=List[OrderListResponse])
 @router.get('/', response_model=List[OrderListResponse])
 async def get_customer_orders(
     status: Optional[str] = Query(None, description="Filter by status"),
-    limit: int = Query(20, le=100, ge=1),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1, description="Page number (1-indexed)"),
+    page_size: int = Query(20, le=100, ge=1, description="Items per page"),
     current_customer: Customer = Depends(get_current_customer),
     db: Session = Depends(get_db)
 ):
@@ -170,6 +171,7 @@ async def get_customer_orders(
 
     Requires authentication token.
     Returns list of orders with basic info.
+    Supports pagination with page/page_size parameters.
     """
     query = db.query(Order).filter(Order.customer_id == current_customer.id)
 
@@ -177,12 +179,17 @@ async def get_customer_orders(
     if status:
         query = query.filter(Order.status == status)
 
+    # Get total count for pagination
+    total = query.count()
+
     # Order by most recent first
     query = query.order_by(Order.created_at.desc())
 
-    # Paginate
-    orders = query.offset(offset).limit(limit).all()
+    # Paginate using page/page_size
+    offset = (page - 1) * page_size
+    orders = query.offset(offset).limit(page_size).all()
 
+    # Return paginated response format that frontend expects
     return [format_order_list_response(order) for order in orders]
 
 
