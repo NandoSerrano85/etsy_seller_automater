@@ -2,10 +2,10 @@
 Plan-based access control for subscription tiers.
 
 Subscription tiers (from lowest to highest):
-- free: Basic features
-- basic: Additional features
-- pro: Full CraftFlow Commerce access
-- enterprise: All features
+- free: Basic features (15 mockups/month)
+- starter: Additional features (100 mockups/month)
+- pro: Shopify integration, advanced features (unlimited mockups)
+- full: All features including CraftFlow Commerce, multi-tenant storefronts
 
 This module provides dependencies to restrict access based on subscription plan.
 """
@@ -17,13 +17,26 @@ from typing import List
 
 
 # Define plan hierarchy (higher index = higher tier)
-PLAN_HIERARCHY = ["free", "basic", "pro", "enterprise"]
+# Note: 'basic' is aliased to 'starter', 'enterprise' is aliased to 'full' for backwards compatibility
+PLAN_HIERARCHY = ["free", "starter", "pro", "full"]
+PLAN_ALIASES = {
+    "basic": "starter",
+    "enterprise": "full",
+}
 
 
 def get_plan_level(plan: str) -> int:
     """Get the numeric level of a subscription plan."""
+    if not plan:
+        return 0
+
+    plan_lower = plan.lower()
+
+    # Handle aliases
+    plan_lower = PLAN_ALIASES.get(plan_lower, plan_lower)
+
     try:
-        return PLAN_HIERARCHY.index(plan.lower())
+        return PLAN_HIERARCHY.index(plan_lower)
     except ValueError:
         return 0  # Default to free if plan is unknown
 
@@ -77,9 +90,13 @@ def require_plan(required_plan: str):
 
 
 # Pre-made dependencies for common plan requirements
+require_starter_plan = require_plan("starter")
 require_pro_plan = require_plan("pro")
-require_basic_plan = require_plan("basic")
-require_enterprise_plan = require_plan("enterprise")
+require_full_plan = require_plan("full")
+
+# Backwards compatibility aliases
+require_basic_plan = require_starter_plan
+require_enterprise_plan = require_full_plan
 
 
 def get_user_with_plan_info(user: User = Depends(get_current_user)) -> dict:
