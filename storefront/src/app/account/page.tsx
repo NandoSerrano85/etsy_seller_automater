@@ -195,7 +195,7 @@ export default function AccountPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {recentOrders.map((order) => (
+            {recentOrders.slice(0, 5).map((order) => (
               <Link
                 key={order.id}
                 href={`/account/orders/${order.id}`}
