@@ -470,13 +470,23 @@ async def update_order(
 @router.get('/{order_id}/shipping-rates', response_model=List[ShippingRateResponse])
 async def get_order_shipping_rates(
     order_id: str,
+    length: float = Query(10, ge=0.1, le=100, description="Package length in inches"),
+    width: float = Query(8, ge=0.1, le=100, description="Package width in inches"),
+    height: float = Query(4, ge=0.1, le=100, description="Package height in inches"),
+    weight: float = Query(1, ge=0.1, le=150, description="Package weight in pounds"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_pro_plan)
 ):
     """
-    Get available shipping rates for an order.
+    Get available shipping rates for an order with custom package dimensions.
 
     Requires: Pro plan or higher
+
+    Query Parameters:
+    - length: Package length in inches (default: 10)
+    - width: Package width in inches (default: 8)
+    - height: Package height in inches (default: 4)
+    - weight: Package weight in pounds (default: 1)
     """
     try:
         order_uuid = uuid.UUID(order_id)
@@ -508,9 +518,19 @@ async def get_order_shipping_rates(
         'phone': shipping_addr.get('phone', ''),
     }
 
-    # Get rates from Shippo
+    # Custom parcel dimensions from request
+    parcel = {
+        'length': str(length),
+        'width': str(width),
+        'height': str(height),
+        'distance_unit': 'in',
+        'weight': str(weight),
+        'mass_unit': 'lb'
+    }
+
+    # Get rates from Shippo with custom parcel
     shippo = ShippoService()
-    rates = shippo.get_shipping_rates(to_address)
+    rates = shippo.get_shipping_rates(to_address, parcel=parcel)
 
     return [
         ShippingRateResponse(

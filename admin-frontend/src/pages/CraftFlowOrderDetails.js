@@ -18,6 +18,8 @@ import {
   EnvelopeIcon,
   PhoneIcon,
   TagIcon,
+  CubeIcon,
+  ScaleIcon,
 } from '@heroicons/react/24/outline';
 
 const CraftFlowOrderDetails = () => {
@@ -33,6 +35,15 @@ const CraftFlowOrderDetails = () => {
   const [selectedRate, setSelectedRate] = useState(null);
   const [creatingLabel, setCreatingLabel] = useState(false);
   const [showRatesModal, setShowRatesModal] = useState(false);
+
+  // Package dimensions state
+  const [packageDimensions, setPackageDimensions] = useState({
+    length: '10',
+    width: '8',
+    height: '4',
+    weight: '1',
+  });
+  const [showDimensionsStep, setShowDimensionsStep] = useState(true);
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
 
@@ -55,14 +66,28 @@ const CraftFlowOrderDetails = () => {
     }
   };
 
+  const openShippingModal = () => {
+    setShowRatesModal(true);
+    setShowDimensionsStep(true);
+    setShippingRates([]);
+    setSelectedRate(null);
+  };
+
   const loadShippingRates = async () => {
     try {
       setLoadingRates(true);
-      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/orders/${id}/shipping-rates`, {
+      const params = new URLSearchParams({
+        length: packageDimensions.length,
+        width: packageDimensions.width,
+        height: packageDimensions.height,
+        weight: packageDimensions.weight,
+      });
+
+      const response = await axios.get(`${API_BASE_URL}/api/ecommerce/admin/orders/${id}/shipping-rates?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setShippingRates(response.data);
-      setShowRatesModal(true);
+      setShowDimensionsStep(false);
     } catch (error) {
       console.error('Error loading shipping rates:', error);
       addNotification('error', error.response?.data?.detail || 'Failed to load shipping rates');
@@ -119,6 +144,13 @@ const CraftFlowOrderDetails = () => {
       console.error('Error updating order status:', error);
       addNotification('error', 'Failed to update order status');
     }
+  };
+
+  const handleDimensionChange = (field, value) => {
+    setPackageDimensions(prev => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   const getStatusColor = status => {
@@ -315,21 +347,11 @@ const CraftFlowOrderDetails = () => {
 
                 {!order.tracking_number && order.payment_status === 'paid' && (
                   <button
-                    onClick={loadShippingRates}
-                    disabled={loadingRates}
-                    className="flex items-center gap-2 px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 disabled:opacity-50"
+                    onClick={openShippingModal}
+                    className="flex items-center gap-2 px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700"
                   >
-                    {loadingRates ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Loading Rates...
-                      </>
-                    ) : (
-                      <>
-                        <PrinterIcon className="w-5 h-5" />
-                        Create Shipping Label
-                      </>
-                    )}
+                    <PrinterIcon className="w-5 h-5" />
+                    Create Shipping Label
                   </button>
                 )}
               </div>
@@ -509,68 +531,226 @@ const CraftFlowOrderDetails = () => {
         </div>
       </div>
 
-      {/* Shipping Rates Modal */}
+      {/* Shipping Label Modal */}
       {showRatesModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
             <div className="p-6 border-b">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">Select Shipping Rate</h3>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {showDimensionsStep ? 'Package Details' : 'Select Shipping Rate'}
+                </h3>
                 <button onClick={() => setShowRatesModal(false)} className="text-gray-400 hover:text-gray-600">
                   <XCircleIcon className="w-6 h-6" />
                 </button>
               </div>
+              {/* Step Indicator */}
+              <div className="flex items-center mt-4">
+                <div className={`flex items-center ${showDimensionsStep ? 'text-sage-600' : 'text-gray-400'}`}>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                      showDimensionsStep ? 'bg-sage-600 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    1
+                  </div>
+                  <span className="ml-2 text-sm font-medium">Package Info</span>
+                </div>
+                <div className="flex-1 h-0.5 bg-gray-200 mx-4"></div>
+                <div className={`flex items-center ${!showDimensionsStep ? 'text-sage-600' : 'text-gray-400'}`}>
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                      !showDimensionsStep ? 'bg-sage-600 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}
+                  >
+                    2
+                  </div>
+                  <span className="ml-2 text-sm font-medium">Select Rate</span>
+                </div>
+              </div>
             </div>
 
+            {/* Modal Content */}
             <div className="p-6 overflow-y-auto max-h-[60vh]">
-              {shippingRates.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No shipping rates available</p>
-              ) : (
-                <div className="space-y-3">
-                  {shippingRates.map((rate, index) => (
-                    <div
-                      key={rate.rate_id || index}
-                      onClick={() => setSelectedRate(rate)}
-                      className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                        selectedRate?.rate_id === rate.rate_id
-                          ? 'border-sage-600 bg-sage-50 shadow-md'
-                          : 'border-gray-200 hover:border-sage-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {rate.carrier} - {rate.service}
-                          </p>
-                          <p className="text-sm text-gray-600">{rate.duration_terms}</p>
-                          {rate.estimated_days && (
-                            <p className="text-xs text-gray-500">
-                              Est. {rate.estimated_days} business day{rate.estimated_days !== 1 ? 's' : ''}
-                            </p>
-                          )}
-                          {rate.is_fallback && (
-                            <span className="inline-block mt-1 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
-                              Estimated Rate
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xl font-bold text-gray-900">${rate.amount?.toFixed(2)}</p>
-                        </div>
+              {showDimensionsStep ? (
+                /* Step 1: Package Dimensions */
+                <div className="space-y-6">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-800">
+                      <strong>Tip:</strong> Enter accurate package dimensions and weight to get the most accurate
+                      shipping rates.
+                    </p>
+                  </div>
+
+                  {/* Dimensions */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                      <CubeIcon className="w-5 h-5 mr-2 text-gray-500" />
+                      Package Dimensions (inches)
+                    </h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Length</label>
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="100"
+                          step="0.1"
+                          value={packageDimensions.length}
+                          onChange={e => handleDimensionChange('length', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-sage-500 focus:border-sage-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Width</label>
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="100"
+                          step="0.1"
+                          value={packageDimensions.width}
+                          onChange={e => handleDimensionChange('width', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-sage-500 focus:border-sage-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Height</label>
+                        <input
+                          type="number"
+                          min="0.1"
+                          max="100"
+                          step="0.1"
+                          value={packageDimensions.height}
+                          onChange={e => handleDimensionChange('height', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-sage-500 focus:border-sage-500"
+                        />
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Weight */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                      <ScaleIcon className="w-5 h-5 mr-2 text-gray-500" />
+                      Package Weight
+                    </h4>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="150"
+                        step="0.1"
+                        value={packageDimensions.weight}
+                        onChange={e => handleDimensionChange('weight', e.target.value)}
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-sage-500 focus:border-sage-500"
+                      />
+                      <span className="text-gray-600">lbs</span>
+                    </div>
+                  </div>
+
+                  {/* Quick Presets */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Quick Presets</h4>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setPackageDimensions({ length: '6', width: '4', height: '2', weight: '0.5' })}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Small (6×4×2)
+                      </button>
+                      <button
+                        onClick={() => setPackageDimensions({ length: '10', width: '8', height: '4', weight: '1' })}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Medium (10×8×4)
+                      </button>
+                      <button
+                        onClick={() => setPackageDimensions({ length: '14', width: '12', height: '6', weight: '2' })}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Large (14×12×6)
+                      </button>
+                      <button
+                        onClick={() => setPackageDimensions({ length: '18', width: '14', height: '8', weight: '5' })}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        X-Large (18×14×8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Step 2: Shipping Rates */
+                <div>
+                  {/* Package Summary */}
+                  <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-gray-600">
+                      <span className="font-medium">Package:</span> {packageDimensions.length}" ×{' '}
+                      {packageDimensions.width}" × {packageDimensions.height}" • {packageDimensions.weight} lbs
+                      <button
+                        onClick={() => setShowDimensionsStep(true)}
+                        className="ml-2 text-sage-600 hover:text-sage-800 text-xs"
+                      >
+                        Edit
+                      </button>
+                    </p>
+                  </div>
+
+                  {shippingRates.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">No shipping rates available</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {shippingRates.map((rate, index) => (
+                        <div
+                          key={rate.rate_id || index}
+                          onClick={() => setSelectedRate(rate)}
+                          className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                            selectedRate?.rate_id === rate.rate_id
+                              ? 'border-sage-600 bg-sage-50 shadow-md'
+                              : 'border-gray-200 hover:border-sage-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                {rate.carrier} - {rate.service}
+                              </p>
+                              <p className="text-sm text-gray-600">{rate.duration_terms}</p>
+                              {rate.estimated_days && (
+                                <p className="text-xs text-gray-500">
+                                  Est. {rate.estimated_days} business day{rate.estimated_days !== 1 ? 's' : ''}
+                                </p>
+                              )}
+                              {rate.is_fallback && (
+                                <span className="inline-block mt-1 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
+                                  Estimated Rate
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-gray-900">${rate.amount?.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
+            {/* Modal Footer */}
             <div className="p-6 border-t bg-gray-50">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600">
-                  {selectedRate
-                    ? `Selected: ${selectedRate.carrier} - ${selectedRate.service} ($${selectedRate.amount?.toFixed(2)})`
-                    : 'Select a shipping rate to continue'}
-                </p>
+                <div>
+                  {!showDimensionsStep && selectedRate && (
+                    <p className="text-sm text-gray-600">
+                      Selected: {selectedRate.carrier} - {selectedRate.service} ($
+                      {selectedRate.amount?.toFixed(2)})
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-3">
                   <button
                     onClick={() => setShowRatesModal(false)}
@@ -578,26 +758,44 @@ const CraftFlowOrderDetails = () => {
                   >
                     Cancel
                   </button>
-                  <button
-                    onClick={createLabel}
-                    disabled={!selectedRate || creatingLabel || selectedRate?.is_fallback}
-                    className="flex items-center gap-2 px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {creatingLabel ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Creating Label...
-                      </>
-                    ) : (
-                      <>
-                        <DocumentArrowDownIcon className="w-5 h-5" />
-                        Create Label
-                      </>
-                    )}
-                  </button>
+
+                  {showDimensionsStep ? (
+                    <button
+                      onClick={loadShippingRates}
+                      disabled={loadingRates}
+                      className="flex items-center gap-2 px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 disabled:opacity-50"
+                    >
+                      {loadingRates ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Loading Rates...
+                        </>
+                      ) : (
+                        <>Get Shipping Rates</>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={createLabel}
+                      disabled={!selectedRate || creatingLabel || selectedRate?.is_fallback}
+                      className="flex items-center gap-2 px-4 py-2 bg-sage-600 text-white rounded-lg hover:bg-sage-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {creatingLabel ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Creating Label...
+                        </>
+                      ) : (
+                        <>
+                          <DocumentArrowDownIcon className="w-5 h-5" />
+                          Purchase Label
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
-              {selectedRate?.is_fallback && (
+              {!showDimensionsStep && selectedRate?.is_fallback && (
                 <p className="text-xs text-yellow-700 mt-2">
                   Cannot create labels with estimated rates. Please configure your Shippo API key for real rates.
                 </p>
