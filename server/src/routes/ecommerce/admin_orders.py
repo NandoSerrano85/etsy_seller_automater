@@ -1,18 +1,26 @@
 """Admin Order API endpoints for CraftFlow Commerce management."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
 from pydantic import BaseModel, Field
 import uuid
 from datetime import datetime
+import os
+import io
+import requests
+import logging
 
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.order import Order, OrderItem
 from server.src.routes.auth.service import get_current_user_db as get_current_user
 from server.src.routes.auth.plan_access import require_pro_plan
 from server.src.entities.user import User
+from server.src.services.shippo_service import ShippoService
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
@@ -85,6 +93,54 @@ class OrderUpdateRequest(BaseModel):
     tracking_number: Optional[str] = None
     tracking_url: Optional[str] = None
     internal_note: Optional[str] = None
+
+
+class ShippingRateResponse(BaseModel):
+    """Shipping rate response."""
+    carrier: str
+    service: str
+    service_level: str
+    amount: float
+    currency: str
+    estimated_days: Optional[int] = None
+    duration_terms: str
+    rate_id: str
+    is_fallback: bool = False
+
+
+class CreateLabelRequest(BaseModel):
+    """Request to create a shipping label."""
+    rate_id: str = Field(..., description="Shippo rate ID from get_shipping_rates")
+    label_file_type: str = Field("PDF", description="Label format: PDF, PNG, etc.")
+
+
+class CreateLabelResponse(BaseModel):
+    """Shipping label creation response."""
+    order_id: str
+    order_number: str
+    transaction_id: Optional[str] = None
+    tracking_number: Optional[str] = None
+    tracking_url: Optional[str] = None
+    label_url: Optional[str] = None
+    carrier: Optional[str] = None
+    service: Optional[str] = None
+    status: str
+
+
+class BatchLabelRequest(BaseModel):
+    """Request to create shipping labels for multiple orders."""
+    order_ids: List[str] = Field(..., description="List of order IDs to create labels for")
+    carrier: str = Field("USPS", description="Preferred carrier")
+    service_level: str = Field("usps_priority", description="Service level")
+    label_file_type: str = Field("PDF", description="Label format: PDF, PNG, etc.")
+
+
+class BatchLabelResponse(BaseModel):
+    """Batch label creation response."""
+    success_count: int
+    failed_count: int
+    labels: List[CreateLabelResponse]
+    errors: List[dict] = []
 
 
 # ============================================================================
@@ -405,4 +461,293 @@ async def update_order(
         billing_address=order.billing_address,
         created_at=order.created_at.isoformat() if order.created_at else None,
         updated_at=order.updated_at.isoformat() if order.updated_at else None
+    )
+
+# ============================================================================
+# Shipping Label Endpoints
+# ============================================================================
+
+@router.get('/{order_id}/shipping-rates', response_model=List[ShippingRateResponse])
+async def get_order_shipping_rates(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_pro_plan)
+):
+    """
+    Get available shipping rates for an order.
+
+    Requires: Pro plan or higher
+    """
+    try:
+        order_uuid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid order ID format")
+
+    # Get order with user isolation
+    order = db.query(Order).filter(
+        Order.id == order_uuid,
+        Order.user_id == current_user.id
+    ).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if not order.shipping_address:
+        raise HTTPException(status_code=400, detail="Order has no shipping address")
+
+    # Format address for Shippo
+    shipping_addr = order.shipping_address
+    to_address = {
+        'name': f"{shipping_addr.get('first_name', '')} {shipping_addr.get('last_name', '')}".strip(),
+        'street1': shipping_addr.get('address1', ''),
+        'street2': shipping_addr.get('address2', ''),
+        'city': shipping_addr.get('city', ''),
+        'state': shipping_addr.get('state', ''),
+        'zip': shipping_addr.get('zip_code', ''),
+        'country': 'US',
+        'phone': shipping_addr.get('phone', ''),
+    }
+
+    # Get rates from Shippo
+    shippo = ShippoService()
+    rates = shippo.get_shipping_rates(to_address)
+
+    return [
+        ShippingRateResponse(
+            carrier=rate.get('carrier', 'Unknown'),
+            service=rate.get('service', 'Standard'),
+            service_level=rate.get('service_level', ''),
+            amount=rate.get('amount', 0),
+            currency=rate.get('currency', 'USD'),
+            estimated_days=rate.get('estimated_days'),
+            duration_terms=rate.get('duration_terms', ''),
+            rate_id=rate.get('rate_id', ''),
+            is_fallback=rate.get('is_fallback', False)
+        )
+        for rate in rates
+    ]
+
+
+@router.post('/{order_id}/create-label', response_model=CreateLabelResponse)
+async def create_shipping_label(
+    order_id: str,
+    label_request: CreateLabelRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_pro_plan)
+):
+    """
+    Create a shipping label for an order.
+
+    Requires: Pro plan or higher
+    """
+    try:
+        order_uuid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid order ID format")
+
+    # Get order with user isolation
+    order = db.query(Order).filter(
+        Order.id == order_uuid,
+        Order.user_id == current_user.id
+    ).first()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Check if order already has tracking
+    if order.tracking_number:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order already has tracking number: {order.tracking_number}"
+        )
+
+    # Check for fallback rate (can't create labels with fallback rates)
+    if label_request.rate_id.startswith('fallback_'):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot create label with fallback rates. Please configure Shippo API key."
+        )
+
+    try:
+        # Create label via Shippo
+        shippo = ShippoService()
+        label_result = shippo.create_shipping_label(
+            rate_id=label_request.rate_id,
+            label_file_type=label_request.label_file_type
+        )
+
+        # Update order with tracking info
+        order.tracking_number = label_result.get('tracking_number')
+        order.tracking_url = label_result.get('tracking_url')
+        order.fulfillment_status = 'shipped'
+        order.shipped_at = datetime.utcnow()
+        order.status = 'shipped'
+        db.commit()
+
+        logger.info(f"Created shipping label for order {order.order_number}: {label_result.get('tracking_number')}")
+
+        return CreateLabelResponse(
+            order_id=str(order.id),
+            order_number=order.order_number,
+            transaction_id=label_result.get('transaction_id'),
+            tracking_number=label_result.get('tracking_number'),
+            tracking_url=label_result.get('tracking_url'),
+            label_url=label_result.get('label_url'),
+            carrier=label_result.get('carrier'),
+            service=label_result.get('service'),
+            status='SUCCESS'
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to create shipping label for order {order.order_number}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create label: {str(e)}")
+
+
+@router.post('/batch-labels', response_model=BatchLabelResponse)
+async def create_batch_labels(
+    batch_request: BatchLabelRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_pro_plan)
+):
+    """
+    Create shipping labels for multiple orders.
+
+    Requires: Pro plan or higher
+    """
+    shippo = ShippoService()
+    if not shippo.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Shippo is not configured. Please set SHIPPO_API_KEY."
+        )
+
+    labels = []
+    errors = []
+    success_count = 0
+    failed_count = 0
+
+    for order_id in batch_request.order_ids:
+        try:
+            order_uuid = uuid.UUID(order_id)
+        except ValueError:
+            errors.append({'order_id': order_id, 'error': 'Invalid order ID format'})
+            failed_count += 1
+            continue
+
+        # Get order with user isolation
+        order = db.query(Order).filter(
+            Order.id == order_uuid,
+            Order.user_id == current_user.id
+        ).first()
+
+        if not order:
+            errors.append({'order_id': order_id, 'error': 'Order not found'})
+            failed_count += 1
+            continue
+
+        if order.tracking_number:
+            errors.append({
+                'order_id': order_id,
+                'order_number': order.order_number,
+                'error': f'Already has tracking: {order.tracking_number}'
+            })
+            failed_count += 1
+            continue
+
+        if not order.shipping_address:
+            errors.append({
+                'order_id': order_id,
+                'order_number': order.order_number,
+                'error': 'No shipping address'
+            })
+            failed_count += 1
+            continue
+
+        try:
+            # Get shipping rates first
+            shipping_addr = order.shipping_address
+            to_address = {
+                'name': f"{shipping_addr.get('first_name', '')} {shipping_addr.get('last_name', '')}".strip(),
+                'street1': shipping_addr.get('address1', ''),
+                'street2': shipping_addr.get('address2', ''),
+                'city': shipping_addr.get('city', ''),
+                'state': shipping_addr.get('state', ''),
+                'zip': shipping_addr.get('zip_code', ''),
+                'country': 'US',
+                'phone': shipping_addr.get('phone', ''),
+            }
+
+            rates = shippo.get_shipping_rates(to_address)
+
+            # Find matching rate by carrier and service level
+            matching_rate = None
+            for rate in rates:
+                if (rate.get('carrier', '').upper() == batch_request.carrier.upper() and
+                    rate.get('service_level', '') == batch_request.service_level):
+                    matching_rate = rate
+                    break
+
+            # If no exact match, use first rate from preferred carrier
+            if not matching_rate:
+                for rate in rates:
+                    if rate.get('carrier', '').upper() == batch_request.carrier.upper():
+                        matching_rate = rate
+                        break
+
+            # If still no match, use cheapest rate
+            if not matching_rate and rates:
+                matching_rate = rates[0]
+
+            if not matching_rate or matching_rate.get('is_fallback'):
+                errors.append({
+                    'order_id': order_id,
+                    'order_number': order.order_number,
+                    'error': 'No valid shipping rate available'
+                })
+                failed_count += 1
+                continue
+
+            # Create label
+            label_result = shippo.create_shipping_label(
+                rate_id=matching_rate.get('rate_id'),
+                label_file_type=batch_request.label_file_type
+            )
+
+            # Update order
+            order.tracking_number = label_result.get('tracking_number')
+            order.tracking_url = label_result.get('tracking_url')
+            order.fulfillment_status = 'shipped'
+            order.shipped_at = datetime.utcnow()
+            order.status = 'shipped'
+            db.commit()
+
+            labels.append(CreateLabelResponse(
+                order_id=str(order.id),
+                order_number=order.order_number,
+                transaction_id=label_result.get('transaction_id'),
+                tracking_number=label_result.get('tracking_number'),
+                tracking_url=label_result.get('tracking_url'),
+                label_url=label_result.get('label_url'),
+                carrier=label_result.get('carrier'),
+                service=label_result.get('service'),
+                status='SUCCESS'
+            ))
+            success_count += 1
+
+            logger.info(f"Batch label created for order {order.order_number}: {label_result.get('tracking_number')}")
+
+        except Exception as e:
+            logger.error(f"Failed to create batch label for order {order.order_number}: {e}")
+            errors.append({
+                'order_id': order_id,
+                'order_number': order.order_number,
+                'error': str(e)
+            })
+            failed_count += 1
+
+    return BatchLabelResponse(
+        success_count=success_count,
+        failed_count=failed_count,
+        labels=labels,
+        errors=errors
     )

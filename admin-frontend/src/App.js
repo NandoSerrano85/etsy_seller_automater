@@ -42,6 +42,7 @@ const CraftFlowProducts = React.lazy(() => import('./pages/CraftFlowProducts'));
 const CraftFlowTemplateCreator = React.lazy(() => import('./pages/CraftFlowTemplateCreator'));
 const CraftFlowProductCreator = React.lazy(() => import('./pages/CraftFlowProductCreator'));
 const CraftFlowOrders = React.lazy(() => import('./pages/CraftFlowOrders'));
+const CraftFlowOrderDetails = React.lazy(() => import('./pages/CraftFlowOrderDetails'));
 const CraftFlowCustomers = React.lazy(() => import('./pages/CraftFlowCustomers'));
 const CraftFlowStorefrontSettings = React.lazy(() => import('./pages/CraftFlowStorefrontSettings'));
 
@@ -368,6 +369,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CraftFlowOrders />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/orders/:id"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowOrderDetails />
                 </ProtectedRoute>
               }
             />
