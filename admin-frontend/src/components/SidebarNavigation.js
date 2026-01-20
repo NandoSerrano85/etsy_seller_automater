@@ -41,11 +41,11 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
       hasSubmenu: true,
       gradient: 'from-orange-100 to-orange-200',
       submenu: [
-        { label: 'Dashboard', path: '/?tab=overview' },
-        { label: 'Orders', path: '/?tab=orders' },
-        { label: 'Analytics', path: '/?tab=analytics' },
-        { label: 'Listings', path: '/?tab=listings' },
-        { label: 'Product', path: '/?tab=products' },
+        { label: 'Dashboard', path: '/etsy/dashboard' },
+        { label: 'Orders', path: '/etsy/orders' },
+        { label: 'Analytics', path: '/etsy/analytics' },
+        { label: 'Listings', path: '/etsy/listings' },
+        { label: 'Products', path: '/etsy/products' },
       ],
     },
     {

@@ -46,6 +46,13 @@ const CraftFlowOrderDetails = React.lazy(() => import('./pages/CraftFlowOrderDet
 const CraftFlowCustomers = React.lazy(() => import('./pages/CraftFlowCustomers'));
 const CraftFlowStorefrontSettings = React.lazy(() => import('./pages/CraftFlowStorefrontSettings'));
 
+// Etsy components (lazy loaded)
+const EtsyDashboard = React.lazy(() => import('./pages/Etsy/Dashboard'));
+const EtsyOrders = React.lazy(() => import('./pages/Etsy/Orders'));
+const EtsyProducts = React.lazy(() => import('./pages/Etsy/Products'));
+const EtsyAnalytics = React.lazy(() => import('./pages/Etsy/Analytics'));
+const EtsyListings = React.lazy(() => import('./pages/Etsy/Listings'));
+
 // CraftFlow Email Management components (lazy loaded)
 const CraftFlowEmailTemplates = React.lazy(() => import('./pages/CraftFlow/Emails/EmailTemplates'));
 const CraftFlowEmailTemplateEditor = React.lazy(() => import('./pages/CraftFlow/Emails/EmailTemplateEditor'));
@@ -164,12 +171,12 @@ function App() {
             <Route path="/oauth/redirect" element={<OAuthRedirect />} />
 
             {/* Protected routes */}
-            {/* Main Dashboard */}
+            {/* Main Dashboard - Redirect to Etsy Dashboard */}
             <Route
               path="/"
               element={
                 <ProtectedRoute>
-                  <Home />
+                  <Navigate to="/etsy/dashboard" replace />
                 </ProtectedRoute>
               }
             />
@@ -237,6 +244,48 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ConnectEtsy />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Etsy Routes */}
+            <Route
+              path="/etsy/dashboard"
+              element={
+                <ProtectedRoute>
+                  <EtsyDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/etsy/orders"
+              element={
+                <ProtectedRoute>
+                  <EtsyOrders />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/etsy/products"
+              element={
+                <ProtectedRoute>
+                  <EtsyProducts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/etsy/analytics"
+              element={
+                <ProtectedRoute>
+                  <EtsyAnalytics />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/etsy/listings"
+              element={
+                <ProtectedRoute>
+                  <EtsyListings />
                 </ProtectedRoute>
               }
             />
