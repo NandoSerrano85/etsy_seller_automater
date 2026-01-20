@@ -13,6 +13,7 @@ import os
 
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.customer import Customer, CustomerAddress
+from server.src.entities.ecommerce.order import Order
 
 
 router = APIRouter(
@@ -154,6 +155,41 @@ def create_access_token(customer_id: str, email: str) -> str:
     return encoded_jwt
 
 
+def link_guest_orders_to_customer(db: Session, customer: Customer) -> int:
+    """
+    Link any guest orders to this customer account by matching email.
+    Also updates customer stats (order_count, total_spent).
+
+    Returns the number of orders linked.
+    """
+    # Find guest orders matching this customer's email
+    guest_orders = db.query(Order).filter(
+        Order.customer_id.is_(None),
+        Order.guest_email.isnot(None),
+        Order.guest_email.ilike(customer.email)  # Case-insensitive match
+    ).all()
+
+    if not guest_orders:
+        return 0
+
+    linked_count = 0
+    total_from_linked = 0.0
+
+    for order in guest_orders:
+        order.customer_id = customer.id
+        linked_count += 1
+        if order.total:
+            total_from_linked += order.total
+
+    # Update customer stats
+    if linked_count > 0:
+        customer.order_count = (customer.order_count or 0) + linked_count
+        customer.total_spent = (customer.total_spent or 0) + total_from_linked
+        db.commit()
+
+    return linked_count
+
+
 def get_current_customer(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
@@ -247,6 +283,11 @@ async def register_customer(
     db.commit()
     db.refresh(customer)
 
+    # Link any guest orders to this new account
+    linked_orders = link_guest_orders_to_customer(db, customer)
+    if linked_orders > 0:
+        db.refresh(customer)  # Refresh to get updated stats
+
     # Create access token
     access_token = create_access_token(str(customer.id), customer.email)
 
@@ -302,6 +343,11 @@ async def login_customer(
     # Update last login
     customer.last_login = datetime.utcnow()
     db.commit()
+
+    # Link any guest orders to this account (in case they placed orders as guest)
+    linked_orders = link_guest_orders_to_customer(db, customer)
+    if linked_orders > 0:
+        db.refresh(customer)  # Refresh to get updated stats
 
     # Create access token
     access_token = create_access_token(str(customer.id), customer.email)
