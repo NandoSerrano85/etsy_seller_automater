@@ -83,9 +83,19 @@ class OrderListResponse(BaseModel):
     fulfillment_status: str
     item_count: int
     created_at: datetime
+    items: List[OrderItemResponse] = []
 
     class Config:
         from_attributes = True
+
+
+class PaginatedOrdersResponse(BaseModel):
+    """Paginated orders response."""
+    items: List[OrderListResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 # ============================================================================
@@ -140,7 +150,26 @@ def format_order_response(order: Order) -> OrderResponse:
 
 
 def format_order_list_response(order: Order) -> OrderListResponse:
-    """Format order for list view (less detail)."""
+    """Format order for list view (includes items for display)."""
+    items = [
+        OrderItemResponse(
+            id=str(item.id),
+            product_id=str(item.product_id) if item.product_id else None,
+            variant_id=str(item.variant_id) if item.variant_id else None,
+            product_name=item.product_name,
+            variant_name=item.variant_name,
+            sku=item.sku,
+            price=item.price,
+            quantity=item.quantity,
+            total=item.total,
+            download_url=item.download_url,
+            download_count=item.download_count,
+            download_expires_at=item.download_expires_at,
+            is_fulfilled=item.is_fulfilled
+        )
+        for item in (order.items or [])
+    ]
+
     return OrderListResponse(
         id=str(order.id),
         order_number=order.order_number,
@@ -149,7 +178,8 @@ def format_order_list_response(order: Order) -> OrderListResponse:
         payment_status=order.payment_status,
         fulfillment_status=order.fulfillment_status,
         item_count=len(order.items or []),
-        created_at=order.created_at
+        created_at=order.created_at,
+        items=items
     )
 
 
@@ -157,8 +187,8 @@ def format_order_list_response(order: Order) -> OrderListResponse:
 # Customer Order Endpoints
 # ============================================================================
 
-@router.get('', response_model=List[OrderListResponse])
-@router.get('/', response_model=List[OrderListResponse])
+@router.get('', response_model=PaginatedOrdersResponse)
+@router.get('/', response_model=PaginatedOrdersResponse)
 async def get_customer_orders(
     status: Optional[str] = Query(None, description="Filter by status"),
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
@@ -170,7 +200,7 @@ async def get_customer_orders(
     Get all orders for current customer.
 
     Requires authentication token.
-    Returns list of orders with basic info.
+    Returns paginated list of orders with items.
     Supports pagination with page/page_size parameters.
     """
     query = db.query(Order).filter(Order.customer_id == current_customer.id)
@@ -189,8 +219,17 @@ async def get_customer_orders(
     offset = (page - 1) * page_size
     orders = query.offset(offset).limit(page_size).all()
 
+    # Calculate total pages
+    pages = (total + page_size - 1) // page_size if total > 0 else 1
+
     # Return paginated response format that frontend expects
-    return [format_order_list_response(order) for order in orders]
+    return PaginatedOrdersResponse(
+        items=[format_order_list_response(order) for order in orders],
+        total=total,
+        page=page,
+        page_size=page_size,
+        pages=pages
+    )
 
 
 @router.get('/{order_id}', response_model=OrderResponse)
