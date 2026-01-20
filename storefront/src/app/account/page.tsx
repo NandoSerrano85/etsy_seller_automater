@@ -37,8 +37,11 @@ export default function AccountPage() {
 
       // Calculate stats
       const totalOrders = response.total || orders.length;
+      // const pendingOrders = orders.filter(
+      //   (order) => order.status === "pending" || order.status === "processing",
+      // ).length;
       const pendingOrders = orders.filter(
-        (order) => order.status === "pending" || order.status === "processing",
+        (order) => order.status === "processing",
       ).length;
       const completedOrders = orders.filter(
         (order) => order.status === "delivered",
