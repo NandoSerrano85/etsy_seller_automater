@@ -31,7 +31,7 @@ export default function AccountPage() {
   const fetchAccountData = async () => {
     setIsLoading(true);
     try {
-      const response = await ordersApi.getAll({ page_size: 5 });
+      const response = await ordersApi.getAll({ page_size: 100 });
       const orders = response.items || [];
       setRecentOrders(orders);
 
