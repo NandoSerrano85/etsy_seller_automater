@@ -2,19 +2,14 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { Header } from "@/components/layout/Header";
-import { Footer } from "@/components/layout/Footer";
-import { CartSidebar } from "@/components/cart/CartSidebar";
-import { StoreWrapper } from "@/components/StoreWrapper";
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Ecommerce Storefront - Custom Transfers & Designs",
-  description:
-    "Shop high-quality UVDTF, DTF, and sublimation transfers for all your crafting needs.",
-  keywords: ["UVDTF", "DTF", "Sublimation", "Transfers", "Cup Wraps", "Vinyl"],
+  title: "CraftFlow Storefront - Multi-Tenant Ecommerce",
+  description: "Create and host your own ecommerce store with CraftFlow.",
+  keywords: ["ecommerce", "storefront", "multi-tenant", "online store"],
 };
 
 export default function RootLayout({
@@ -26,12 +21,7 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen flex flex-col">
         <Providers>
-          <StoreWrapper>
-            <Header />
-            <main className="flex-1">{children}</main>
-            <Footer />
-            <CartSidebar />
-          </StoreWrapper>
+          <main className="flex-1">{children}</main>
           <Toaster position="top-right" />
         </Providers>
       </body>

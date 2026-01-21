@@ -1,20 +1,26 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { ShoppingCart } from 'lucide-react';
-import { Product } from '@/types';
-import { formatPrice, formatPrintMethod, getImageUrl } from '@/lib/utils';
-import { useStore } from '@/store/useStore';
-import { useBranding } from '@/contexts/BrandingContext';
-import toast from 'react-hot-toast';
+import Link from "next/link";
+import { ShoppingCart } from "lucide-react";
+import { Product } from "@/types";
+import { formatPrice, formatPrintMethod, getImageUrl } from "@/lib/utils";
+import { useStore } from "@/store/useStore";
+import { useBranding } from "@/contexts/BrandingContext";
+import toast from "react-hot-toast";
 
 interface ProductCardProps {
   product: Product;
+  storeSlug?: string;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export function ProductCard({ product, storeSlug }: ProductCardProps) {
   const { addToCart } = useStore();
   const { settings } = useBranding();
+
+  // Generate the product URL based on whether we're in multi-tenant mode
+  const productUrl = storeSlug
+    ? `/store/${storeSlug}/products/${product.slug}`
+    : `/products/${product.slug}`;
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -22,18 +28,19 @@ export function ProductCard({ product }: ProductCardProps) {
 
     try {
       await addToCart(product.id, 1);
-      toast.success('Added to cart!');
+      toast.success("Added to cart!");
     } catch (error) {
-      toast.error('Failed to add to cart');
+      toast.error("Failed to add to cart");
     }
   };
 
   const imageUrl = getImageUrl(product.image_url);
-  const hasDiscount = product.compare_at_price && product.compare_at_price > product.price;
+  const hasDiscount =
+    product.compare_at_price && product.compare_at_price > product.price;
 
   return (
     <Link
-      href={`/products/${product.slug}`}
+      href={productUrl}
       className="group bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden"
     >
       {/* Product Image */}
@@ -66,15 +73,15 @@ export function ProductCard({ product }: ProductCardProps) {
           onClick={handleAddToCart}
           className="absolute bottom-2 right-2 bg-white p-2 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
           style={{
-            ['--hover-bg' as any]: settings.primary_color
+            ["--hover-bg" as any]: settings.primary_color,
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = settings.primary_color;
-            e.currentTarget.style.color = 'white';
+            e.currentTarget.style.color = "white";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'white';
-            e.currentTarget.style.color = 'black';
+            e.currentTarget.style.backgroundColor = "white";
+            e.currentTarget.style.color = "black";
           }}
           aria-label="Add to cart"
         >
@@ -91,13 +98,13 @@ export function ProductCard({ product }: ProductCardProps) {
         <h3
           className="font-semibold text-gray-900 transition-colors line-clamp-2 mb-2"
           style={{
-            ['--hover-color' as any]: settings.primary_color
+            ["--hover-color" as any]: settings.primary_color,
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = settings.primary_color;
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#111827';
+            e.currentTarget.style.color = "#111827";
           }}
         >
           {product.name}
@@ -129,7 +136,9 @@ export function ProductCard({ product }: ProductCardProps) {
                 {product.inventory_quantity} in stock
               </span>
             ) : product.allow_backorder ? (
-              <span className="text-xs text-yellow-600">Available on backorder</span>
+              <span className="text-xs text-yellow-600">
+                Available on backorder
+              </span>
             ) : (
               <span className="text-xs text-red-600">Out of stock</span>
             )}

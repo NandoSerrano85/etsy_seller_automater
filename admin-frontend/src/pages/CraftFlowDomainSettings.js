@@ -47,6 +47,9 @@ const CraftFlowDomainSettings = () => {
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3003';
 
+  // Storefront base URL - path-based routing
+  const STOREFRONT_BASE_URL = process.env.REACT_APP_STOREFRONT_URL || 'https://storefront.craftflow.store';
+
   // Load domain status on mount
   useEffect(() => {
     loadDomainStatus();
@@ -109,20 +112,20 @@ const CraftFlowDomainSettings = () => {
         { subdomain },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      addNotification('success', 'Subdomain saved successfully');
+      addNotification('success', 'Store URL saved successfully');
       await loadDomainStatus();
     } catch (error) {
-      console.error('Error saving subdomain:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to save subdomain';
+      console.error('Error saving store URL:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to save store URL';
       addNotification('error', errorMessage);
     } finally {
       setSaving(false);
     }
   };
 
-  // Remove subdomain
+  // Remove store URL
   const handleRemoveSubdomain = async () => {
-    if (!window.confirm('Are you sure you want to remove your subdomain?')) return;
+    if (!window.confirm('Are you sure you want to remove your store URL?')) return;
 
     try {
       setSaving(true);
@@ -130,11 +133,11 @@ const CraftFlowDomainSettings = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       setSubdomain('');
-      addNotification('success', 'Subdomain removed');
+      addNotification('success', 'Store URL removed');
       await loadDomainStatus();
     } catch (error) {
-      console.error('Error removing subdomain:', error);
-      addNotification('error', 'Failed to remove subdomain');
+      console.error('Error removing store URL:', error);
+      addNotification('error', 'Failed to remove store URL');
     } finally {
       setSaving(false);
     }
@@ -308,18 +311,27 @@ const CraftFlowDomainSettings = () => {
     [addNotification]
   );
 
-  // Open preview
+  // Open preview - uses path-based routing
   const handleOpenPreview = () => {
     let url;
     if (domainStatus.custom_domain && domainStatus.domain_verified) {
       url = `https://${domainStatus.custom_domain}`;
     } else if (domainStatus.subdomain) {
-      url = `https://${domainStatus.subdomain}.craftflow.store`;
+      // Use path-based URL: /store/{slug}
+      url = `${STOREFRONT_BASE_URL}/store/${domainStatus.subdomain}`;
     } else {
-      addNotification('warning', 'Please set up a subdomain or custom domain first');
+      addNotification('warning', 'Please set up a store URL first');
       return;
     }
     window.open(url, '_blank');
+  };
+
+  // Get the store URL for display
+  const getStoreUrl = () => {
+    if (domainStatus.subdomain) {
+      return `${STOREFRONT_BASE_URL}/store/${domainStatus.subdomain}`;
+    }
+    return null;
   };
 
   if (loading) {
@@ -350,8 +362,8 @@ const CraftFlowDomainSettings = () => {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Status Overview</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatusCard
-              label="Subdomain"
-              value={domainStatus.subdomain ? `${domainStatus.subdomain}.craftflow.store` : 'Not set'}
+              label="Store URL"
+              value={domainStatus.subdomain ? `/store/${domainStatus.subdomain}` : 'Not set'}
               status={domainStatus.subdomain ? 'success' : 'pending'}
             />
             <StatusCard
@@ -384,17 +396,20 @@ const CraftFlowDomainSettings = () => {
           </div>
         </div>
 
-        {/* Subdomain Configuration */}
+        {/* Store URL Configuration */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-2 flex items-center">
             <LinkIcon className="w-5 h-5 mr-2 text-gray-500" />
-            Free Subdomain
+            Store URL
           </h2>
           <p className="text-sm text-gray-500 mb-4">
-            Get a free subdomain on craftflow.store to start selling right away.
+            Choose a unique URL for your store. This will be your store's address.
           </p>
 
           <div className="flex items-center space-x-2">
+            <span className="px-4 py-2 bg-gray-100 border border-r-0 border-gray-300 rounded-l-md text-gray-600 text-sm">
+              {STOREFRONT_BASE_URL}/store/
+            </span>
             <input
               type="text"
               value={subdomain}
@@ -403,11 +418,8 @@ const CraftFlowDomainSettings = () => {
                 setSubdomainError(validateSubdomain(e.target.value.toLowerCase()));
               }}
               placeholder="myshop"
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-l-md focus:ring-sage-500 focus:border-sage-500"
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-r-md focus:ring-sage-500 focus:border-sage-500"
             />
-            <span className="px-4 py-2 bg-gray-100 border border-l-0 border-gray-300 rounded-r-md text-gray-600">
-              .craftflow.store
-            </span>
           </div>
 
           {subdomainError && <p className="mt-2 text-sm text-red-600">{subdomainError}</p>}
@@ -418,7 +430,7 @@ const CraftFlowDomainSettings = () => {
               disabled={saving || !subdomain || subdomainError}
               className="px-4 py-2 bg-sage-600 text-white rounded-md hover:bg-sage-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
-              {saving ? 'Saving...' : domainStatus.subdomain ? 'Update Subdomain' : 'Save Subdomain'}
+              {saving ? 'Saving...' : domainStatus.subdomain ? 'Update Store URL' : 'Save Store URL'}
             </button>
             {domainStatus.subdomain && (
               <button
@@ -430,6 +442,23 @@ const CraftFlowDomainSettings = () => {
               </button>
             )}
           </div>
+
+          {/* Show full URL after saving */}
+          {domainStatus.subdomain && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800">
+                <strong>Your store URL:</strong>{' '}
+                <a
+                  href={getStoreUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-green-900"
+                >
+                  {getStoreUrl()}
+                </a>
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Custom Domain Configuration */}

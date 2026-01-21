@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 // Extended store configuration interface
 export interface StoreConfig {
@@ -48,8 +49,9 @@ interface StoreContextType {
   config: StoreConfig | null;
   loading: boolean;
   error: string | null;
-  domain: string | null;
+  storeSlug: string | null;
   isMultiTenant: boolean;
+  getStoreUrl: (path?: string) => string;
 }
 
 const defaultConfig: StoreConfig = {
@@ -83,8 +85,9 @@ const StoreContext = createContext<StoreContextType>({
   config: null,
   loading: true,
   error: null,
-  domain: null,
+  storeSlug: null,
   isMultiTenant: false,
+  getStoreUrl: () => "/",
 });
 
 export function useStore() {
@@ -92,84 +95,38 @@ export function useStore() {
 }
 
 /**
- * Get the current domain from the browser
+ * Extract store slug from URL path
+ * Handles paths like /store/myshop, /store/myshop/products, etc.
  */
-function getCurrentDomain(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  const hostname = window.location.hostname;
-
-  // Skip localhost and development domains
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.includes("vercel.app") ||
-    hostname.includes("railway.app")
-  ) {
-    return null;
-  }
-
-  return hostname;
+function getStoreSlugFromPath(pathname: string): string | null {
+  // Match /store/[slug] pattern
+  const match = pathname.match(/^\/store\/([^\/]+)/);
+  return match ? match[1] : null;
 }
 
 /**
- * Check if we're running in multi-tenant mode
+ * Check if we're in multi-tenant mode (path-based)
  */
-function isMultiTenantMode(): boolean {
-  // Check for env var to enable/disable multi-tenant
-  if (process.env.NEXT_PUBLIC_MULTI_TENANT === "false") {
-    return false;
-  }
-
-  const domain = getCurrentDomain();
-
-  // If we have a custom domain or craftflow.store subdomain, it's multi-tenant
-  if (domain) {
-    // Check if it's a craftflow.store subdomain
-    if (domain.endsWith(".craftflow.store")) {
-      return true;
-    }
-
-    // Check if it's a custom domain (not development)
-    if (
-      !domain.includes("localhost") &&
-      !domain.includes("vercel") &&
-      !domain.includes("railway")
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Get the store identifier from the domain
- */
-function getStoreIdentifier(): string | null {
-  const domain = getCurrentDomain();
-
-  if (!domain) {
-    return null;
-  }
-
-  // For craftflow.store subdomains, extract the subdomain
-  if (domain.endsWith(".craftflow.store")) {
-    return domain.replace(".craftflow.store", "");
-  }
-
-  // For custom domains, use the full domain
-  return domain;
+function isPathBasedMultiTenant(pathname: string): boolean {
+  return pathname.startsWith("/store/");
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [config, setConfig] = useState<StoreConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [domain, setDomain] = useState<string | null>(null);
+  const [storeSlug, setStoreSlug] = useState<string | null>(null);
   const [isMultiTenant, setIsMultiTenant] = useState(false);
+
+  // Helper to generate store-relative URLs
+  const getStoreUrl = (path: string = ""): string => {
+    if (isMultiTenant && storeSlug) {
+      const cleanPath = path.startsWith("/") ? path : `/${path}`;
+      return `/store/${storeSlug}${cleanPath}`;
+    }
+    return path.startsWith("/") ? path : `/${path}`;
+  };
 
   useEffect(() => {
     const fetchStoreConfig = async () => {
@@ -177,25 +134,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
         setError(null);
 
-        const isMulti = isMultiTenantMode();
-        setIsMultiTenant(isMulti);
-
         const API_URL =
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
 
-        if (isMulti) {
-          // Multi-tenant mode: fetch config by domain
-          const storeId = getStoreIdentifier();
-          setDomain(storeId);
+        // Check for path-based multi-tenant mode
+        const slug = getStoreSlugFromPath(pathname);
+        const isMulti = isPathBasedMultiTenant(pathname);
 
-          if (!storeId) {
-            // No domain detected, use fallback
-            setConfig(defaultConfig);
-            return;
-          }
+        setStoreSlug(slug);
+        setIsMultiTenant(isMulti);
 
-          // Fetch store config from public API
-          const response = await fetch(`${API_URL}/api/store/${storeId}/config`);
+        if (isMulti && slug) {
+          // Multi-tenant mode: fetch config by store slug
+          // The slug is the same as the subdomain field in the database
+          const response = await fetch(
+            `${API_URL}/api/store/${slug}/config`
+          );
 
           if (response.ok) {
             const data = await response.json();
@@ -222,7 +176,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             throw new Error("Failed to fetch store config");
           }
         } else {
-          // Single-tenant mode: fetch from existing endpoint
+          // Single-tenant mode or root path: fetch from existing endpoint
           const response = await fetch(
             `${API_URL}/api/ecommerce/admin/storefront-settings/public/1`
           );
@@ -258,7 +212,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
 
     fetchStoreConfig();
-  }, []);
+  }, [pathname]);
 
   // Apply CSS custom properties when config changes
   useEffect(() => {
@@ -301,44 +255,54 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       // Add Google Analytics if configured
       if (config.google_analytics_id) {
-        const script = document.createElement("script");
-        script.async = true;
-        script.src = `https://www.googletagmanager.com/gtag/js?id=${config.google_analytics_id}`;
-        document.head.appendChild(script);
+        const existingScript = document.querySelector(
+          `script[src*="googletagmanager.com/gtag/js?id=${config.google_analytics_id}"]`
+        );
+        if (!existingScript) {
+          const script = document.createElement("script");
+          script.async = true;
+          script.src = `https://www.googletagmanager.com/gtag/js?id=${config.google_analytics_id}`;
+          document.head.appendChild(script);
 
-        const inlineScript = document.createElement("script");
-        inlineScript.innerHTML = `
-          window.dataLayer = window.dataLayer || [];
-          function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', '${config.google_analytics_id}');
-        `;
-        document.head.appendChild(inlineScript);
+          const inlineScript = document.createElement("script");
+          inlineScript.innerHTML = `
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', '${config.google_analytics_id}');
+          `;
+          document.head.appendChild(inlineScript);
+        }
       }
 
       // Add Facebook Pixel if configured
       if (config.facebook_pixel_id) {
-        const fbScript = document.createElement("script");
-        fbScript.innerHTML = `
-          !function(f,b,e,v,n,t,s)
-          {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-          n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-          if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-          n.queue=[];t=b.createElement(e);t.async=!0;
-          t.src=v;s=b.getElementsByTagName(e)[0];
-          s.parentNode.insertBefore(t,s)}(window, document,'script',
-          'https://connect.facebook.net/en_US/fbevents.js');
-          fbq('init', '${config.facebook_pixel_id}');
-          fbq('track', 'PageView');
-        `;
-        document.head.appendChild(fbScript);
+        const existingFb = document.querySelector(
+          'script[src*="connect.facebook.net"]'
+        );
+        if (!existingFb) {
+          const fbScript = document.createElement("script");
+          fbScript.innerHTML = `
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '${config.facebook_pixel_id}');
+            fbq('track', 'PageView');
+          `;
+          document.head.appendChild(fbScript);
+        }
       }
     }
   }, [config, loading]);
 
   return (
     <StoreContext.Provider
-      value={{ config, loading, error, domain, isMultiTenant }}
+      value={{ config, loading, error, storeSlug, isMultiTenant, getStoreUrl }}
     >
       {children}
     </StoreContext.Provider>
