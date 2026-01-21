@@ -23,7 +23,7 @@ from server.src.entities.user import User
 
 
 router = APIRouter(
-    prefix='/api/ecommerce/admin/storefront-domain',
+    prefix='/api/ecommerce/storefront/domain',
     tags=['Ecommerce - Storefront Domain']
 )
 
@@ -119,7 +119,9 @@ class StorefrontStatusResponse(BaseModel):
     custom_domain: Optional[str]
     custom_domain_url: Optional[str]
     domain_verified: bool
+    domain_verification_token: Optional[str]
     ssl_status: str
+    ssl_expires_at: Optional[datetime]
     is_active: bool
     is_published: bool
     maintenance_mode: bool
@@ -131,6 +133,11 @@ class StorefrontStatusResponse(BaseModel):
 class PublishRequest(BaseModel):
     """Request to publish/unpublish storefront"""
     publish: bool = True
+
+
+class MaintenanceRequest(BaseModel):
+    """Request to enable/disable maintenance mode"""
+    enabled: bool = True
 
 
 # ============================================================================
@@ -148,6 +155,30 @@ def get_storefront_or_404(db: Session, user_id: UUID) -> StorefrontSettings:
             status_code=404,
             detail="Storefront not found. Please create storefront settings first."
         )
+
+    return settings
+
+
+def get_or_create_storefront(db: Session, user: User) -> StorefrontSettings:
+    """Get storefront settings or create a default one if not exists"""
+    settings = db.query(StorefrontSettings).filter(
+        StorefrontSettings.user_id == user.id
+    ).first()
+
+    if not settings:
+        # Create a default storefront settings entry
+        settings = StorefrontSettings(
+            user_id=user.id,
+            store_name=f"{user.email.split('@')[0]}'s Store" if user.email else "My Store",
+            is_active=True,
+            is_published=False,
+            maintenance_mode=False,
+            domain_verified=False,
+            ssl_status="none"
+        )
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
 
     return settings
 
@@ -205,7 +236,8 @@ async def set_subdomain(
 
     Requires: Full plan
     """
-    settings = get_storefront_or_404(db, current_user.id)
+    # Use get_or_create to auto-create storefront if not exists
+    settings = get_or_create_storefront(db, current_user)
 
     # Check if subdomain is already taken
     existing = db.query(StorefrontSettings).filter(
@@ -273,7 +305,8 @@ async def set_custom_domain(
 
     Requires: Full plan
     """
-    settings = get_storefront_or_404(db, current_user.id)
+    # Use get_or_create to auto-create storefront if not exists
+    settings = get_or_create_storefront(db, current_user)
 
     # Check if domain is already in use
     existing = db.query(StorefrontSettings).filter(
@@ -618,7 +651,8 @@ async def get_storefront_status(
 
     Requires: Full plan
     """
-    settings = get_storefront_or_404(db, current_user.id)
+    # Use get_or_create to auto-create storefront if not exists
+    settings = get_or_create_storefront(db, current_user)
 
     subdomain_url = f"https://{settings.subdomain}.{BASE_DOMAIN}" if settings.subdomain else None
     custom_domain_url = f"https://{settings.custom_domain}" if settings.custom_domain and settings.domain_verified else None
@@ -635,7 +669,9 @@ async def get_storefront_status(
         custom_domain=settings.custom_domain,
         custom_domain_url=custom_domain_url,
         domain_verified=settings.domain_verified or False,
+        domain_verification_token=settings.domain_verification_token,
         ssl_status=settings.ssl_status or "none",
+        ssl_expires_at=settings.ssl_expires_at,
         is_active=settings.is_active or True,
         is_published=settings.is_published or False,
         maintenance_mode=settings.maintenance_mode or False,
@@ -658,7 +694,8 @@ async def publish_storefront(
 
     Requires: Full plan
     """
-    settings = get_storefront_or_404(db, current_user.id)
+    # Use get_or_create to auto-create storefront if not exists
+    settings = get_or_create_storefront(db, current_user)
 
     # Check prerequisites for publishing
     if request.publish:
@@ -691,7 +728,7 @@ async def publish_storefront(
 
 @router.post('/maintenance')
 async def toggle_maintenance_mode(
-    enable: bool = True,
+    request: MaintenanceRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_full_plan)
 ):
@@ -702,12 +739,13 @@ async def toggle_maintenance_mode(
 
     Requires: Full plan
     """
-    settings = get_storefront_or_404(db, current_user.id)
+    # Use get_or_create to auto-create storefront if not exists
+    settings = get_or_create_storefront(db, current_user)
 
-    settings.maintenance_mode = enable
+    settings.maintenance_mode = request.enabled
     db.commit()
 
-    status = "enabled" if enable else "disabled"
+    status = "enabled" if request.enabled else "disabled"
     return {
         "message": f"Maintenance mode {status}",
         "maintenance_mode": settings.maintenance_mode
