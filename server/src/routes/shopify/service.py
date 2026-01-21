@@ -381,3 +381,527 @@ class ShopifyService:
         except Exception as e:
             logger.error(f"Error verifying webhook signature: {e}")
             return False
+
+    def create_print_files_from_selected_orders(
+        self,
+        user_id: UUID,
+        order_ids: List[int],
+        template_name: str
+    ) -> Dict[str, Any]:
+        """
+        Create gang sheet print files from selected Shopify orders.
+
+        Args:
+            user_id: User UUID
+            order_ids: List of Shopify order IDs
+            template_name: Template name for gang sheet
+
+        Returns:
+            Dictionary with success status and details
+        """
+        import time
+        import os
+        import tempfile
+        from server.src.utils.gangsheet_engine import create_gang_sheets
+        from server.src.utils.nas_storage import nas_storage
+        from server.src.entities.user import User
+        from server.src.entities.designs import DesignImages
+
+        logger.info(f"Creating print files for {len(order_ids)} selected Shopify orders")
+
+        # Get user and store information
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        store = self.get_user_store(user_id)
+        if not store:
+            raise HTTPException(status_code=404, detail="No connected Shopify store found")
+
+        # Initialize result structure
+        image_data = {
+            'Title': [],
+            'Size': [],
+            'Total': []
+        }
+
+        processed_items = 0
+
+        # Fetch each order and extract line items
+        for order_id in order_ids:
+            try:
+                order = self.client.get_order_by_id(str(store.id), order_id)
+
+                fulfillment_status = order.get('fulfillment_status', 'unfulfilled')
+                line_items = order.get('line_items', [])
+                logger.info(f"📦 Order {order_id}: Found {len(line_items)} items | fulfillment: {fulfillment_status}")
+
+                # Process each line item
+                for idx, line_item in enumerate(line_items, 1):
+                    item_title = line_item.get('name', '')
+                    quantity = line_item.get('quantity', 1)
+                    item_id = line_item.get('id', 'unknown')
+
+                    logger.info(f"  Processing item {idx}/{len(line_items)} from order {order_id}: '{item_title}' (qty: {quantity}, item_id: {item_id})")
+
+                    # Try to find design file for this item
+                    design_path = self._find_design_for_shopify_item(item_title, template_name, user_id)
+
+                    if design_path:
+                        # Check if this design already exists in our data
+                        # If so, add to its quantity instead of creating a duplicate entry
+                        if design_path in image_data['Title']:
+                            # Find the index and add to existing quantity
+                            existing_idx = image_data['Title'].index(design_path)
+                            image_data['Total'][existing_idx] += quantity
+                            logger.info(f"  ✅ Updated existing item: {item_title} (added qty: {quantity}, total now: {image_data['Total'][existing_idx]}) -> {design_path}")
+                        else:
+                            # New design, add to arrays
+                            image_data['Title'].append(design_path)
+                            image_data['Size'].append(template_name)
+                            image_data['Total'].append(quantity)
+                            logger.info(f"  ✅ Added new item from order {order_id}: {item_title} (qty: {quantity}) -> {design_path}")
+                        processed_items += 1
+                    else:
+                        logger.warning(f"  ❌ No design found for item: {item_title}")
+
+            except Exception as e:
+                logger.error(f"Error processing order {order_id}: {e}")
+                continue
+
+        logger.info(f"Processed {processed_items} items from {len(order_ids)} selected orders")
+
+        if processed_items == 0:
+            return {
+                "success": False,
+                "error": "No items found in selected orders"
+            }
+
+        # Download design files from NAS if needed
+        # IMPORTANT: Use Shopify store name, not Etsy shop name
+        # NAS path: /share/Graphics/<shopify_store_name>/<template>/
+        # IMPORTANT: Remove spaces from shop name for NAS paths
+        shopify_shop_name = store.shop_name.replace(' ', '')  # Remove spaces for NAS paths
+        logger.info(f"Using Shopify store name for NAS: '{store.shop_name}' -> '{shopify_shop_name}' (normalized)")
+
+        temp_designs_dir = tempfile.mkdtemp(prefix="shopify_designs_")
+        try:
+            if nas_storage.enabled and image_data.get('Title'):
+                download_start = time.time()
+                logger.info(f"Starting download of {len(image_data['Title'])} design files from NAS")
+
+                updated_titles = []
+                download_count = 0
+                for design_file_path in image_data['Title']:
+                    if design_file_path and "MISSING_" not in design_file_path:
+                        local_filename = os.path.basename(design_file_path)
+                        local_file_path = os.path.join(temp_designs_dir, local_filename)
+
+                        success = nas_storage.download_file(
+                            shop_name=shopify_shop_name,  # Use Shopify store name
+                            relative_path=design_file_path,
+                            local_file_path=local_file_path
+                        )
+                        if success:
+                            updated_titles.append(local_file_path)
+                            download_count += 1
+                        else:
+                            logger.warning(f"Failed to download: {design_file_path}")
+                            updated_titles.append(design_file_path)
+                    else:
+                        updated_titles.append(design_file_path)
+
+                image_data['Title'] = updated_titles
+                download_time = time.time() - download_start
+                logger.info(f"Downloaded {download_count}/{len(image_data['Title'])} files from NAS in {download_time:.2f}s")
+
+            # Create gang sheets in temp directory, then upload to NAS
+            gangsheet_start = time.time()
+            total_images = sum(image_data.get('Total', []))  # Sum of all quantities
+
+            # Create temporary directory for gangsheet output
+            temp_gangsheet_dir = tempfile.mkdtemp(prefix="shopify_gangsheets_")
+
+            try:
+                result = create_gang_sheets(
+                    image_data=image_data,
+                    image_type=template_name,
+                    output_path=temp_gangsheet_dir,
+                    total_images=total_images
+                )
+                gangsheet_time = time.time() - gangsheet_start
+                logger.info(f"Gang sheet creation took {gangsheet_time:.2f}s")
+
+                # Upload gangsheets to NAS at /share/Graphics/<shopify_name>/PrintFiles/
+                if nas_storage.enabled and result:
+                    upload_start = time.time()
+                    nas_print_files_path = f"PrintFiles"  # Relative path within shop
+                    uploaded_count = 0
+
+                    # Find all PNG files in the temp gangsheet directory
+                    for filename in os.listdir(temp_gangsheet_dir):
+                        if filename.endswith('.png'):
+                            local_file = os.path.join(temp_gangsheet_dir, filename)
+
+                            # Upload to NAS: /share/Graphics/<shopify_name>/PrintFiles/<filename>
+                            success = nas_storage.upload_file(
+                                local_file_path=local_file,
+                                shop_name=shopify_shop_name,
+                                relative_path=f"{nas_print_files_path}/{filename}"
+                            )
+
+                            if success:
+                                uploaded_count += 1
+                                logger.info(f"✅ Uploaded gangsheet to NAS: {shopify_shop_name}/PrintFiles/{filename}")
+                            else:
+                                logger.warning(f"⚠️  Failed to upload gangsheet to NAS: {filename}")
+
+                    upload_time = time.time() - upload_start
+                    logger.info(f"Uploaded {uploaded_count} gangsheet(s) to NAS in {upload_time:.2f}s")
+
+                return {
+                    "success": True,
+                    "message": f"Created gang sheets from {processed_items} items",
+                    "sheets_created": result.get('sheets_created', 0),
+                    "uploaded_to_nas": uploaded_count if nas_storage.enabled else 0
+                }
+
+            finally:
+                # Clean up temp gangsheet directory
+                import shutil
+                if os.path.exists(temp_gangsheet_dir):
+                    shutil.rmtree(temp_gangsheet_dir)
+
+        except Exception as e:
+            logger.error(f"Error creating gang sheets: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+        finally:
+            # Clean up temp designs directory
+            import shutil
+            if os.path.exists(temp_designs_dir):
+                shutil.rmtree(temp_designs_dir)
+
+    def _find_design_for_shopify_item(self, item_title: str, template_name: str, user_id: UUID) -> Optional[str]:
+        """
+        Find design file for a Shopify item.
+
+        Args:
+            item_title: Item title from Shopify order
+            template_name: Template name
+            user_id: User UUID
+
+        Returns:
+            Design file path or None
+        """
+        import re
+        from server.src.entities.designs import DesignImages
+        from server.src.entities.template import EtsyProductTemplate
+
+        # Check if this is a non-design item (physical products, services, etc.)
+        # These should be skipped as they don't have design files
+        skip_keywords = [
+            'glass can', 'tumbler wrap', 'package protection', 'route package',
+            'clear film', 'sublimation', 'frosted glass', 'shipping', 'insurance',
+            'screen print', 'screenprint'
+        ]
+
+        lower_title = item_title.lower()
+        for keyword in skip_keywords:
+            if keyword in lower_title:
+                logger.info(f"⏭️  Skipping non-design item: '{item_title}' (matched: {keyword})")
+                return None
+
+        # Check for template mismatch - DTF items in non-DTF template, Decal items in non-Decal template
+        if template_name and template_name != 'DTF' and 'dtf transfer' in lower_title:
+            logger.info(f"⏭️  Skipping DTF item in {template_name} template: '{item_title}'")
+            return None
+
+        if template_name and 'decal' not in template_name.lower() and 'decal' in lower_title and 'uvdtf' not in lower_title:
+            logger.info(f"⏭️  Skipping Decal item in {template_name} template: '{item_title}'")
+            return None
+
+        # Extract design identifier from title - support multiple patterns:
+        # 1. UV 123 / UV123
+        # 2. TS12 / TS 12
+        # 3. Any alphanumeric code at start (MK123, K-Pop, etc.)
+        search_name = item_title
+
+        # Try multiple patterns in order of specificity
+        patterns = [
+            (r'^(UV\s*\d+)', 'UV number'),  # UV 123, UV123
+            (r'^([A-Z]{2,}\s*\d+)', 'Alpha code'),  # TS12, MK123, TS 12
+            (r'^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)', 'Word code')  # K Pop, Bad Bunny, etc.
+        ]
+
+        extracted_code = None
+        for pattern, pattern_name in patterns:
+            match = re.match(pattern, item_title.strip(), re.IGNORECASE)
+            if match:
+                extracted_code = match.group(1).strip()
+                logger.info(f"🔍 Extracted {pattern_name} '{extracted_code}' from title '{item_title}'")
+                search_name = extracted_code
+                break
+
+        if not extracted_code:
+            # No code found - use first few words as search term
+            words = item_title.split('-')[0].strip().split()[:3]  # Take first 3 words before hyphen
+            search_name = ' '.join(words)
+            logger.info(f"🔍 No code found, using first words '{search_name}' from title '{item_title}'")
+
+        # Try database first
+        try:
+            normalized_search = re.sub(r'\s+', ' ', search_name.strip())
+
+            base_query = self.db.query(DesignImages).filter(
+                DesignImages.user_id == user_id,
+                DesignImages.is_active == True
+            )
+
+            # Filter by template if provided
+            if template_name:
+                base_query = base_query.join(DesignImages.product_templates).filter(
+                    EtsyProductTemplate.name == template_name
+                )
+
+            # Try exact substring match
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{normalized_search}%')
+            ).first()
+
+            if design:
+                logger.info(f"✅ Found in database: {design.file_path}")
+                return design.file_path
+
+            # Try without spaces
+            no_space_search = normalized_search.replace(" ", "")
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{no_space_search}%')
+            ).first()
+
+            if design:
+                logger.info(f"✅ Found in database (no-space match): {design.file_path}")
+                return design.file_path
+
+            # Try just the number/code suffix
+            parts = normalized_search.split(" ")
+            if len(parts) > 1 and (parts[-1].isdigit() or len(parts[-1]) <= 4):
+                # Try last part (number or short code)
+                design = base_query.filter(
+                    DesignImages.filename.ilike(f'%{parts[-1]}%')
+                ).first()
+
+                if design:
+                    logger.info(f"✅ Found in database (suffix match): {design.file_path}")
+                    return design.file_path
+
+            # Try fuzzy word match - search each word individually
+            for word in parts:
+                if len(word) >= 3:  # Skip very short words
+                    design = base_query.filter(
+                        DesignImages.filename.ilike(f'%{word}%')
+                    ).first()
+
+                    if design:
+                        logger.info(f"✅ Found in database (word match '{word}'): {design.file_path}")
+                        return design.file_path
+
+            logger.warning(f"DB Search: No match found for '{normalized_search}' in template '{template_name}'")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error searching database for design: {e}")
+            return None
+
+    def _generate_variant_combinations(self, variant_configs: List[Dict[str, Any]]) -> List[List[str]]:
+        """
+        Generate all combinations of variant options.
+
+        Args:
+            variant_configs: List of variant configurations with option_name and option_values
+
+        Returns:
+            List of variant combinations, each as a list of values
+        """
+        if not variant_configs:
+            return [[]]
+
+        from itertools import product
+
+        # Extract just the values for each option
+        option_values_list = [config.get('option_values', []) for config in variant_configs]
+
+        # Generate all combinations
+        combinations = list(product(*option_values_list))
+
+        return [list(combo) for combo in combinations]
+
+    def bulk_create_products(self, user_id: UUID, bulk_request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create multiple products with auto-generated names in user's connected Shopify store.
+
+        Args:
+            user_id: User UUID
+            bulk_request: Dictionary containing:
+                - quantity: Number of products to create
+                - name_prefix: Fixed text before the number
+                - starting_number: Starting number for auto-increment
+                - name_postfix: Fixed text after the number
+                - description: Product description
+                - price: Product price
+                - vendor: Product vendor
+                - product_type: Product type
+                - tags: Product tags
+                - status: Product status (draft, active, archived)
+                - template_suffix: Theme template suffix (optional)
+                - variants: List of variant configurations (optional)
+                - inventory_quantity: Initial inventory quantity
+                - track_inventory: Whether to track inventory
+
+        Returns:
+            Dictionary containing created products and summary
+
+        Raises:
+            HTTPException: If store not found or API error occurs
+        """
+        store = self.get_user_store(user_id)
+        if not store:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Shopify store found. Please connect a store first."
+            )
+
+        # Validate quantity
+        quantity = bulk_request.get('quantity', 0)
+        if quantity <= 0 or quantity > 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Quantity must be between 1 and 100"
+            )
+
+        # Extract parameters
+        name_prefix = bulk_request.get('name_prefix', '')
+        starting_number = bulk_request.get('starting_number', 1)
+        name_postfix = bulk_request.get('name_postfix', '')
+        description = bulk_request.get('description', '')
+        price = bulk_request.get('price')
+        vendor = bulk_request.get('vendor', 'Custom Design Store')
+        product_type = bulk_request.get('product_type', '')
+        tags = bulk_request.get('tags', '')
+        status_value = bulk_request.get('status', 'draft')
+        template_suffix = bulk_request.get('template_suffix')
+        variant_configs = bulk_request.get('variants', [])
+        inventory_quantity = bulk_request.get('inventory_quantity', 0)
+        track_inventory = bulk_request.get('track_inventory', True)
+
+        if not price or price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Price must be greater than 0"
+            )
+
+        created_products = []
+        errors = []
+
+        logger.info(f"🔄 Starting bulk product creation: {quantity} products")
+
+        for i in range(quantity):
+            current_number = starting_number + i
+            product_title = f"{name_prefix}{current_number}{name_postfix}"
+
+            try:
+                # Build base product data
+                product_data = {
+                    "product": {
+                        "title": product_title,
+                        "body_html": description,
+                        "vendor": vendor,
+                        "product_type": product_type,
+                        "tags": tags,
+                        "status": status_value,
+                    }
+                }
+
+                # Add template suffix if provided
+                if template_suffix:
+                    product_data["product"]["template_suffix"] = template_suffix
+
+                # Handle variants
+                if variant_configs and len(variant_configs) > 0:
+                    # Set up variant options
+                    options = []
+                    for idx, config in enumerate(variant_configs[:3]):  # Shopify supports max 3 options
+                        options.append({
+                            "name": config.get('option_name'),
+                            "values": config.get('option_values', [])
+                        })
+
+                    product_data["product"]["options"] = options
+
+                    # Generate variant combinations
+                    variant_combinations = self._generate_variant_combinations(variant_configs)
+
+                    # Build variants array
+                    variants = []
+                    for combo in variant_combinations:
+                        # Calculate variant price
+                        variant_price = price
+                        for idx, config in enumerate(variant_configs):
+                            if idx < len(combo):
+                                modifier = config.get('price_modifier', 0.0)
+                                variant_price += modifier
+
+                        variant_data = {
+                            "price": str(variant_price),
+                            "inventory_management": "shopify" if track_inventory else None,
+                            "inventory_quantity": inventory_quantity if track_inventory else None,
+                        }
+
+                        # Add option values
+                        for idx, value in enumerate(combo[:3]):  # Max 3 options
+                            variant_data[f"option{idx + 1}"] = value
+
+                        variants.append(variant_data)
+
+                    product_data["product"]["variants"] = variants
+                else:
+                    # No variants - single default variant
+                    product_data["product"]["variants"] = [
+                        {
+                            "price": str(price),
+                            "inventory_management": "shopify" if track_inventory else None,
+                            "inventory_quantity": inventory_quantity if track_inventory else None,
+                        }
+                    ]
+
+                # Create product via Shopify API
+                product = self.client.create_product(
+                    store_id=str(store.id),
+                    product_data=product_data
+                )
+
+                created_products.append({
+                    "id": product.get("id"),
+                    "title": product.get("title"),
+                    "status": product.get("status"),
+                    "variants_count": len(product.get("variants", []))
+                })
+
+                logger.info(f"✅ Created product {i+1}/{quantity}: {product_title}")
+
+            except Exception as e:
+                error_msg = f"Failed to create product '{product_title}': {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                errors.append(error_msg)
+                continue
+
+        # Return summary
+        return {
+            "success": len(created_products) > 0,
+            "message": f"Successfully created {len(created_products)} of {quantity} products",
+            "products_created": len(created_products),
+            "products": created_products,
+            "errors": errors if errors else None
+        }

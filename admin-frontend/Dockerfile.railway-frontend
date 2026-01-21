@@ -1,0 +1,45 @@
+# Multi-stage build for React frontend
+FROM node:20-alpine as builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Build arguments for React environment variables (baked in at build time)
+ARG REACT_APP_STRIPE_PUBLISHABLE_KEY
+ARG REACT_APP_API_BASE_URL=https://printer-automation-backend-production.up.railway.app
+
+ENV REACT_APP_STRIPE_PUBLISHABLE_KEY=${REACT_APP_STRIPE_PUBLISHABLE_KEY}
+ENV REACT_APP_API_BASE_URL=${REACT_APP_API_BASE_URL}
+# Install dependencies
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Build the app
+RUN npm run build
+
+# Production stage with nginx
+FROM nginx:alpine
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Copy build files
+COPY --from=builder /app/build /usr/share/nginx/html
+
+# Copy startup script to handle PORT environment variable
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Expose port (Railway will set PORT environment variable)
+EXPOSE 80
+
+# Health check - Railway will handle this with the /health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:$PORT/health || exit 1
+
+# Start nginx with port configuration
+CMD ["/start.sh"]

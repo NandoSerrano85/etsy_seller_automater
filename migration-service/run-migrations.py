@@ -4,13 +4,20 @@ Standalone migration runner for Railway deployment
 
 This service runs independently from the main API and handles:
 - Database schema migrations
+- Local design imports from LOCAL_ROOT_PATH with phash generation
 - NAS design imports with phash generation
 - Data transformations and cleanup
 
 Environment Variables Required:
 - DATABASE_URL: PostgreSQL connection string
+
+Optional:
+- LOCAL_ROOT_PATH: Local design directory path for local-only migration
+- LOCAL_MIGRATION_DRY_RUN: Set to 'true' for dry run mode
+- LOCAL_MIGRATION_SHOP: Migrate only specific shop
+- LOCAL_MIGRATION_TEMPLATE: Migrate only specific template
 - QNAP_HOST, QNAP_USERNAME, QNAP_PASSWORD: NAS access
-- MIGRATION_MODE: 'all', 'startup', 'nas-only' (default: 'all')
+- MIGRATION_MODE: 'all', 'startup', 'local-only', 'nas-only' (default: 'all')
 """
 
 import os
@@ -94,14 +101,50 @@ def discover_migrations():
 
         # Platform-specific migrations
         "add_etsy_shop_id",               # Adds Etsy shop ID fields
+        "fix_platform_constraint_case",    # Fix constraint to accept both cases BEFORE migrations
         "separate_platform_connections",   # Separates platform connections
+        "fix_platform_enum_case",          # Ensures platform values are uppercase
         "remove_shopify_unique_constraint", # Removes Shopify constraints
+        "add_production_partner_ids",  # Adds production_partner_ids column
+        "add_readiness_state_id",         # Adds readiness_state_id column
+        "add_shopify_product_templates",  # Adds Shopify product templates table
+        "add_org_id_to_shopify_templates", # Adds org_id column to shopify templates if missing
+        "add_variant_configs_to_shopify_templates", # Adds variant_configs JSON column for nested variants
+        "add_craftflow_commerce_templates", # Adds CraftFlow Commerce templates table and mockups support
 
         # Design-related migrations
         "add_phash_to_designs",           # Adds phash column to designs
-        "update_phash_hash_size",         # Updates phash column size
+        "add_additional_hash_columns",    # Adds ahash, dhash, whash columns
+        "update_phash_hash_size",         # Updates phash column size and generates all hashes
+        "add_tags_to_design_images",      # Adds tags and tags_metadata for automatic image tagging
+        "add_platform_to_designs",        # Adds platform column to separate Shopify and Etsy designs
+        "import_local_designs",           # Import local designs with all hash calculations
         "run_canvas_size_migration",      # Canvas size updates
         "migration_add_printers_and_canvas_updates", # Printer and canvas updates
+
+        # Ecommerce migrations
+        "create_ecommerce_tables",        # Creates all ecommerce tables for storefront
+        "fix_storefront_settings_user_id_type",  # Fixes user_id column type from INTEGER to UUID
+        "add_updated_at_to_product_reviews",  # Adds missing updated_at column to product reviews
+        "add_updated_at_to_customer_addresses",  # Adds missing updated_at column to customer addresses
+        "remove_updated_at_from_order_items",  # Removes updated_at column from order items (not in schema)
+        "fix_cart_item_ids",  # Fixes cart items missing unique IDs that cause 404 errors on removal
+        "add_shipping_config_to_storefront_settings",  # Adds shipping origin address and package defaults
+        "populate_shipping_from_env",  # Optional: Populate shipping settings from environment variables
+        "add_handling_fee_to_storefront_settings",  # Adds handling_fee column for additional shipping charges
+        "create_email_tables",  # Creates email messaging system tables for transactional and marketing emails
+
+        # User and subscription migrations
+        "create_subscription_tables",          # Creates subscriptions, subscription_usage, billing_history tables
+        "add_subscription_plan_to_users",      # Adds subscription_plan column to users table
+        "upgrade_users_to_pro_plan",           # Upgrades all users to Pro plan for CraftFlow Commerce access
+        "add_user_id_to_ecommerce_products",   # Adds user_id column for multi-tenant isolation
+        "add_user_id_to_ecommerce_customers",  # Adds user_id column to customers table
+        "add_user_id_to_ecommerce_orders",     # Adds user_id column to orders table
+        "link_guest_orders_to_customers",      # Links guest orders to registered customers by email
+
+        # Data migrations (triggered by env vars)
+        "regenerate_etsy_mockups_with_watermark",  # Regenerates Etsy mockups with watermarks (REGENERATE_ETSY_MOCKUPS=true)
     ]
 
     # Exclude certain files
@@ -109,7 +152,10 @@ def discover_migrations():
         "__init__.py",
         "__pycache__",
         "import_nas_designs.py",         # Replaced by batched version
-        "import_nas_designs_batched.py"  # Handled separately as NAS migration
+        "import_nas_designs_batched.py", # Handled separately as NAS migration
+        "clear_design_images.py",        # Manual cleanup script with user input
+        "import_funnybunny_designs.py",  # Manual import script
+        "import_shopify_template_designs.py"  # Manual import script
     ]
 
     # Add migrations directory to Python path for imports
@@ -182,6 +228,72 @@ def run_startup_migrations(engine):
         logger.warning(f"⚠️  Some migrations may have failed or were skipped")
     return success_count
 
+def run_local_design_migration(engine):
+    """Run local design import migration"""
+    logger.info("🔄 Running local design import migration...")
+
+    try:
+        # Check LOCAL_ROOT_PATH configuration
+        local_root_path = os.getenv('LOCAL_ROOT_PATH')
+        if not local_root_path:
+            logger.info("ℹ️  LOCAL_ROOT_PATH not configured, skipping local design migration")
+            return True  # Return True since this is optional
+
+        if not os.path.exists(local_root_path):
+            logger.warning(f"⚠️  LOCAL_ROOT_PATH does not exist: {local_root_path}, skipping local design migration")
+            return True  # Return True since this is optional
+
+        # Use the same directory discovery logic as discover_migrations()
+        current_dir = os.path.dirname(__file__)
+        possible_migrations_dirs = [
+            os.path.join(current_dir, 'migrations'),
+            '/app/migrations',
+            '/app/migration-service/migrations'
+        ]
+
+        migration_dir = None
+        for dir_path in possible_migrations_dirs:
+            if os.path.exists(dir_path):
+                migration_dir = dir_path
+                break
+
+        if migration_dir is None:
+            logger.error("❌ Could not find migrations directory for local design migration")
+            return False
+
+        import importlib.util
+        migration_file = os.path.join(migration_dir, 'import_local_designs.py')
+
+        if not os.path.exists(migration_file):
+            logger.warning("⚠️  Local design migration file not found, skipping")
+            return True  # Return True since this is optional
+
+        spec = importlib.util.spec_from_file_location('import_local_designs', migration_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # Local design migration handles its own transactions
+        try:
+            with engine.connect() as conn:
+                trans = conn.begin()
+                try:
+                    module.upgrade(conn)
+                    trans.commit()
+                    logger.info("✅ Local design migration completed successfully")
+                    return True
+                except Exception as e:
+                    trans.rollback()
+                    logger.error(f"❌ Local design migration failed: {e}")
+                    return False
+        except Exception as e:
+            logger.error(f"❌ Local design migration failed: {e}")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Could not run local design migration: {e}")
+        return False
+
+
 def run_nas_migration(engine):
     """Run NAS design import migration"""
     logger.info("🔄 Running optimized NAS design import migration...")
@@ -189,8 +301,8 @@ def run_nas_migration(engine):
     try:
         # Check NAS configuration
         if not all([os.getenv('QNAP_HOST'), os.getenv('QNAP_USERNAME'), os.getenv('QNAP_PASSWORD')]):
-            logger.warning("⚠️  NAS credentials not configured, skipping NAS migration")
-            return False
+            logger.info("ℹ️  NAS credentials not configured, skipping NAS migration")
+            return True  # Return True since this is optional
 
         # Check if we should use batched processing
         use_batched = os.getenv('NAS_USE_BATCHED', 'true').lower() == 'true'
@@ -318,6 +430,11 @@ def main():
             if migration_mode == 'startup':
                 success = startup_success > 0
 
+        if migration_mode in ['all', 'local-only']:
+            local_success = run_local_design_migration(engine)
+            if migration_mode == 'local-only':
+                success = local_success
+
         if migration_mode in ['all', 'nas-only']:
             nas_success = run_nas_migration(engine)
             if migration_mode == 'nas-only':
@@ -326,7 +443,7 @@ def main():
         if migration_mode == 'all':
             complex_success = run_complex_migrations(engine)
             # For 'all' mode, we want both startup and complex to succeed
-            # NAS is optional (depends on configuration)
+            # Local and NAS are optional (depends on configuration)
 
         if success:
             logger.info("🎉 Migration service completed successfully!")

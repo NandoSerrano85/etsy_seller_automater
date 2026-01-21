@@ -38,7 +38,13 @@ SERVER_CONFIG = {
     'default_debug': False,
 }
 
-config_logging(LogLevels.info)
+# Enable debug logging via environment variable for detailed debugging
+debug_mode = os.getenv('DEBUG_LOGGING', 'false').lower() == 'true'
+if debug_mode:
+    config_logging(LogLevels.debug)
+    print("🔍 Debug logging enabled via DEBUG_LOGGING environment variable")
+else:
+    config_logging(LogLevels.info)
 
 print("🔄 Starting CraftFlow application...")
 print(f"🌍 Environment: {os.getenv('DOCKER_ENV', 'development')}")
@@ -65,16 +71,35 @@ async def lifespan(app: FastAPI):
     # Initialize cache service
     try:
         from server.src.services.cache_service import cache_service
-        # Cache service initializes automatically
-        print("🚀 Cache service initialized")
+        await cache_service.initialize()
+        print("🚀 Cache service initialized successfully")
     except Exception as e:
         print(f"⚠️  Warning: Failed to initialize cache service: {e}")
+        # Continue without caching rather than failing startup
 
-    # Only start token refresh service in production after API is fully ready
+    # Start OAuth token refresh service
+    try:
+        from server.src.services.oauth_token_refresh_service import start_oauth_refresh_service
+        print("🔄 Starting OAuth token refresh service...")
+        await start_oauth_refresh_service()
+        print("✅ OAuth token refresh service started")
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to start OAuth token refresh service: {e}")
+
+    # Start email campaign scheduler
+    try:
+        from server.src.services.email_campaign_scheduler import start_email_campaign_scheduler
+        print("🔄 Starting email campaign scheduler service...")
+        asyncio.create_task(start_email_campaign_scheduler())
+        print("✅ Email campaign scheduler started")
+    except Exception as e:
+        print(f"⚠️  Warning: Failed to start email campaign scheduler: {e}")
+
+    # Only start legacy token refresh service in production after API is fully ready
     if os.getenv('RAILWAY_ENVIRONMENT') == 'production':
         try:
             from server.src.services.token_refresh_service import start_token_refresh_service
-            print("🔄 Scheduling automatic token refresh service for delayed start...")
+            print("🔄 Scheduling automatic legacy token refresh service for delayed start...")
 
             # Start the token refresh service as a background task with error handling
             # and delay to ensure API is fully ready first
@@ -87,12 +112,12 @@ async def lifespan(app: FastAPI):
                     print(f"⚠️  Token refresh service stopped due to error: {e}")
 
             token_refresh_task = asyncio.create_task(safe_token_service())
-            print("✅ Token refresh service scheduled for delayed start")
+            print("✅ Legacy token refresh service scheduled for delayed start")
 
         except Exception as e:
-            print(f"⚠️  Warning: Failed to schedule token refresh service: {e}")
+            print(f"⚠️  Warning: Failed to schedule legacy token refresh service: {e}")
     else:
-        print("ℹ️  Skipping token refresh service in development mode")
+        print("ℹ️  Skipping legacy token refresh service in development mode")
 
     print("✅ Application services started")
 
@@ -100,6 +125,30 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     print("🛑 Shutting down application services...")
+
+    # Shutdown OAuth token refresh service
+    try:
+        from server.src.services.oauth_token_refresh_service import stop_oauth_refresh_service
+        await stop_oauth_refresh_service()
+        print("✅ OAuth token refresh service stopped")
+    except Exception as e:
+        print(f"⚠️  Warning: Error stopping OAuth token refresh service: {e}")
+
+    # Stop email campaign scheduler
+    try:
+        from server.src.services.email_campaign_scheduler import stop_email_campaign_scheduler
+        stop_email_campaign_scheduler()
+        print("✅ Email campaign scheduler stopped")
+    except Exception as e:
+        print(f"⚠️  Warning: Error stopping email campaign scheduler: {e}")
+
+    # Shutdown cache service
+    try:
+        from server.src.services.cache_service import cache_service
+        await cache_service.shutdown()
+        print("✅ Cache service stopped")
+    except Exception as e:
+        print(f"⚠️  Warning: Error stopping cache service: {e}")
 
     if token_refresh_task:
         try:
@@ -155,10 +204,13 @@ app.add_middleware(
     allow_origins=[
         "https://comforting-cocada-88dd8c.netlify.app",
         "https://printer-automater.netlify.app",
-        "https://printer-automation-frontend-production.up.railway.app",  # Specific Railway frontend URL
+        "https://printer-automation-frontend-production.up.railway.app",  # Admin frontend
+        "https://store-front-production-bddf.up.railway.app",  # Storefront (Next.js)
         frontend_url,  # Dynamic frontend URL from environment
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://localhost:3000",  # Admin frontend local
+        "http://localhost:3001",  # Storefront local
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
@@ -168,9 +220,11 @@ app.add_middleware(
 )
 
 print("🌐 CORS middleware configured with the following origins:")
-print(f"   - https://printer-automation-frontend-production.up.railway.app")
-print(f"   - {frontend_url}")
-print(f"   - Any *.railway.app subdomain")
+print(f"   - Admin Frontend: https://printer-automation-frontend-production.up.railway.app")
+print(f"   - Storefront: https://store-front-production-bddf.up.railway.app")
+print(f"   - Dynamic Frontend URL: {frontend_url}")
+print(f"   - Local: http://localhost:3000 (admin) & http://localhost:3001 (storefront)")
+print(f"   - Any *.railway.app subdomain (regex)")
 print("🔧 CORS allows all methods and headers")
 print("🚀 Backend fixes for CORS and 500 errors applied")
 
@@ -226,13 +280,21 @@ if os.path.exists(frontend_public_dir):
         return {"error": "Favicon not found"}
 
 # Handle webpack hot reload files - return 404 gracefully
+# IMPORTANT: Only match files that don't start with 'api/' to avoid catching API routes
 @app.get("/{filename:path}")
 async def catch_webpack_files(filename: str):
     from fastapi.responses import JSONResponse
     from fastapi import status
-    
+
+    # Don't catch API routes - let them 404 properly through FastAPI
+    if filename.startswith('api/'):
+        # This shouldn't happen as API routers are registered first,
+        # but if we get here, pass through to FastAPI's normal 404 handling
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Not found")
+
     # If this is a webpack hot-reload file, return empty response to avoid console errors
-    if (filename.endswith('.hot-update.json') or 
+    if (filename.endswith('.hot-update.json') or
         filename.endswith('.hot-update.js') or
         filename.startswith('__webpack_hmr') or
         filename.endswith('.map')):
@@ -240,7 +302,7 @@ async def catch_webpack_files(filename: str):
             status_code=status.HTTP_404_NOT_FOUND,
             content={"detail": "Webpack development file not found"}
         )
-    
+
     # For other files, return standard 404
     return JSONResponse(
         status_code=status.HTTP_404_NOT_FOUND,

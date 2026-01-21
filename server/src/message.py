@@ -300,9 +300,30 @@ SUCCESS_MESSAGES = {
     'user_data_loaded': 'User data loaded successfully',
 }
 
+def _redact_sensitive_fields(body_str: str) -> str:
+    """Redact sensitive fields like passwords from log output."""
+    import re
+    # Redact password values in JSON-like strings
+    # Matches "password": "value" or 'password': 'value' patterns
+    redacted = re.sub(
+        r'(["\']password["\'])\s*:\s*["\'][^"\']*["\']',
+        r'\1: "[REDACTED]"',
+        body_str,
+        flags=re.IGNORECASE
+    )
+    # Also handle current_password, new_password variants
+    redacted = re.sub(
+        r'(["\'](?:current_|new_)?password["\'])\s*:\s*["\'][^"\']*["\']',
+        r'\1: "[REDACTED]"',
+        redacted,
+        flags=re.IGNORECASE
+    )
+    return redacted
+
+
 def log_and_return_422(request: Request, exc: RequestValidationError):
     logging.error(f"422 Validation Error: {exc.errors()}")
-    
+
     # Handle body serialization safely
     body_info = "Unable to serialize body"
     try:
@@ -312,9 +333,11 @@ def log_and_return_422(request: Request, exc: RequestValidationError):
                 body_info = exc.body.decode('utf-8', errors='ignore')[:500]  # Limit size
             else:
                 body_info = str(exc.body)[:500]  # Limit size
+            # Redact sensitive fields before logging
+            body_info = _redact_sensitive_fields(body_info)
     except Exception:
         body_info = f"Body type: {type(exc.body).__name__}"
-    
+
     logging.error(f"Request body info: {body_info}")
     
     return JSONResponse(

@@ -78,12 +78,12 @@ services:
       - DATABASE_URL
       - REDIS_URL
 
-  # Frontend Service (if deploying together)
-  etsy-automation-frontend:
-    name: "React Frontend"
-    description: "React.js frontend application"
+  # Admin Frontend Service (if deploying together)
+  etsy-automation-admin-frontend:
+    name: "React Admin Frontend"
+    description: "React.js admin frontend application"
     service_type: "web"
-    dockerfile: "Dockerfile.frontend"
+    dockerfile: "Dockerfile.admin-frontend"
     start_command: "npm run start:production"
     healthcheck: "/"
     replicas: 1

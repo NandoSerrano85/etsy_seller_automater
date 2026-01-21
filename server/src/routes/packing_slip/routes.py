@@ -1,0 +1,715 @@
+"""
+Packing Slip API Routes
+
+Endpoints for generating packing slips from order data.
+"""
+import logging
+from typing import Dict, Any, List
+from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from server.src.database.core import get_db
+from server.src.routes.auth.service import get_current_user
+from server.src.services.packing_slip_generator import PackingSlipGenerator
+from PyPDF2 import PdfMerger
+import io
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/packing-slip", tags=["Packing Slip"])
+
+
+# Pydantic models for request/response
+class Address(BaseModel):
+    """Customer address model."""
+    line1: str
+    line2: str | None = None
+    city: str
+    state: str
+    zip: str
+    country: str = "USA"
+
+
+class Customer(BaseModel):
+    """Customer information model."""
+    name: str
+    email: str | None = None
+    address: Address | str
+
+
+class OrderItem(BaseModel):
+    """Order item model."""
+    name: str
+    mockup_url: str | None = None
+    quantity: int = Field(ge=1)
+    price: float = Field(ge=0)
+
+
+class PackingSlipRequest(BaseModel):
+    """Request model for generating packing slip."""
+    shop_name: str
+    customer: Customer
+    items: List[OrderItem]
+    subtotal: float = Field(ge=0)
+    shipping_cost: float = Field(ge=0)
+    total: float = Field(ge=0)
+    order_number: str | None = None
+    order_date: str | None = None
+
+
+@router.post("/generate")
+async def generate_packing_slip(
+    request: PackingSlipRequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a packing slip PDF from order data.
+
+    Args:
+        request: Packing slip request with order details
+        current_user: Authenticated user
+        db: Database session
+
+    Returns:
+        StreamingResponse: PDF file download
+    """
+    try:
+        logger.info(f"Generating packing slip for order {request.order_number}")
+
+        # Convert request to dict
+        order_data = request.model_dump()
+
+        # Generate packing slip
+        generator = PackingSlipGenerator()
+        pdf_bytes = generator.generate_packing_slip(order_data)
+
+        # Create streaming response
+        pdf_buffer = io.BytesIO(pdf_bytes)
+
+        filename = f"packing_slip_{request.order_number or 'order'}.pdf"
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating packing slip: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate packing slip: {str(e)}"
+        )
+
+
+@router.post("/preview")
+async def preview_packing_slip(
+    request: PackingSlipRequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a packing slip PDF preview (inline view).
+
+    Args:
+        request: Packing slip request with order details
+        current_user: Authenticated user
+        db: Database session
+
+    Returns:
+        StreamingResponse: PDF file for inline viewing
+    """
+    try:
+        logger.info(f"Generating packing slip preview for order {request.order_number}")
+
+        # Convert request to dict
+        order_data = request.model_dump()
+
+        # Generate packing slip
+        generator = PackingSlipGenerator()
+        pdf_bytes = generator.generate_packing_slip(order_data)
+
+        # Create streaming response
+        pdf_buffer = io.BytesIO(pdf_bytes)
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "inline"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating packing slip preview: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate packing slip preview: {str(e)}"
+        )
+
+
+@router.get("/sample")
+async def generate_sample_packing_slip():
+    """
+    Generate a sample packing slip for testing (no authentication required).
+
+    Returns:
+        StreamingResponse: Sample PDF file
+    """
+    try:
+        from datetime import datetime
+
+        sample_order = {
+            "shop_name": "Funny Bunny Transfers",
+            "order_number": "SAMPLE-12345",
+            "order_date": datetime.now().strftime("%B %d, %Y"),
+            "customer": {
+                "name": "John Doe",
+                "email": "john.doe@example.com",
+                "address": {
+                    "line1": "123 Main Street",
+                    "line2": "Apt 4B",
+                    "city": "New York",
+                    "state": "NY",
+                    "zip": "10001",
+                    "country": "USA"
+                }
+            },
+            "items": [
+                {
+                    "name": "Custom T-Shirt Design - Funny Bunny Logo",
+                    "mockup_url": "https://via.placeholder.com/300/FF6B6B/FFFFFF?text=T-Shirt",
+                    "quantity": 2,
+                    "price": 24.99
+                },
+                {
+                    "name": "Hoodie with Custom Transfer",
+                    "mockup_url": "https://via.placeholder.com/300/4ECDC4/FFFFFF?text=Hoodie",
+                    "quantity": 1,
+                    "price": 39.99
+                },
+                {
+                    "name": "Coffee Mug - Bunny Design",
+                    "mockup_url": "https://via.placeholder.com/300/95E1D3/000000?text=Mug",
+                    "quantity": 3,
+                    "price": 14.99
+                },
+                {
+                    "name": "Tote Bag - Canvas Print",
+                    "mockup_url": "https://via.placeholder.com/300/F38181/FFFFFF?text=Tote",
+                    "quantity": 1,
+                    "price": 19.99
+                }
+            ],
+            "subtotal": 139.93,
+            "shipping_cost": 8.50,
+            "total": 148.43
+        }
+
+        generator = PackingSlipGenerator()
+        pdf_bytes = generator.generate_packing_slip(sample_order)
+
+        pdf_buffer = io.BytesIO(pdf_bytes)
+
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "attachment; filename=sample_packing_slip.pdf"
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating sample packing slip: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate sample packing slip: {str(e)}"
+        )
+
+
+class SelectedOrdersRequest(BaseModel):
+    """Request model for generating packing slips from selected orders."""
+    order_ids: List[int] = Field(..., description="List of Etsy receipt IDs to generate packing slips for")
+
+
+@router.post("/bulk/selected-orders")
+async def generate_selected_orders_packing_slips(
+    request: SelectedOrdersRequest,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate packing slips for selected Etsy orders and combine into a single PDF.
+
+    Args:
+        request: Request containing list of order IDs
+        current_user: Authenticated user
+        db: Database session
+
+    Returns:
+        StreamingResponse: Combined PDF with packing slips for selected orders
+    """
+    try:
+        logger.info(f"Generating packing slips for {len(request.order_ids)} selected orders - User: {current_user.user_id}")
+
+        if not request.order_ids or len(request.order_ids) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No order IDs provided"
+            )
+
+        # Import Etsy API and User
+        from server.src.utils.etsy_api_engine import EtsyAPI
+        from server.src.entities.user import User
+        from datetime import datetime
+
+        # Get user from database
+        user_id = current_user.get_uuid()
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        # Initialize Etsy API
+        etsy_api = EtsyAPI(user_id=user_id, db=db)
+
+        if not etsy_api.shop_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Etsy shop found for this user"
+            )
+
+        # Fetch shop details to get logo
+        shop_details = etsy_api.get_shop_details()
+        shop_logo_url = None
+        if shop_details:
+            shop_logo_url = shop_details.get('icon_url_fullxfull')
+            logger.info(f"Found shop logo: {shop_logo_url}")
+
+        shop_name_str = user.shop_name if user.shop_name else "Shop"
+
+        # Fetch selected orders from Etsy
+        headers = {
+            'x-api-key': etsy_api.client_id,
+            'Authorization': f'Bearer {etsy_api.oauth_token}',
+        }
+
+        # Generate packing slip for each selected order
+        generator = PackingSlipGenerator()
+        pdf_merger = PdfMerger()
+        successful_count = 0
+        failed_orders = []
+
+        for order_id in request.order_ids:
+            try:
+                # Fetch individual receipt with full details
+                receipt_url = f"{etsy_api.base_url}/application/shops/{etsy_api.shop_id}/receipts/{order_id}"
+                params = {
+                    'includes': 'Transactions,Transactions/Listing,Transactions/Listing/Images'
+                }
+
+                response = etsy_api.session.get(receipt_url, headers=headers, params=params)
+
+                if not response.ok:
+                    logger.error(f"Failed to fetch order {order_id}: {response.status_code} {response.text}")
+                    failed_orders.append(order_id)
+                    continue
+
+                receipt = response.json()
+
+                # Convert Etsy receipt to packing slip format
+                order_data = _convert_etsy_receipt_to_packing_slip(
+                    receipt,
+                    shop_name_str,
+                    etsy_api,
+                    shop_logo_url
+                )
+
+                # Generate packing slip
+                pdf_bytes = generator.generate_packing_slip(order_data)
+
+                # Add to merger
+                pdf_buffer = io.BytesIO(pdf_bytes)
+                pdf_merger.append(pdf_buffer)
+                successful_count += 1
+
+            except Exception as e:
+                logger.error(f"Error generating packing slip for order {order_id}: {e}", exc_info=True)
+                failed_orders.append(order_id)
+                continue
+
+        # Check if any PDFs were successfully generated
+        if successful_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate any packing slips. Check server logs for details."
+            )
+
+        # Merge all PDFs
+        output_buffer = io.BytesIO()
+        pdf_merger.write(output_buffer)
+        pdf_merger.close()
+        output_buffer.seek(0)
+
+        filename = f"packing_slips_selected_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        logger.info(f"Successfully generated {successful_count} packing slips out of {len(request.order_ids)} orders")
+        if failed_orders:
+            logger.warning(f"Failed to generate packing slips for orders: {failed_orders}")
+
+        return StreamingResponse(
+            output_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating packing slips for selected orders: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate packing slips: {str(e)}"
+        )
+
+
+@router.get("/bulk/etsy-orders")
+async def generate_bulk_etsy_packing_slips(
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate packing slips for all active Etsy orders and combine into a single PDF.
+
+    Returns:
+        StreamingResponse: Combined PDF with all packing slips
+    """
+    try:
+        logger.info(f"Generating bulk packing slips for Etsy orders - User: {current_user.user_id}")
+
+        # Import Etsy API and User
+        from server.src.utils.etsy_api_engine import EtsyAPI
+        from server.src.entities.user import User
+        from datetime import datetime
+
+        # Get user from database
+        user_id = current_user.get_uuid()
+        user = db.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        # Initialize Etsy API
+        etsy_api = EtsyAPI(user_id=user_id, db=db)
+
+        if not etsy_api.shop_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active Etsy shop found for this user"
+            )
+
+        # Fetch active orders from Etsy (raw receipts with full details)
+        headers = {
+            'x-api-key': etsy_api.client_id,
+            'Authorization': f'Bearer {etsy_api.oauth_token}',
+        }
+
+        receipts_url = f"{etsy_api.base_url}/application/shops/{etsy_api.shop_id}/receipts"
+        params = {
+            'limit': 100,
+            'offset': 0,
+            'was_paid': 'true',
+            'was_shipped': 'false',
+            'was_canceled': 'false',
+            'includes': 'Transactions,Transactions/Listing,Transactions/Listing/Images'
+        }
+
+        response = etsy_api.session.get(receipts_url, headers=headers, params=params)
+
+        if not response.ok:
+            logger.error(f"Failed to fetch orders: {response.status_code} {response.text}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch orders from Etsy: {response.text}"
+            )
+
+        receipts_data = response.json()
+        receipts = receipts_data.get('results', [])
+
+        if not receipts or len(receipts) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active orders found to generate packing slips"
+            )
+
+        logger.info(f"Found {len(receipts)} active Etsy orders")
+
+        # Fetch shop details to get logo
+        shop_details = etsy_api.get_shop_details()
+        shop_logo_url = None
+        if shop_details:
+            shop_logo_url = shop_details.get('icon_url_fullxfull')
+            logger.info(f"Found shop logo: {shop_logo_url}")
+
+        shop_name_str = user.shop_name if user.shop_name else "Shop"
+
+        # Generate packing slip for each order
+        generator = PackingSlipGenerator()
+        pdf_merger = PdfMerger()
+        successful_count = 0
+
+        for receipt in receipts:
+            try:
+                # Convert Etsy receipt to packing slip format
+                order_data = _convert_etsy_receipt_to_packing_slip(
+                    receipt,
+                    shop_name_str,
+                    etsy_api,
+                    shop_logo_url
+                )
+
+                # Generate packing slip
+                pdf_bytes = generator.generate_packing_slip(order_data)
+
+                # Add to merger
+                pdf_buffer = io.BytesIO(pdf_bytes)
+                pdf_merger.append(pdf_buffer)
+                successful_count += 1
+
+            except Exception as e:
+                logger.error(f"Error generating packing slip for receipt {receipt.get('receipt_id')}: {e}", exc_info=True)
+                # Continue with other orders
+                continue
+
+        # Check if any PDFs were successfully generated
+        if successful_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate any packing slips. Check server logs for details."
+            )
+
+        # Merge all PDFs
+        output_buffer = io.BytesIO()
+        pdf_merger.write(output_buffer)
+        pdf_merger.close()
+        output_buffer.seek(0)
+
+        filename = f"packing_slips_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+
+        logger.info(f"Successfully generated {successful_count} packing slips out of {len(receipts)} orders")
+
+        return StreamingResponse(
+            output_buffer,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating bulk packing slips: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate bulk packing slips: {str(e)}"
+        )
+
+
+def _convert_etsy_receipt_to_packing_slip(receipt: Dict[str, Any], shop_name: str, etsy_api=None, shop_logo_url: str = None) -> Dict[str, Any]:
+    """
+    Convert an Etsy receipt to packing slip format.
+
+    Args:
+        receipt: Etsy receipt data
+        shop_name: Shop name from Etsy store
+        etsy_api: EtsyAPI instance for fetching listing images and shipment data
+        shop_logo_url: URL to shop logo image
+
+    Returns:
+        Dict formatted for packing slip generator
+    """
+    from datetime import datetime
+
+    # Extract customer information
+    buyer_name = f"{receipt.get('name', 'Customer')}"
+    buyer_email = receipt.get('buyer_email', '')
+    receipt_id = receipt.get('receipt_id')
+
+    # Debug: Log available receipt fields to understand what data we have
+    address_related_fields = {
+        'first_line': receipt.get('first_line'),
+        'second_line': receipt.get('second_line'),
+        'city': receipt.get('city'),
+        'state': receipt.get('state'),
+        'zip': receipt.get('zip'),
+        'country_iso': receipt.get('country_iso'),
+        'formatted_address': receipt.get('formatted_address'),
+        'has_shipments': bool(receipt.get('shipments'))
+    }
+    logger.info(f"Receipt {receipt_id} address fields: {address_related_fields}")
+
+    # Try to fetch shipping address from shipment endpoint
+    shipping_address = {}
+    if etsy_api and receipt_id:
+        try:
+            shipment = etsy_api.get_receipt_shipment(receipt_id)
+            if shipment:
+                logger.info(f"Found shipment data for receipt {receipt_id}")
+                shipping_address = {
+                    "line1": shipment.get('to_name', buyer_name),
+                    "line2": shipment.get('to_address_line_1', ''),
+                    "city": shipment.get('to_city', ''),
+                    "state": shipment.get('to_state', ''),
+                    "zip": shipment.get('to_zip', ''),
+                    "country": shipment.get('to_country_iso', 'US')
+                }
+            else:
+                logger.warning(f"No shipment data found for receipt {receipt_id}")
+        except Exception as e:
+            logger.error(f"Error fetching shipment for receipt {receipt_id}: {e}")
+
+    # Fallback: Try top-level fields if shipment didn't work
+    if not shipping_address.get('line2'):  # If we didn't get proper address from shipment
+        if receipt.get('first_line'):
+            shipping_address = {
+                "line1": receipt.get('first_line', ''),
+                "line2": receipt.get('second_line', ''),
+                "city": receipt.get('city', ''),
+            "state": receipt.get('state', ''),
+            "zip": receipt.get('zip', ''),
+            "country": receipt.get('country_iso', 'US')
+        }
+    # Second try: Shipments array (if exists)
+    elif receipt.get('shipments') and len(receipt.get('shipments', [])) > 0:
+        shipment = receipt['shipments'][0]
+        shipping_address = {
+            "line1": shipment.get('first_line', ''),
+            "line2": shipment.get('second_line', ''),
+            "city": shipment.get('city', ''),
+            "state": shipment.get('state', ''),
+            "zip": shipment.get('zip', ''),
+            "country": shipment.get('country_iso', 'US')
+        }
+    # Third try: Formatted address string
+    elif receipt.get('formatted_address'):
+        shipping_address = {
+            "line1": receipt.get('formatted_address', ''),
+            "line2": '',
+            "city": '',
+            "state": '',
+            "zip": '',
+            "country": receipt.get('country_iso', 'US')
+        }
+    else:
+        # Fallback: Empty address
+        shipping_address = {
+            "line1": 'Address not available',
+            "line2": '',
+            "city": '',
+            "state": '',
+            "zip": '',
+            "country": ''
+        }
+        logger.warning(f"No shipping address found for receipt {receipt.get('receipt_id')}")
+
+    # Extract order items
+    items = []
+    transactions = receipt.get('transactions', [])
+
+    for transaction in transactions:
+        listing_id = transaction.get('listing_id')
+
+        # Try to get mockup image from listing
+        mockup_url = None
+
+        # First try to get from transaction listing data (if included)
+        listing = transaction.get('listing', {})
+        images = listing.get('images', [])
+
+        if images and len(images) > 0:
+            mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
+            logger.info(f"Found image from transaction data: {mockup_url}")
+        elif listing_id and etsy_api:
+            # Fetch listing images directly from Etsy API
+            try:
+                logger.info(f"Fetching images for listing {listing_id}")
+
+                # Use Etsy API to get listing images
+                headers = {
+                    'x-api-key': etsy_api.client_id,
+                    'Authorization': f'Bearer {etsy_api.oauth_token}',
+                }
+
+                # Fetch listing with images included
+                listing_url = f"{etsy_api.base_url}/application/listings/{listing_id}"
+                params = {'includes': 'Images'}
+
+                response = etsy_api.session.get(listing_url, headers=headers, params=params)
+
+                if response.ok:
+                    listing_data = response.json()
+                    images = listing_data.get('images', [])
+
+                    if images and len(images) > 0:
+                        mockup_url = images[0].get('url_570xN') or images[0].get('url_fullxfull')
+                        logger.info(f"Found image from API call: {mockup_url}")
+                    else:
+                        logger.warning(f"No images in listing data for listing {listing_id}")
+                else:
+                    logger.error(f"Failed to fetch listing {listing_id}: {response.status_code} {response.text}")
+            except Exception as e:
+                logger.error(f"Error fetching listing {listing_id}: {e}")
+        else:
+            logger.warning(f"No listing_id or etsy_api provided for transaction {transaction.get('transaction_id')}")
+
+        items.append({
+            "name": transaction.get('title', 'Product'),
+            "mockup_url": mockup_url,
+            "quantity": transaction.get('quantity', 1),
+            "price": float(transaction.get('price', {}).get('amount', 0) / transaction.get('price', {}).get('divisor', 100))
+        })
+
+    # Calculate totals
+    subtotal = float(receipt.get('subtotal', {}).get('amount', 0) / receipt.get('subtotal', {}).get('divisor', 100))
+    discount_amount = float(receipt.get('discount_amt', {}).get('amount', 0) / receipt.get('discount_amt', {}).get('divisor', 100))
+    shipping_cost = float(receipt.get('total_shipping_cost', {}).get('amount', 0) / receipt.get('total_shipping_cost', {}).get('divisor', 100))
+    total = float(receipt.get('grandtotal', {}).get('amount', 0) / receipt.get('grandtotal', {}).get('divisor', 100))
+
+    # Format order date
+    order_date = ""
+    if receipt.get('create_timestamp'):
+        try:
+            dt = datetime.fromtimestamp(receipt['create_timestamp'])
+            order_date = dt.strftime("%B %d, %Y")
+        except:
+            pass
+
+    return {
+        "shop_name": shop_name,
+        "shop_logo_url": shop_logo_url,
+        "order_number": str(receipt.get('receipt_id', '')),
+        "order_date": order_date,
+        "customer": {
+            "name": buyer_name,
+            "email": buyer_email,
+            "address": shipping_address
+        },
+        "items": items,
+        "subtotal": subtotal,
+        "discount_amount": discount_amount,
+        "shipping_cost": shipping_cost,
+        "total": total
+    }

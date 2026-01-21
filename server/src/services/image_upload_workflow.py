@@ -26,6 +26,8 @@ import uuid
 import logging
 import threading
 import tempfile
+import json
+import cv2
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +37,7 @@ from dataclasses import dataclass, field
 
 try:
     import imagehash
+    import numpy as np
     from PIL import Image
     from sqlalchemy import text
     from sqlalchemy.orm import Session
@@ -50,6 +53,8 @@ except ImportError as e:
         class Image:
             pass
 
+    import numpy as np
+
 # Import existing services
 current_dir = os.path.dirname(os.path.abspath(__file__))
 server_dir = os.path.dirname(current_dir)
@@ -57,14 +62,17 @@ sys.path.insert(0, server_dir)
 
 try:
     from utils.nas_storage import nas_storage
-    from utils.resizing import get_resizing_configs_from_db
+    from utils.resizing import get_resizing_configs_from_db, resize_image_by_inches
     from database.core import get_db
     NAS_AVAILABLE = True
+    RESIZING_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"NAS storage not available: {e}")
     nas_storage = None
     get_resizing_configs_from_db = None
+    resize_image_by_inches = None
     NAS_AVAILABLE = False
+    RESIZING_AVAILABLE = False
 
 try:
     from routes.mockups import service as mockup_service
@@ -93,6 +101,9 @@ class ProcessedImage:
     resized_content: Optional[bytes] = None
     resized_size: Optional[int] = None
     phash: Optional[str] = None
+    ahash: Optional[str] = None
+    dhash: Optional[str] = None
+    whash: Optional[str] = None
     final_filename: Optional[str] = None
     canvas_config: Optional[Dict[str, Any]] = None
     processing_time: float = 0.0
@@ -102,6 +113,7 @@ class ProcessedImage:
     nas_uploaded: bool = False
     db_updated: bool = False
     mockup_generated: bool = False
+    tags_result: Optional[Dict[str, Any]] = None  # AI-generated tags result
 
 
 @dataclass
@@ -139,14 +151,13 @@ class ImageUploadWorkflow:
     Main workflow orchestrator for image upload processing
     """
 
-    def __init__(self, user_id: str, db_session: Session, max_threads: int = 8, progress_callback=None):
+    def __init__(self, user_id: str, db_session: Session, max_threads: int = 16, progress_callback=None):
         if not DEPENDENCIES_AVAILABLE:
             raise RuntimeError("Required dependencies not available (PIL, imagehash, sqlalchemy)")
 
         self.user_id = user_id
         self.db_session = db_session
         self.max_threads = max_threads
-        self.logger = logging.getLogger(__name__)
         self.progress_callback = progress_callback
 
         # Thread synchronization
@@ -156,6 +167,19 @@ class ImageUploadWorkflow:
         # Caching for performance
         self._existing_phashes: Optional[Set[str]] = None
         self._existing_phashes_lock = threading.Lock()
+
+        # Cache for duplicate detection (reduces DB queries during batch processing)
+        self._duplicate_check_cache: Dict[str, bool] = {}  # hash -> is_duplicate
+        self._duplicate_cache_lock = threading.Lock()
+
+        # Shared counter for sequential file naming across parallel batches
+        self._unique_file_counter = 0
+        self._file_counter_lock = threading.Lock()
+
+        # Cache for frequently accessed data (reduces DB queries)
+        self._shop_name_cache: Optional[str] = None
+        self._template_name_cache: Dict[str, str] = {}
+        self._cache_lock = threading.Lock()
 
         # Configuration
         self.target_width = 3000
@@ -173,9 +197,9 @@ class ImageUploadWorkflow:
         if self.progress_callback:
             try:
                 self.progress_callback(step, message, 4, file_progress, current_file)
-                self.logger.debug(f"Progress sent: Step {step}/4 - {message} - {current_file}")
+                logging.info(f"Progress sent: Step {step}/4 - {message} - {current_file}")
             except Exception as e:
-                self.logger.error(f"Error sending progress update: {e}")
+                logging.error(f"Error sending progress update: {e}")
 
     def _update_file_progress(self, current_file: str = ""):
         """Update current file being processed"""
@@ -200,12 +224,12 @@ class ImageUploadWorkflow:
         # Initialize starting_name from design_data for proper filename numbering
         if design_data and hasattr(design_data, 'starting_name'):
             self._design_starting_name = design_data.starting_name
-            self.logger.info(f"Using mockup starting_name: {self._design_starting_name}")
+            logging.info(f"Using mockup starting_name: {self._design_starting_name}")
         else:
             self._design_starting_name = 100  # Default starting number
-            self.logger.info(f"Using default starting_name: {self._design_starting_name}")
+            logging.info(f"Using default starting_name: {self._design_starting_name}")
 
-        self.logger.info(f"🚀 Starting image upload workflow for {len(uploaded_images)} images")
+        logging.info(f"🚀 Starting image upload workflow for {len(uploaded_images)} images")
         self._send_progress(1, f"Starting workflow for {len(uploaded_images)} images")
 
         try:
@@ -216,7 +240,7 @@ class ImageUploadWorkflow:
             # Create batches for processing
             self._send_progress(1, "Organizing images into processing batches")
             batches = self._create_batches(uploaded_images)
-            self.logger.info(f"📦 Created {len(batches)} batches for processing")
+            logging.info(f"📦 Created {len(batches)} batches for processing")
 
             # Process batches in parallel
             self._send_progress(2, "Processing and resizing images")
@@ -236,64 +260,62 @@ class ImageUploadWorkflow:
                 1.0
             )
 
-            self.logger.info(f"🎉 Workflow completed in {processing_time:.1f}s")
-            self.logger.info(f"   📊 Processed: {workflow_result.processed_images}/{workflow_result.total_images}")
-            self.logger.info(f"   🔄 Skipped duplicates: {workflow_result.skipped_duplicates}")
-            self.logger.info(f"   ❌ Errors: {workflow_result.errors}")
-            self.logger.info(f"   📤 NAS uploads: {workflow_result.nas_uploads}")
-            self.logger.info(f"   🗄️  DB updates: {workflow_result.db_updates}")
-            self.logger.info(f"   🎨 Mockups created: {workflow_result.mockups_created}")
+            logging.info(f"🎉 Workflow completed in {processing_time:.1f}s")
+            logging.info(f"   📊 Processed: {workflow_result.processed_images}/{workflow_result.total_images}")
+            logging.info(f"   🔄 Skipped duplicates: {workflow_result.skipped_duplicates}")
+            logging.info(f"   ❌ Errors: {workflow_result.errors}")
+            logging.info(f"   📤 NAS uploads: {workflow_result.nas_uploads}")
+            logging.info(f"   🗄️  DB updates: {workflow_result.db_updates}")
+            logging.info(f"   🎨 Mockups created: {workflow_result.mockups_created}")
 
             return workflow_result
 
         except Exception as e:
-            self.logger.error(f"💥 Workflow failed: {e}")
+            logging.error(f"💥 Workflow failed: {e}")
             raise
 
     def _load_existing_phashes(self):
-        """Load all existing phashes from database for duplicate detection"""
+        """
+        Initialize duplicate detection system
+        Note: Now uses database queries instead of loading all hashes into memory
+        """
         try:
-            self.logger.info("📊 Loading existing phashes from database...")
+            logging.info("📊 Initializing database-backed duplicate detection...")
 
-            # Load all phashes for this user from design_images table
+            # Count existing images for logging
             result = self.db_session.execute(text("""
-                SELECT DISTINCT phash
+                SELECT COUNT(*)
                 FROM design_images
                 WHERE user_id = :user_id
                 AND phash IS NOT NULL
-                AND phash != ''
                 AND is_active = true
             """), {"user_id": self.user_id})
 
-            # Store all phashes - these will be used for duplicate detection
-            raw_phashes = {row[0] for row in result.fetchall() if row[0]}
+            count = result.scalar()
+            logging.info(f"📊 User has {count} existing images in database for duplicate checking")
 
-            # Process phashes to handle both single and combined formats
+            # Keep empty set for batch-level duplicate tracking
             self._existing_phashes = set()
-            for phash in raw_phashes:
-                if '|' in phash:
-                    # Split combined phash and add primary hash
-                    primary_phash = phash.split('|')[0]
-                    self._existing_phashes.add(primary_phash)
-                else:
-                    # Add single phash as-is
-                    self._existing_phashes.add(phash)
-
-            self.logger.info(f"📊 Loaded {len(self._existing_phashes)} existing phashes from {len(raw_phashes)} database records")
 
         except Exception as e:
-            self.logger.error(f"❌ Failed to load existing phashes: {e}")
+            logging.error(f"❌ Failed to initialize duplicate detection: {e}")
             import traceback
-            self.logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            logging.error(f"❌ Traceback: {traceback.format_exc()}")
             self._existing_phashes = set()
 
-    def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 100) -> List[List[UploadedImage]]:
+    def _create_batches(self, images: List[UploadedImage], batch_size_mb: int = 100, max_images_per_batch: int = 50) -> List[List[UploadedImage]]:
         """
-        Create batches of images for processing (aim for ~100MB per batch)
+        Create optimized batches of images for processing
+
+        Improved batching strategy:
+        - Larger batch size (100MB) for better throughput with parallel processing
+        - Max 50 images per batch to balance parallelism with resource usage
+        - Optimized for high-volume uploads (100+ images)
 
         Args:
             images: List of uploaded images
-            batch_size_mb: Target batch size in MB
+            batch_size_mb: Target batch size in MB (increased to 100 for better throughput)
+            max_images_per_batch: Maximum number of images per batch (increased to 50)
 
         Returns:
             List of image batches
@@ -304,7 +326,13 @@ class ImageUploadWorkflow:
         target_size = batch_size_mb * 1024 * 1024  # Convert to bytes
 
         for image in images:
-            if current_size + image.size > target_size and current_batch:
+            # Split batch if we exceed size OR image count limits
+            should_split = (
+                (current_size + image.size > target_size and current_batch) or
+                (len(current_batch) >= max_images_per_batch)
+            )
+
+            if should_split:
                 batches.append(current_batch)
                 current_batch = [image]
                 current_size = image.size
@@ -314,6 +342,11 @@ class ImageUploadWorkflow:
 
         if current_batch:
             batches.append(current_batch)
+
+        # Log batch distribution for monitoring
+        if batches:
+            sizes = [len(b) for b in batches]
+            logging.info(f"📦 Created {len(batches)} batches: images/batch={sizes}, avg={sum(sizes)/len(sizes):.1f}")
 
         return batches
 
@@ -329,21 +362,19 @@ class ImageUploadWorkflow:
             List of batch processing results
         """
         max_workers = min(self.max_threads, len(batches))
-        self.logger.info(f"🚀 Processing {len(batches)} batches with {max_workers} threads")
+        logging.info(f"🚀 Processing {len(batches)} batches with {max_workers} threads")
 
         batch_results = []
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit batches with staggered start
             future_to_batch = {}
-            file_counter = 0
             for i, batch in enumerate(batches):
                 batch_id = i + 1
                 # Small delay to stagger batch starts
                 if i > 0:
                     time.sleep(0.1)
-                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data, file_counter)] = batch_id
-                file_counter += len(batch)
+                future_to_batch[executor.submit(self._process_batch, batch, batch_id, design_data)] = batch_id
 
             # Collect results as they complete
             for future in as_completed(future_to_batch):
@@ -352,13 +383,13 @@ class ImageUploadWorkflow:
                     result = future.result()
                     batch_results.append(result)
 
-                    self.logger.info(f"✅ Batch {batch_id} completed:")
-                    self.logger.info(f"   📊 Processed: {result.processed}")
-                    self.logger.info(f"   🔄 Skipped: {result.skipped_local_duplicates + result.skipped_db_duplicates}")
-                    self.logger.info(f"   ❌ Errors: {result.errors}")
+                    logging.info(f"✅ Batch {batch_id} completed:")
+                    logging.info(f"   📊 Processed: {result.processed}")
+                    logging.info(f"   🔄 Skipped: {result.skipped_local_duplicates + result.skipped_db_duplicates}")
+                    logging.info(f"   ❌ Errors: {result.errors}")
 
                 except Exception as e:
-                    self.logger.error(f"❌ Batch {batch_id} failed: {e}")
+                    logging.error(f"❌ Batch {batch_id} failed: {e}")
                     batch_results.append(BatchResult(
                         batch_id=batch_id,
                         processed=0,
@@ -374,7 +405,7 @@ class ImageUploadWorkflow:
 
         return batch_results
 
-    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None, batch_file_start_index: int = 0) -> BatchResult:
+    def _process_batch(self, images: List[UploadedImage], batch_id: int, design_data=None) -> BatchResult:
         """
         Process a single batch of images through the complete workflow
 
@@ -395,7 +426,7 @@ class ImageUploadWorkflow:
         mockups_created = 0
         error_details = []
 
-        self.logger.info(f"📦 Batch {batch_id}: Processing {len(images)} images")
+        logging.info(f"📦 Batch {batch_id}: Processing {len(images)} images")
 
         try:
             # Step 1: Resize images and generate phashes
@@ -413,33 +444,47 @@ class ImageUploadWorkflow:
                             i / len(images) if images else 0
                         )
 
-                    processed_image = self._process_single_image(image, design_data, batch_file_start_index + i)
+                    processed_image = self._process_single_image(image, design_data, i)
 
                     # Only check for duplicates if processing was successful
                     if processed_image.phash and not processed_image.error:
-                        # Extract primary phash for comparison
-                        primary_phash = self._extract_primary_phash(processed_image.phash)
-                        self.logger.info(f"   🔍 Checking duplicates for {processed_image.final_filename}, phash: {primary_phash[:12]}...")
+                        # Use enhanced multi-hash duplicate detection
+                        logging.info(f"   🔍 Checking duplicates for {processed_image.final_filename}, phash: {processed_image.phash[:12]}...")
+                        logging.info(f"🔍 DEBUG: Full hashes for {processed_image.final_filename}: phash={processed_image.phash}, ahash={processed_image.ahash}, dhash={processed_image.dhash}, whash={processed_image.whash}")
+                        logging.info(f"🔍 DEBUG: Local phashes set size: {len(local_phashes)}, existing phashes set size: {len(self._existing_phashes) if self._existing_phashes else 0}")
 
-                        # Check for local duplicates within this batch
-                        if self._is_duplicate_in_set(primary_phash, local_phashes):
+                        # Check for local duplicates within this batch using multiple hashes
+                        logging.info(f"🔍 DEBUG: Checking local duplicates for {processed_image.final_filename} against {len(local_phashes)} local hashes")
+                        is_local_duplicate = self._is_enhanced_duplicate_in_set(processed_image, local_phashes)
+                        logging.info(f"🔍 DEBUG: Local duplicate check result: {is_local_duplicate}")
+                        if is_local_duplicate:
                             processed_image.is_duplicate_local = True
                             skipped_local += 1
-                            self.logger.info(f"   🔄 LOCAL DUPLICATE FOUND: {processed_image.final_filename} matches existing in batch")
+                            logging.info(f"   🔄 LOCAL DUPLICATE FOUND: {processed_image.final_filename} matches existing in batch")
                         else:
-                            local_phashes.add(primary_phash)
-                            self.logger.debug(f"   ✅ Not a local duplicate: {processed_image.final_filename}")
+                            # Add all hashes to local set
+                            local_phashes.add(processed_image.phash)
+                            if processed_image.ahash:
+                                local_phashes.add(processed_image.ahash)
+                            if processed_image.dhash:
+                                local_phashes.add(processed_image.dhash)
+                            if processed_image.whash:
+                                local_phashes.add(processed_image.whash)
+                            logging.info(f"   ✅ Not a local duplicate: {processed_image.final_filename}")
 
-                            # Check for database duplicates
+                            # Check for database duplicates using multiple hashes
+                            logging.info(f"🔍 DEBUG: Checking database duplicates for {processed_image.final_filename} against existing hashes")
                             with self._existing_phashes_lock:
-                                if self._is_duplicate_in_existing(primary_phash):
+                                is_db_duplicate = self._is_enhanced_duplicate_in_existing(processed_image)
+                                logging.info(f"🔍 DEBUG: Database duplicate check result: {is_db_duplicate}")
+                                if is_db_duplicate:
                                     processed_image.is_duplicate_db = True
                                     skipped_db += 1
-                                    self.logger.info(f"   🔄 DATABASE DUPLICATE FOUND: {processed_image.final_filename} matches existing in DB")
+                                    logging.info(f"   🔄 DATABASE DUPLICATE FOUND: {processed_image.final_filename} matches existing in DB")
                                 else:
-                                    self.logger.debug(f"   ✅ Not a DB duplicate: {processed_image.final_filename}")
+                                    logging.info(f"   ✅ Not a DB duplicate: {processed_image.final_filename}")
                     else:
-                        self.logger.warning(f"   ⚠️  Skipping duplicate check for {processed_image.final_filename}: phash={processed_image.phash}, error={processed_image.error}")
+                        logging.warning(f"   ⚠️  Skipping duplicate check for {processed_image.final_filename}: phash={processed_image.phash}, error={processed_image.error}")
                         # Count failed processing as error
                         if processed_image.error:
                             errors += 1
@@ -449,33 +494,53 @@ class ImageUploadWorkflow:
                 except Exception as e:
                     errors += 1
                     error_details.append(f"Processing {image.original_filename}: {e}")
-                    self.logger.error(f"   ❌ Error processing {image.original_filename}: {e}")
+                    logging.error(f"   ❌ Error processing {image.original_filename}: {e}")
 
             # Step 2: Filter unique images with detailed logging
-            self.logger.info(f"📦 Batch {batch_id}: Filtering results from {len(processed_images)} processed images")
+            logging.info(f"📦 Batch {batch_id}: Filtering results from {len(processed_images)} processed images")
 
             unique_images = []
             duplicate_images = []
             error_images = []
 
+            logging.info(f"🔍 DEBUG: Processing {len(processed_images)} processed images for batch {batch_id}")
             for img in processed_images:
+                logging.info(f"🔍 DEBUG: Image {img.final_filename}: error={img.error}, local_dup={img.is_duplicate_local}, db_dup={img.is_duplicate_db}")
                 if img.error:
                     error_images.append(img)
-                    self.logger.info(f"   ❌ ERROR: {img.final_filename} - {img.error}")
+                    logging.info(f"   ❌ ERROR: {img.final_filename} - {img.error}")
                 elif img.is_duplicate_local:
                     duplicate_images.append(img)
-                    self.logger.info(f"   🔄 LOCAL DUP: {img.final_filename}")
+                    logging.info(f"   🔄 LOCAL DUP: {img.final_filename}")
                 elif img.is_duplicate_db:
                     duplicate_images.append(img)
-                    self.logger.info(f"   🔄 DB DUP: {img.final_filename}")
+                    logging.info(f"   🔄 DB DUP: {img.final_filename}")
                 else:
                     unique_images.append(img)
-                    self.logger.info(f"   ✅ UNIQUE: {img.final_filename}")
+                    logging.info(f"   ✅ UNIQUE: {img.final_filename}")
 
-            self.logger.info(f"📦 Batch {batch_id} SUMMARY: {len(unique_images)} unique, {len(duplicate_images)} duplicates, {len(error_images)} errors")
+            logging.info(f"📦 Batch {batch_id} SUMMARY: {len(unique_images)} unique, {len(duplicate_images)} duplicates, {len(error_images)} errors")
+            logging.info(f"🔍 DEBUG: About to process only unique images: {[img.final_filename for img in unique_images]}")
+            logging.info(f"🔍 DEBUG: Skipping duplicate images: {[img.final_filename for img in duplicate_images]}")
+            logging.info(f"🔍 DEBUG: Skipping error images: {[img.final_filename for img in error_images]}")
 
-            # Duplicate detection is now properly tuned with Hamming threshold of 2
-            # No secondary validation needed
+            # Step 2.5: Rename only the unique images with sequential numbering (no gaps)
+            # Use thread-safe counter to ensure sequential numbering across parallel batches
+            logging.info(f"📦 Batch {batch_id}: Renaming {len(unique_images)} unique images with sequential numbering")
+            for img in unique_images:
+                # Atomically increment the shared counter for each unique image
+                with self._file_counter_lock:
+                    file_index = self._unique_file_counter
+                    self._unique_file_counter += 1
+
+                # Regenerate filename with correct sequential index
+                final_filename = self._generate_filename(
+                    img.upload_info.original_filename,
+                    img.upload_info.template_id,
+                    file_index
+                )
+                logging.info(f"   🔄 Renamed: {img.final_filename} → {final_filename} (index: {file_index})")
+                img.final_filename = final_filename
 
             # Step 3: Upload to NAS
             if batch_id == 1:  # Only send progress for the first batch to avoid spam
@@ -498,11 +563,11 @@ class ImageUploadWorkflow:
         except Exception as e:
             error_details.append(f"Batch {batch_id} failed: {e}")
             errors += len(images)
-            self.logger.error(f"❌ Batch {batch_id} failed completely: {e}")
+            logging.error(f"❌ Batch {batch_id} failed completely: {e}")
 
         processing_time = time.time() - start_time
 
-        return BatchResult(
+        result = BatchResult(
             batch_id=batch_id,
             processed=processed,
             skipped_local_duplicates=skipped_local,
@@ -514,6 +579,9 @@ class ImageUploadWorkflow:
             mockups_created=mockups_created,
             error_details=error_details
         )
+
+        logging.info(f"🔍 DEBUG: Batch {batch_id} FINAL RESULT: processed={processed}, local_dups={skipped_local}, db_dups={skipped_db}, errors={errors}, nas_uploads={nas_uploads}, db_updates={db_updates}")
+        return result
 
     def _process_single_image(self, image: UploadedImage, design_data=None, file_index: int = 0) -> ProcessedImage:
         """
@@ -535,72 +603,72 @@ class ImageUploadWorkflow:
                 raise ValueError("Empty image content")
 
             # Load and validate image
-            pil_image = Image.open(BytesIO(image.content))
+            nparr = np.frombuffer(image.content, np.uint8)
+            raw_image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 
-            # Validate image properties
-            if pil_image.size[0] < 10 or pil_image.size[1] < 10:
-                raise ValueError(f"Image too small: {pil_image.size}")
+            if raw_image is None:
+                raise ValueError("Could not decode image from content")
 
-            if pil_image.size[0] > 10000 or pil_image.size[1] > 10000:
-                raise ValueError(f"Image too large: {pil_image.size}")
+            # Step 1: Crop transparent areas
+            from server.src.utils.cropping import crop_transparent
+            cropped_image = crop_transparent(image=raw_image)
 
-            # Get resizing configuration (use existing utils if available)
-            try:
-                if hasattr(self, 'db_session') and image.template_id and get_resizing_configs_from_db:
-                    # Use existing resizing configuration system
-                    canvas_config, _ = get_resizing_configs_from_db(
-                        self.db_session,
-                        canvas_id=getattr(design_data, 'canvas_config_id', None) if design_data else None,
-                        product_template_id=image.template_id
-                    )
-                else:
-                    canvas_config = self._get_canvas_config(image.template_id)
-            except:
-                # Fallback to default config
-                canvas_config = self._get_canvas_config(image.template_id)
-            processed.canvas_config = canvas_config
+            if cropped_image is None:
+                # If cropping fails, use original image
+                cropped_image = raw_image
+                logging.warning(f"Failed to crop transparent areas for {image.original_filename}, using original image")
 
-            # Resize image with enhanced processing
-            resized_image = self._resize_and_optimize_image(pil_image, canvas_config)
-
-            # Convert to bytes with optimized settings
-            buffer = BytesIO()
-
-            # Save as PNG for lossless quality, JPEG for smaller size
-            if canvas_config.get('format', 'png').lower() == 'jpeg':
-                if resized_image.mode in ('RGBA', 'LA'):
-                    # Convert transparent images to white background for JPEG
-                    background = Image.new('RGB', resized_image.size, (255, 255, 255))
-                    if resized_image.mode == 'RGBA':
-                        background.paste(resized_image, mask=resized_image.split()[-1])
-                    else:
-                        background.paste(resized_image)
-                    resized_image = background
-
-                resized_image.save(
-                    buffer,
-                    format='JPEG',
-                    quality=self.jpeg_quality,
-                    optimize=True,
-                    progressive=True
+            # Step 2: Resize the cropped image
+            # Use lower DPI (300) for bulk uploads to reduce file size and transfer time
+            # 300 DPI is still high quality but significantly reduces file size (~40% smaller)
+            if RESIZING_AVAILABLE and resize_image_by_inches:
+                resized_image = resize_image_by_inches(
+                    image=cropped_image,
+                    image_type="UVDTF 16oz",  # Default type, should be determined from template
+                    db=self.db_session,
+                    canvas_id=getattr(design_data, 'canvas_config_id', None),
+                    product_template_id=image.template_id,
+                    target_dpi=400  # Reduced from 400 for faster uploads
                 )
-                file_ext = 'jpg'
             else:
-                resized_image.save(
-                    buffer,
-                    format='PNG',
-                    optimize=True,
-                    compress_level=6
-                )
-                file_ext = 'png'
+                # Fallback: use the cropped image without further resizing
+                resized_image = cropped_image
 
+            # Convert to PIL Image for hash calculation
+            if len(resized_image.shape) == 3 and resized_image.shape[2] == 4:
+                # BGRA to RGBA
+                pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGRA2RGBA))
+            elif len(resized_image.shape) == 3 and resized_image.shape[2] == 3:
+                # BGR to RGB
+                pil_image = Image.fromarray(cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB))
+            else:
+                # Grayscale
+                pil_image = Image.fromarray(resized_image)
+
+            # Convert processed image to bytes for storage
+            # Use maximum PNG compression (9) for large batch uploads to reduce transfer size
+            # IMPORTANT: Set DPI to 400 to ensure consistent resolution across all design files
+            buffer = BytesIO()
+            pil_image.save(buffer, format='PNG', optimize=True, compress_level=9, dpi=(400, 400))
             resized_content = buffer.getvalue()
 
-            # Generate phash for duplicate detection (limited to 64 chars for DB)
-            phash = str(imagehash.phash(resized_image, hash_size=self.phash_size))
+            logging.info(f"Saved {image.original_filename} with DPI: 400x400")
 
-            # Store only phash to fit database column constraint (64 chars max)
-            processed.phash = phash
+            # Generate multiple hashes for enhanced duplicate detection
+            logging.info(f"🔍 DEBUG: Generating hashes for {image.original_filename}")
+            hashes = {
+                'phash': str(imagehash.phash(pil_image, hash_size=self.phash_size)),
+                'ahash': str(imagehash.average_hash(pil_image, hash_size=self.phash_size)),
+                'dhash': str(imagehash.dhash(pil_image, hash_size=self.phash_size)),
+                'whash': str(imagehash.whash(pil_image, hash_size=self.phash_size))
+            }
+            logging.info(f"🔍 DEBUG: Generated hashes for {image.original_filename}: phash={hashes['phash']}, ahash={hashes['ahash']}, dhash={hashes['dhash']}, whash={hashes['whash']}")
+
+            # Store all hashes for enhanced duplicate detection
+            processed.phash = hashes['phash']
+            processed.ahash = hashes['ahash']
+            processed.dhash = hashes['dhash']
+            processed.whash = hashes['whash']
 
             # Generate filename using template name and file index
             final_filename = self._generate_filename(image.original_filename, image.template_id, file_index)
@@ -611,14 +679,33 @@ class ImageUploadWorkflow:
             processed.final_filename = final_filename
             processed.processing_time = time.time() - start_time
 
-            self.logger.debug(f"Processed {image.original_filename}: {pil_image.size} → {resized_image.size}, phash: {phash[:12]}...")
+            # Generate AI tags if enabled (non-blocking)
+            tags_result = None
+            if os.getenv('ENABLE_AI_TAGGING', 'true').lower() == 'true':
+                try:
+                    from server.src.services.ai_tagging_service import ai_tagging_service
+                    tags_result = ai_tagging_service.generate_tags(
+                        resized_content,
+                        image.original_filename
+                    )
+                    logging.info(
+                        f"Generated {len(tags_result.get('tags', []))} tags for {image.original_filename}"
+                    )
+                except Exception as e:
+                    # Non-blocking: log error but continue workflow
+                    logging.warning(f"AI tagging failed (non-blocking): {e}")
+                    tags_result = {'tags': [], 'metadata': {'error': str(e)}}
+
+            processed.tags_result = tags_result
+
+            logging.info(f"Processed {image.original_filename}: {raw_image.shape} → {resized_image.shape}, phash: {processed.phash[:12]}...")
 
             return processed
 
         except Exception as e:
             processed.error = str(e)
             processed.processing_time = time.time() - start_time
-            self.logger.error(f"Failed to process {image.original_filename}: {e}")
+            logging.error(f"Failed to process {image.original_filename}: {e}")
             return processed
 
     def _get_canvas_config(self, template_id: Optional[str]) -> Dict[str, Any]:
@@ -633,7 +720,7 @@ class ImageUploadWorkflow:
                 )
                 return config
         except Exception as e:
-            self.logger.debug(f"Could not get canvas config from DB: {e}")
+            logging.info(f"Could not get canvas config from DB: {e}")
 
         # Return default configuration
         return {
@@ -711,6 +798,7 @@ class ImageUploadWorkflow:
     def _is_duplicate_in_set(self, phash: str, phash_set: Set[str], hamming_threshold: int = 2) -> bool:
         """Check if phash is duplicate within a set using Hamming distance"""
         if not phash:
+            logging.info(f"🔍 DEBUG: _is_duplicate_in_set: Empty phash")
             return False
 
         try:
@@ -718,6 +806,7 @@ class ImageUploadWorkflow:
             phash_int = int(phash, 16)
             closest_distance = float('inf')
             closest_hash = None
+            logging.info(f"🔍 DEBUG: _is_duplicate_in_set: Checking phash {phash[:12]}... against {len(phash_set)} hashes")
 
             for existing_phash in phash_set:
                 if existing_phash:
@@ -730,56 +819,183 @@ class ImageUploadWorkflow:
                         closest_hash = existing_phash
 
                     if hamming_distance <= hamming_threshold:
-                        self.logger.debug(f"   🔍 Local duplicate found: Hamming distance {hamming_distance} (≤ {hamming_threshold})")
+                        logging.info(f"🔍 DEBUG: _is_duplicate_in_set: MATCH FOUND! {phash[:12]}... vs {existing_phash[:12]}... = Hamming distance {hamming_distance} (≤ {hamming_threshold})")
                         return True
 
             # Log the closest match even if not a duplicate
             if closest_hash:
-                self.logger.debug(f"   🔍 Closest local match: Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+                logging.info(f"🔍 DEBUG: _is_duplicate_in_set: Closest match: {phash[:12]}... vs {closest_hash[:12]}... = Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+            else:
+                logging.info(f"🔍 DEBUG: _is_duplicate_in_set: No valid hashes to compare against")
 
             return False
 
         except (ValueError, TypeError) as e:
-            self.logger.debug(f"Error comparing phashes: {e}")
+            logging.info(f"🔍 DEBUG: _is_duplicate_in_set: Error comparing phashes: {e}")
             return False
 
     def _is_duplicate_in_existing(self, phash: str, hamming_threshold: int = 2) -> bool:
-        """Check if phash is duplicate within existing database hashes"""
-        if not phash or not self._existing_phashes:
+        """Check if phash is duplicate within existing database hashes using SQL query with caching"""
+        if not phash:
+            logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: Missing phash")
+            return False
+
+        # Check cache first (thread-safe)
+        with self._duplicate_cache_lock:
+            if phash in self._duplicate_check_cache:
+                logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: CACHE HIT for {phash[:12]}...")
+                return self._duplicate_check_cache[phash]
+
+        try:
+            # Use database query to check for exact match first (fastest)
+            result = self.db_session.execute(text("""
+                SELECT 1
+                FROM design_images
+                WHERE user_id = :user_id
+                AND is_active = true
+                AND (phash = :hash OR ahash = :hash OR dhash = :hash OR whash = :hash)
+                LIMIT 1
+            """), {"user_id": self.user_id, "hash": phash})
+
+            if result.fetchone():
+                logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: EXACT MATCH FOUND for {phash[:12]}...")
+                # Cache the result
+                with self._duplicate_cache_lock:
+                    self._duplicate_check_cache[phash] = True
+                return True
+
+            # For Hamming distance checking, we need to fetch and compare
+            # Only fetch a reasonable sample (e.g., last 1000 images) for performance
+            if hamming_threshold > 0:
+                result = self.db_session.execute(text("""
+                    SELECT phash, ahash, dhash, whash
+                    FROM design_images
+                    WHERE user_id = :user_id
+                    AND is_active = true
+                    AND (phash IS NOT NULL OR ahash IS NOT NULL OR dhash IS NOT NULL OR whash IS NOT NULL)
+                    ORDER BY created_at DESC
+                    LIMIT 1000
+                """), {"user_id": self.user_id})
+
+                phash_int = int(phash, 16)
+                for row in result:
+                    for existing_hash in row:
+                        if existing_hash:
+                            try:
+                                existing_int = int(existing_hash, 16)
+                                hamming_distance = bin(phash_int ^ existing_int).count('1')
+                                if hamming_distance <= hamming_threshold:
+                                    logging.info(f"🔍 DEBUG: _is_duplicate_in_existing: HAMMING MATCH FOUND! {phash[:12]}... vs {existing_hash[:12]}... = distance {hamming_distance}")
+                                    # Cache the result
+                                    with self._duplicate_cache_lock:
+                                        self._duplicate_check_cache[phash] = True
+                                    return True
+                            except (ValueError, TypeError):
+                                continue
+
+            # Cache negative result (not a duplicate)
+            with self._duplicate_cache_lock:
+                self._duplicate_check_cache[phash] = False
+            return False
+
+        except Exception as e:
+            logging.error(f"🔍 DEBUG: _is_duplicate_in_existing: Database query error: {e}")
+            return False
+
+    def _is_enhanced_duplicate_in_set(self, processed_image: ProcessedImage, hash_set: Set[str], threshold: int = 5, min_matches: int = 2) -> bool:
+        """Check if processed image is duplicate using multiple hash algorithms"""
+        if not processed_image.phash:
+            logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: No phash for {processed_image.final_filename}")
+            return False
+
+        matches = 0
+        image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+        logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: Checking {len(image_hashes)} hashes against {len(hash_set)} in set for {processed_image.final_filename}")
+
+        for i, image_hash in enumerate(image_hashes):
+            hash_names = ['phash', 'ahash', 'dhash', 'whash']
+            if image_hash:
+                is_match = self._is_duplicate_in_set(image_hash, hash_set, threshold)
+                logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: {hash_names[i]} {image_hash[:12]}... match: {is_match}")
+                if is_match:
+                    matches += 1
+            else:
+                logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: {hash_names[i]} is None")
+
+        result = matches >= min_matches
+        logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_set: Total matches: {matches}/{len(image_hashes)}, min_matches: {min_matches}, result: {result}")
+        return result
+
+    def _is_enhanced_duplicate_in_existing(self, processed_image: ProcessedImage, threshold: int = 5, min_matches: int = 2) -> bool:
+        """Check if processed image is duplicate in existing database using multiple hash algorithms"""
+        if not processed_image.phash:
+            logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Missing phash for {processed_image.final_filename}")
             return False
 
         try:
-            # Convert phash to integer for comparison
-            phash_int = int(phash, 16)
-            closest_distance = float('inf')
+            # Use database query to check all hashes at once (most efficient)
+            image_hashes = [processed_image.phash, processed_image.ahash, processed_image.dhash, processed_image.whash]
+            valid_hashes = [h for h in image_hashes if h]
 
-            for existing_hash in self._existing_phashes:
-                # Handle combined hashes from database
-                existing_phash = self._extract_primary_phash(existing_hash)
-                if existing_phash:
-                    existing_int = int(existing_phash, 16)
-                    # Calculate Hamming distance
-                    hamming_distance = bin(phash_int ^ existing_int).count('1')
+            if not valid_hashes:
+                return False
 
-                    if hamming_distance < closest_distance:
-                        closest_distance = hamming_distance
+            # Check for exact matches first (fastest path using indexes)
+            placeholders = ', '.join([f':hash{i}' for i in range(len(valid_hashes))])
+            query = f"""
+                SELECT phash, ahash, dhash, whash
+                FROM design_images
+                WHERE user_id = :user_id
+                AND is_active = true
+                AND (phash IN ({placeholders})
+                     OR ahash IN ({placeholders})
+                     OR dhash IN ({placeholders})
+                     OR whash IN ({placeholders}))
+                LIMIT 50
+            """
 
-                    if hamming_distance <= hamming_threshold:
-                        self.logger.debug(f"   🔍 DB duplicate found: Hamming distance {hamming_distance} (≤ {hamming_threshold})")
-                        return True
+            params = {"user_id": self.user_id}
+            for i, hash_val in enumerate(valid_hashes):
+                params[f'hash{i}'] = hash_val
 
-            # Log the closest match even if not a duplicate
-            self.logger.debug(f"   🔍 Closest DB match: Hamming distance {closest_distance} (threshold: {hamming_threshold})")
+            result = self.db_session.execute(text(query), params)
+            rows = result.fetchall()
+
+            if rows:
+                # Count exact matches
+                matches = 0
+                for row in rows:
+                    for db_hash in row:
+                        if db_hash in valid_hashes:
+                            matches += 1
+                            if matches >= min_matches:
+                                logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: EXACT MATCHES FOUND ({matches}) for {processed_image.final_filename}")
+                                return True
+
+            # If no exact matches and threshold allows, check Hamming distance
+            if threshold > 0:
+                matches = 0
+                hash_names = ['phash', 'ahash', 'dhash', 'whash']
+
+                for i, image_hash in enumerate(image_hashes):
+                    if image_hash:
+                        is_match = self._is_duplicate_in_existing(image_hash, threshold)
+                        if is_match:
+                            matches += 1
+                            logging.info(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: {hash_names[i]} hamming match")
+                            if matches >= min_matches:
+                                return True
+
             return False
 
-        except (ValueError, TypeError) as e:
-            self.logger.debug(f"Error comparing with existing phashes: {e}")
+        except Exception as e:
+            logging.error(f"🔍 DEBUG: _is_enhanced_duplicate_in_existing: Error: {e}")
             return False
 
 
     def _upload_batch_to_nas(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
         """
-        Upload batch of images to NAS storage
+        Upload batch of images to NAS storage in parallel
 
         Args:
             images: List of processed images to upload
@@ -791,53 +1007,75 @@ class ImageUploadWorkflow:
         if not images:
             return []
 
-        self.logger.info(f"📤 Batch {batch_id}: Uploading {len(images)} images to NAS")
+        logging.info(f"📤 Batch {batch_id}: Uploading {len(images)} images to NAS in parallel")
         successful_uploads = []
 
         # Check if NAS storage is available
         if not NAS_AVAILABLE or not nas_storage:
-            self.logger.warning(f"📤 Batch {batch_id}: NAS storage not available, skipping upload")
+            logging.warning(f"📤 Batch {batch_id}: NAS storage not available, skipping upload")
             return []
 
-        with self.nas_lock:  # Serialize NAS operations to prevent conflicts
+        # Get shop and template info once (shared across uploads)
+        shop_name = self._get_user_shop_name()
+
+        def upload_single_image(image: ProcessedImage) -> tuple[ProcessedImage, bool]:
+            """Upload a single image to NAS"""
             try:
-                for image in images:
-                    try:
-                        # Skip if image doesn't have content or filename
-                        if not image.resized_content or not image.final_filename:
-                            self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing content or filename")
-                            continue
+                # Skip if image doesn't have content or filename
+                if not image.resized_content or not image.final_filename:
+                    logging.info(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing content or filename")
+                    return (image, False)
 
-                        # Get user shop name and template name for NAS path
-                        shop_name = self._get_user_shop_name()
-                        template_name = self._get_template_name(image.upload_info.template_id)
+                # Get template name for this specific image
+                template_name = self._get_template_name(image.upload_info.template_id)
 
-                        # Upload to NAS using the correct method
-                        success = nas_storage.upload_file_content(
-                            image.resized_content,
-                            shop_name,
-                            f"{template_name}/{image.final_filename}"
-                        )
+                # Upload to NAS using the correct method
+                success = nas_storage.upload_file_content(
+                    image.resized_content,
+                    shop_name,
+                    f"{template_name}/{image.final_filename}"
+                )
 
-                        if success:
-                            image.nas_uploaded = True
-                            successful_uploads.append(image)
-                            self.logger.debug(f"   ✅ Uploaded: {image.final_filename}")
-                        else:
-                            self.logger.error(f"   ❌ Failed to upload: {image.final_filename}")
-
-                    except Exception as e:
-                        self.logger.error(f"   ❌ Upload error for {image.final_filename or 'unknown'}: {e}")
+                if success:
+                    image.nas_uploaded = True
+                    logging.info(f"   ✅ Uploaded: {image.final_filename}")
+                    return (image, True)
+                else:
+                    logging.error(f"   ❌ Failed to upload: {image.final_filename}")
+                    return (image, False)
 
             except Exception as e:
-                self.logger.error(f"❌ Batch {batch_id} NAS upload failed: {e}")
+                logging.error(f"   ❌ Upload error for {image.final_filename or 'unknown'}: {e}")
+                return (image, False)
 
-        self.logger.info(f"📤 Batch {batch_id}: Successfully uploaded {len(successful_uploads)}/{len(images)} to NAS")
+        # Use thread pool to upload images in parallel
+        # Increased to 12 concurrent uploads for better throughput with large batches
+        # NAS connection pool supports 20 connections, so this is well within limits
+        max_nas_workers = min(12, len(images))
+        try:
+            with ThreadPoolExecutor(max_workers=max_nas_workers) as executor:
+                # Submit all uploads
+                future_to_image = {executor.submit(upload_single_image, img): img for img in images}
+
+                # Collect results as they complete
+                for future in as_completed(future_to_image):
+                    try:
+                        image, success = future.result()
+                        if success:
+                            successful_uploads.append(image)
+                    except Exception as e:
+                        original_image = future_to_image[future]
+                        logging.error(f"   ❌ Upload thread error for {original_image.final_filename or 'unknown'}: {e}")
+
+        except Exception as e:
+            logging.error(f"❌ Batch {batch_id} NAS parallel upload failed: {e}")
+
+        logging.info(f"📤 Batch {batch_id}: Successfully uploaded {len(successful_uploads)}/{len(images)} to NAS")
         return successful_uploads
 
     def _update_database_batch(self, images: List[ProcessedImage], batch_id: int) -> List[ProcessedImage]:
         """
-        Update database with new design entries
+        Update database with new design entries using bulk insert
 
         Args:
             images: List of images successfully uploaded to NAS
@@ -851,10 +1089,10 @@ class ImageUploadWorkflow:
 
         # Check if dependencies are available
         if not DEPENDENCIES_AVAILABLE:
-            self.logger.warning(f"🗄️  Batch {batch_id}: Database dependencies not available, skipping update")
+            logging.warning(f"🗄️  Batch {batch_id}: Database dependencies not available, skipping update")
             return []
 
-        self.logger.info(f"🗄️  Batch {batch_id}: Updating database with {len(images)} records")
+        logging.info(f"🗄️  Batch {batch_id}: Updating database with {len(images)} records using bulk insert")
         successful_updates = []
 
         with self.db_lock:  # Serialize database operations
@@ -864,11 +1102,25 @@ class ImageUploadWorkflow:
             # Check if multi-tenant is enabled
             multi_tenant = os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true'
 
+            # Get org_id once if multi-tenant
+            org_id = None
+            if multi_tenant:
+                try:
+                    org_result = self.db_session.execute(text("""
+                        SELECT org_id FROM users WHERE id = :user_id
+                    """), {"user_id": self.user_id})
+                    org_row = org_result.fetchone()
+                    org_id = org_row[0] if org_row else None
+                except Exception as e:
+                    logging.error(f"   ❌ Failed to get org_id: {e}")
+
+            # Prepare bulk insert data
+            insert_values = []
             for image in images:
                 try:
                     # Skip if image doesn't have required data
                     if not image.final_filename or not image.phash:
-                        self.logger.debug(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing filename or phash")
+                        logging.info(f"   ⏭️  Skipping {image.upload_info.original_filename}: missing filename or phash")
                         continue
 
                     template_name = self._get_template_name(image.upload_info.template_id)
@@ -877,81 +1129,69 @@ class ImageUploadWorkflow:
                     # Generate unique UUID for this design
                     design_id = str(uuid.uuid4())
 
-                    # Note: Duplicate checking has already been done in the workflow
-                    # These images have passed duplicate detection, so we should save them
-                    self.logger.debug(f"   💾 Saving unique image: {image.final_filename}")
+                    # Prepare row data
+                    row_data = {
+                        "id": design_id,
+                        "user_id": self.user_id,
+                        "filename": image.final_filename,
+                        "file_path": file_path,
+                        "phash": image.phash,
+                        "ahash": image.ahash,
+                        "dhash": image.dhash,
+                        "whash": image.whash,
+                        "is_active": True,
+                        "is_digital": False,
+                        "created_at": now,
+                        "updated_at": now,
+                        "tags": json.dumps(image.tags_result['tags']) if image.tags_result else json.dumps([]),
+                        "tags_metadata": json.dumps(image.tags_result.get('metadata')) if image.tags_result else None
+                    }
 
                     if multi_tenant:
-                        # Get user's org_id
-                        org_result = self.db_session.execute(text("""
-                            SELECT org_id FROM users WHERE id = :user_id
-                        """), {"user_id": self.user_id})
-                        org_row = org_result.fetchone()
-                        org_id = org_row[0] if org_row else None
+                        row_data["org_id"] = org_id
 
-                        self.db_session.execute(text("""
-                            INSERT INTO design_images
-                            (id, user_id, org_id, filename, file_path, phash, is_active, is_digital, created_at, updated_at)
-                            VALUES (:id, :user_id, :org_id, :filename, :file_path, :phash, :is_active, :is_digital, :created_at, :updated_at)
-                        """), {
-                            "id": design_id,
-                            "user_id": self.user_id,
-                            "org_id": org_id,
-                            "filename": image.final_filename,
-                            "file_path": file_path,
-                            "phash": image.phash,
-                            "is_active": True,
-                            "is_digital": False,
-                            "created_at": now,
-                            "updated_at": now
-                        })
-                    else:
-                        self.db_session.execute(text("""
-                            INSERT INTO design_images
-                            (id, user_id, filename, file_path, phash, is_active, is_digital, created_at, updated_at)
-                            VALUES (:id, :user_id, :filename, :file_path, :phash, :is_active, :is_digital, :created_at, :updated_at)
-                        """), {
-                            "id": design_id,
-                            "user_id": self.user_id,
-                            "filename": image.final_filename,
-                            "file_path": file_path,
-                            "phash": image.phash,
-                            "is_active": True,
-                            "is_digital": False,
-                            "created_at": now,
-                            "updated_at": now
-                        })
-
-                    image.db_updated = True
+                    insert_values.append(row_data)
                     successful_updates.append(image)
 
-                    # Add to existing phashes to prevent duplicates in subsequent batches
-                    with self._existing_phashes_lock:
-                        if self._existing_phashes is not None and image.phash:
-                            self._existing_phashes.add(image.phash)
+                except Exception as e:
+                    logging.error(f"   ❌ Error preparing data for {image.final_filename or 'unknown'}: {e}")
+                    continue
+
+            # Perform bulk insert if we have data
+            if insert_values:
+                try:
+                    # Build bulk INSERT query
+                    if multi_tenant:
+                        columns = "id, user_id, org_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at, tags, tags_metadata"
+                        placeholders = ":id, :user_id, :org_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at, :tags::jsonb, :tags_metadata::jsonb"
+                    else:
+                        columns = "id, user_id, filename, file_path, phash, ahash, dhash, whash, is_active, is_digital, created_at, updated_at, tags, tags_metadata"
+                        placeholders = ":id, :user_id, :filename, :file_path, :phash, :ahash, :dhash, :whash, :is_active, :is_digital, :created_at, :updated_at, :tags::jsonb, :tags_metadata::jsonb"
+
+                    # Use executemany for bulk insert (much faster than individual inserts)
+                    self.db_session.execute(text(f"""
+                        INSERT INTO design_images ({columns})
+                        VALUES ({placeholders})
+                    """), insert_values)
+
+                    # Mark images as updated
+                    for image in successful_updates:
+                        image.db_updated = True
+
+                    # Commit all database changes
+                    self.db_session.commit()
+                    logging.info(f"🗄️  Batch {batch_id}: Successfully bulk inserted {len(insert_values)} records to database")
 
                 except Exception as e:
-                    # Rollback transaction on error to prevent failed transaction state
+                    logging.error(f"   ❌ Failed to bulk insert database changes: {e}")
                     try:
                         self.db_session.rollback()
                     except Exception:
-                        pass  # Ignore rollback errors
-
-                    self.logger.error(f"   ❌ DB error for {image.final_filename or 'unknown'}: {e}")
-                    # Continue processing other images - don't let one failure stop all
-
-            # Commit all database changes
-            try:
-                self.db_session.commit()
-                self.logger.info(f"🗄️  Batch {batch_id}: Successfully committed {len(successful_updates)}/{len(images)} records to database")
-            except Exception as e:
-                self.logger.error(f"   ❌ Failed to commit database changes: {e}")
-                try:
-                    self.db_session.rollback()
-                except Exception:
-                    pass
-                # Return empty list if commit failed
-                return []
+                        pass
+                    # Return empty list if commit failed
+                    return []
+            else:
+                logging.warning(f"🗄️  Batch {batch_id}: No valid data to insert")
 
         return successful_updates
 
@@ -969,12 +1209,12 @@ class ImageUploadWorkflow:
         if not images:
             return []
 
-        self.logger.info(f"🎨 Batch {batch_id}: Generating mockups for {len(images)} images")
+        logging.info(f"🎨 Batch {batch_id}: Generating mockups for {len(images)} images")
         successful_mockups = []
 
         # Check if mockup service is available
         if not MOCKUP_SERVICE_AVAILABLE:
-            self.logger.warning(f"🎨 Batch {batch_id}: Mockup service not available, skipping mockup generation")
+            logging.warning(f"🎨 Batch {batch_id}: Mockup service not available, skipping mockup generation")
             # Mark all as processed but without mockups
             for image in images:
                 image.mockup_generated = False
@@ -986,7 +1226,7 @@ class ImageUploadWorkflow:
                 try:
                     # Skip if image doesn't have required data
                     if not image.final_filename or not image.db_updated:
-                        self.logger.debug(f"   ⏭️  Skipping mockup for {image.upload_info.original_filename}: missing data or not in DB")
+                        logging.info(f"   ⏭️  Skipping mockup for {image.upload_info.original_filename}: missing data or not in DB")
                         continue
 
                     # Generate mockup using existing mockup service
@@ -995,19 +1235,19 @@ class ImageUploadWorkflow:
                     if mockup_result:
                         image.mockup_generated = True
                         successful_mockups.append(image)
-                        self.logger.debug(f"   ✅ Generated mockup: {image.final_filename}")
+                        logging.info(f"   ✅ Generated mockup: {image.final_filename}")
                     else:
                         image.mockup_generated = False
-                        self.logger.error(f"   ❌ Failed to generate mockup: {image.final_filename}")
+                        logging.error(f"   ❌ Failed to generate mockup: {image.final_filename}")
 
                 except Exception as e:
                     image.mockup_generated = False
-                    self.logger.error(f"   ❌ Mockup error for {image.final_filename or 'unknown'}: {e}")
+                    logging.error(f"   ❌ Mockup error for {image.final_filename or 'unknown'}: {e}")
 
         except Exception as e:
-            self.logger.error(f"❌ Batch {batch_id} mockup generation failed: {e}")
+            logging.error(f"❌ Batch {batch_id} mockup generation failed: {e}")
 
-        self.logger.info(f"🎨 Batch {batch_id}: Successfully generated {len(successful_mockups)}/{len(images)} mockups")
+        logging.info(f"🎨 Batch {batch_id}: Successfully generated {len(successful_mockups)}/{len(images)} mockups")
         return successful_mockups
 
     def _generate_single_mockup(self, image: ProcessedImage) -> bool:
@@ -1017,11 +1257,11 @@ class ImageUploadWorkflow:
         try:
             # For now, skip mockup generation in the comprehensive workflow
             # The mockups will be generated later by the existing mockup endpoint
-            self.logger.debug(f"Skipping mockup generation for {image.final_filename} - will be handled by mockup service")
+            logging.info(f"Skipping mockup generation for {image.final_filename} - will be handled by mockup service")
             return True
 
         except Exception as e:
-            self.logger.error(f"Failed to generate mockup for {image.final_filename}: {e}")
+            logging.error(f"Failed to generate mockup for {image.final_filename}: {e}")
             return False
 
     def _call_mockup_service(self, design_path: str, image: ProcessedImage) -> bool:
@@ -1051,48 +1291,107 @@ class ImageUploadWorkflow:
             #    })
 
             # For now, simulate successful mockup generation
-            self.logger.debug(f"Would generate mockup for design: {design_path}")
+            logging.info(f"Would generate mockup for design: {design_path}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Mockup service error: {e}")
+            logging.error(f"Mockup service error: {e}")
             return False
 
-    def _get_user_shop_name(self) -> str:
-        """Get the shop name for the current user"""
-        try:
-            if DEPENDENCIES_AVAILABLE:
-                result = self.db_session.execute(text("""
-                    SELECT shop_name FROM users WHERE id = :user_id
-                """), {"user_id": self.user_id})
+    def _get_user_shop_name(self, platform: Optional[str] = None) -> str:
+        """
+        Get the shop name for the current user based on platform.
 
-                row = result.fetchone()
-                if row and row[0]:
-                    return row[0]
+        Args:
+            platform: 'etsy' or 'shopify'. If None, tries Etsy first, then Shopify.
 
-        except Exception as e:
-            self.logger.debug(f"Could not get shop name from database: {e}")
+        Returns:
+            Shop name string
+        """
+        # Check cache first
+        if self._shop_name_cache:
+            return self._shop_name_cache
 
-        # Fallback to user ID-based shop name
-        return f"user_{self.user_id[:8]}"
+        with self._cache_lock:
+            # Double-check after acquiring lock
+            if self._shop_name_cache:
+                return self._shop_name_cache
+
+            try:
+                if DEPENDENCIES_AVAILABLE:
+                    # If no platform specified, try Etsy first (most common), then Shopify
+                    platforms_to_try = [platform] if platform else ['etsy', 'shopify']
+
+                    for plt in platforms_to_try:
+                        if plt == 'etsy':
+                            result = self.db_session.execute(text("""
+                                SELECT shop_name FROM etsy_stores
+                                WHERE user_id = :user_id
+                                AND is_active = true
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                            """), {"user_id": self.user_id})
+
+                            row = result.fetchone()
+                            if row and row[0]:
+                                self._shop_name_cache = row[0]
+                                logging.info(f"Using Etsy shop name from etsy_stores: {self._shop_name_cache}")
+                                return self._shop_name_cache
+
+                        elif plt == 'shopify':
+                            result = self.db_session.execute(text("""
+                                SELECT shop_name FROM shopify_stores
+                                WHERE user_id = :user_id
+                                AND is_active = true
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                            """), {"user_id": self.user_id})
+
+                            row = result.fetchone()
+                            if row and row[0]:
+                                self._shop_name_cache = row[0]
+                                logging.info(f"Using Shopify shop name from shopify_stores: {self._shop_name_cache}")
+                                return self._shop_name_cache
+
+            except Exception as e:
+                logging.info(f"Could not get shop name from database: {e}")
+
+            # Fallback to user ID-based shop name if no store found
+            self._shop_name_cache = f"user_{self.user_id[:8]}"
+            logging.warning(f"Using fallback shop name (no store found for platform '{platform}'): {self._shop_name_cache}")
+            return self._shop_name_cache
 
     def _get_template_name(self, template_id: str) -> str:
-        """Get the template name from template_id"""
-        try:
-            if DEPENDENCIES_AVAILABLE and template_id:
-                result = self.db_session.execute(text("""
-                    SELECT name FROM etsy_product_templates WHERE id = :template_id
-                """), {"template_id": template_id})
+        """Get the template name from template_id (cached)"""
+        if not template_id:
+            return "uploads"
 
-                row = result.fetchone()
-                if row and row[0]:
-                    return row[0]
+        # Check cache first
+        if template_id in self._template_name_cache:
+            return self._template_name_cache[template_id]
 
-        except Exception as e:
-            self.logger.debug(f"Could not get template name from database: {e}")
+        with self._cache_lock:
+            # Double-check after acquiring lock
+            if template_id in self._template_name_cache:
+                return self._template_name_cache[template_id]
 
-        # Fallback to "uploads" if template not found
-        return "uploads"
+            try:
+                if DEPENDENCIES_AVAILABLE:
+                    result = self.db_session.execute(text("""
+                        SELECT name FROM etsy_product_templates WHERE id = :template_id
+                    """), {"template_id": template_id})
+
+                    row = result.fetchone()
+                    if row and row[0]:
+                        self._template_name_cache[template_id] = row[0]
+                        return self._template_name_cache[template_id]
+
+            except Exception as e:
+                logging.info(f"Could not get template name from database: {e}")
+
+            # Fallback to "uploads" if template not found
+            self._template_name_cache[template_id] = "uploads"
+            return "uploads"
 
     def _generate_filename(self, original_filename: str, template_id: str, file_index: int = 0) -> str:
         """Generate filename with proper mockup numbering using starting_name from design_data"""
@@ -1110,11 +1409,11 @@ class ImageUploadWorkflow:
             clean_template = template_name.replace(" ", "_")
             final_filename = f"UV {current_id_str} {clean_template}_{current_id_str}.png"
 
-            self.logger.debug(f"Generated filename: {original_filename} -> {final_filename} (starting_name: {starting_name}, index: {file_index})")
+            logging.info(f"Generated filename: {original_filename} -> {final_filename} (starting_name: {starting_name}, index: {file_index})")
             return final_filename
 
         except Exception as e:
-            self.logger.error(f"Error generating filename: {e}")
+            logging.error(f"Error generating filename: {e}")
             # Fallback to original filename
             return original_filename
 

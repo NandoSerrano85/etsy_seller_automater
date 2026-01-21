@@ -6,6 +6,12 @@ from server.src.entities.third_party_oauth import ThirdPartyOAuthToken
 from server.src.utils.nas_storage import nas_storage
 
 class EtsyAPI:
+    # Class-level cache for order data {cache_key: {'data': ..., 'timestamp': ...}}
+    _order_cache = {}
+    _cache_ttl = 300  # Cache time-to-live in seconds (5 minutes)
+    # Increased from 60 seconds to 300 seconds (5 minutes) for better performance
+    # Orders don't change frequently enough to warrant 1-minute cache expiry
+
     def __init__(self, user_id=None, db=None):
         """
         Initialize the Etsy listing uploader with OAuth credentials
@@ -56,16 +62,19 @@ class EtsyAPI:
             self.taxonomy_id = None
             self.shipping_profile_id = None
             self.shop_section_id = None
+            self.readiness_state_id = None
 
         # Only fetch additional data if we have valid tokens and shop_id
         if self.oauth_token and self.shop_id:
             self.taxonomy_id = self.fetch_taxonomies()
             self.shipping_profile_id = self.fetch_shipping_profiles()
             self.shop_section_id = self.fetch_shop_sections()
+            self.readiness_state_id = self.fetch_shop_readiness_state_id()
         else:
             self.taxonomy_id = None
             self.shipping_profile_id = None
             self.shop_section_id = None
+            self.readiness_state_id = None
 
     def is_authenticated(self) -> bool:
         """Check if the engine has valid Etsy authentication"""
@@ -266,6 +275,66 @@ class EtsyAPI:
             print(f"Error during OAuth flow: {e}")
             raise Exception("OAuth authentication failed")
 
+    def get_shop_details(self) -> Optional[dict]:
+        """
+        Get shop details including icon URL
+
+        Returns:
+            dict: Shop details including icon_url_fullxfull
+        """
+        if not self.shop_id:
+            logging.error("No shop ID available")
+            return None
+
+        self.ensure_valid_token()
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        url = f"{self.base_url}/application/shops/{self.shop_id}"
+
+        try:
+            response = self.session.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logging.error(f"Failed to fetch shop details: {e}")
+            return None
+
+    def get_receipt_shipment(self, receipt_id: int) -> Optional[dict]:
+        """
+        Get shipment details for a receipt including shipping address
+
+        Args:
+            receipt_id: The receipt ID
+
+        Returns:
+            dict: Shipment details with shipping address
+        """
+        if not self.shop_id:
+            logging.error("No shop ID available")
+            return None
+
+        self.ensure_valid_token()
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        url = f"{self.base_url}/application/shops/{self.shop_id}/receipts/{receipt_id}/shipments"
+
+        try:
+            response = self.session.get(url, headers=headers)
+            response.raise_for_status()
+            shipments = response.json().get('results', [])
+            if shipments:
+                return shipments[0]  # Return first shipment
+            return None
+        except Exception as e:
+            logging.error(f"Failed to fetch shipment for receipt {receipt_id}: {e}")
+            return None
+
     def fetch_user_shop_id(self) -> Optional[int]:
         headers = {
             'x-api-key': self.client_id,
@@ -318,8 +387,30 @@ class EtsyAPI:
             
         return shop_id
 
-    def create_draft_listing(self, title: str, description: str, price: float, 
-                           quantity: int, tags: List[str], 
+    def fetch_shop_readiness_state_id(self) -> Optional[int]:
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        readiness_url = f"{self.base_url}/application/shops/{self.shop_id}/readiness-state-definitions"
+
+        readines_response = self.session.get(readiness_url, headers=headers)
+
+        if not readines_response.ok:
+            logging.error(f"Failed to fetch shop readiness state: {readines_response.status_code} {readines_response.text}")
+            return None
+        
+        readiness_data = readines_response.json()
+        readiness_state_id = readiness_data['results'][0].get('readiness_state_id')
+        if not readiness_state_id:
+            logging.error(f"Readiness state ID not found in response: {readiness_data}")
+            return None
+
+        return readiness_state_id
+
+    def create_draft_listing(self, title: str, description: str, price: float,
+                           quantity: int, tags: List[str],
                            materials: List[str],
                            item_weight: float,
                            item_weight_unit: str,
@@ -330,10 +421,11 @@ class EtsyAPI:
                            return_policy_id: Optional[int] = None,
                            is_digital: bool = False,
                            when_made: str = "made_to_order",
+                           production_partner_ids: Optional[List[int]] = None,
                            ) -> Dict:
         """
         Create a draft listing on Etsy
-        
+
         Args:
             title (str): Product title
             description (str): Product description
@@ -344,6 +436,8 @@ class EtsyAPI:
             taxonomy_id (int): Etsy taxonomy ID for the product
             shipping_profile_id (int): Shipping profile ID
             return_policy_id (int): Return policy ID
+            is_digital (bool): Whether this is a digital product
+            production_partner_ids (List[int]): Production partner IDs (required for physical listings)
         Returns:
             Dict: Response from Etsy API containing listing ID
         """
@@ -370,7 +464,28 @@ class EtsyAPI:
             "return_policy_id": return_policy_id if return_policy_id else 1,
             "type": "physical" if not is_digital else "download",
         }
-        
+
+        # For physical listings, production_partner_ids and readiness_state_id are required
+        # This indicates "ready to ship" status
+        if not is_digital:
+            if production_partner_ids:
+                payload["production_partner_ids"] = production_partner_ids
+            else:
+                # Default to empty array which means "ready to ship" (made by seller)
+                payload["production_partner_ids"] = []
+
+            # Ensure readiness_state_id is set for physical listings (REQUIRED by Etsy)
+            # If not already set, use 1 (the default "Ready to ship" state)
+            if not self.readiness_state_id:
+                logging.warning("readiness_state_id not set, using default value of 1 (Ready to ship)")
+                payload["readiness_state_id"] = 1
+            else:
+                payload["readiness_state_id"] = self.readiness_state_id
+        else:
+            # For digital listings, readiness_state_id is optional
+            if self.readiness_state_id:
+                payload["readiness_state_id"] = self.readiness_state_id
+
         # Only include return_policy_id if it's valid (>= 1)
         if return_policy_id and return_policy_id >= 1:
             payload["return_policy_id"] = return_policy_id
@@ -386,11 +501,11 @@ class EtsyAPI:
 
     def upload_listing_image(self, listing_id: int, image_path: str) -> Dict:
         """
-        Upload an image to a listing
-        
+        Upload an image to a listing (supports both local and NAS paths)
+
         Args:
             listing_id (int): The ID of the listing to add the image to
-            image_path (str): Path to the image file
+            image_path (str): Path to the image file (local or NAS path)
         Returns:
             Dict: Response from Etsy API
         """
@@ -399,13 +514,49 @@ class EtsyAPI:
             "x-api-key": self.client_id,
             "Authorization": f"Bearer {self.oauth_token}"
         }
-        with open(image_path, 'rb') as image_file:
-            files = {
-                'image': (os.path.basename(image_path), image_file, 'image/jpeg')
-            }
-            response = self.session.post(endpoint, headers=headers, files=files)
-            response.raise_for_status()
-            return response.json()
+
+        # Check if running in production and path is NAS
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production and image_path.startswith('/share/'):
+            # Load from NAS
+            try:
+                from server.src.utils.nas_storage import nas_storage
+                logging.info(f"Loading image from NAS for Etsy upload: {image_path}")
+
+                # Extract shop_name and relative_path from full path
+                # Path format: /share/Graphics/ShopName/RelativePath
+                path_parts = image_path.split('/')
+                if len(path_parts) >= 4 and path_parts[2] == 'Graphics':
+                    shop_name = path_parts[3]
+                    relative_path = '/'.join(path_parts[4:])
+
+                    # Download file to memory
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        files = {
+                            'image': (os.path.basename(image_path), file_content, 'image/jpeg')
+                        }
+                        response = self.session.post(endpoint, headers=headers, files=files)
+                        response.raise_for_status()
+                        logging.info(f"Successfully uploaded image from NAS to Etsy listing {listing_id}")
+                        return response.json()
+                    else:
+                        raise Exception(f"Failed to download image from NAS: {image_path}")
+                else:
+                    raise Exception(f"Invalid NAS path format: {image_path}")
+            except Exception as e:
+                logging.error(f"Error loading image from NAS: {str(e)}")
+                raise
+        else:
+            # Load from local filesystem
+            with open(image_path, 'rb') as image_file:
+                files = {
+                    'image': (os.path.basename(image_path), image_file, 'image/jpeg')
+                }
+                response = self.session.post(endpoint, headers=headers, files=files)
+                response.raise_for_status()
+                return response.json()
 
     def publish_listing(self, listing_id: int) -> Dict:
         """
@@ -633,7 +784,7 @@ class EtsyAPI:
                     full_path = os.path.join(root, file)
                     return full_path
 
-    def find_images_by_name_nas(self, search_name, shop_name, template_name, extensions=(".png")):
+    def find_images_by_name_nas(self, search_name, shop_name, template_name, extensions=(".png", ".jpg", ".jpeg")):
         """
         Search for design files on NAS that match search_name.
         Returns the relative path if found, None if not found.
@@ -644,17 +795,25 @@ class EtsyAPI:
             template_name: Template name for NAS directory
             extensions: File extensions to search for
         """
+        logging.info(f"🔍 NAS Search called with: search_name='{search_name}', shop_name='{shop_name}', template='{template_name}'")
+
         if not nas_storage.enabled:
-            logging.warning("NAS storage not enabled, cannot search for images")
+            logging.error("❌ NAS storage NOT enabled! Cannot search for images")
             return None
 
-        parts = search_name.split(" ")
+        logging.info(f"✅ NAS storage is enabled")
+
+        # Normalize whitespace - replace multiple spaces with single space and trim
+        import re as regex_module
+        normalized_search = regex_module.sub(r'\s+', ' ', search_name.strip())
+
+        parts = normalized_search.split(" ")
         search_name = " ".join(parts[:2])
 
         # Create multiple patterns to try different matching approaches
         patterns = []
 
-        logging.info(f"Creating search patterns for: '{search_name}' (parts: {parts})")
+        logging.info(f"Creating search patterns for: '{search_name}' (normalized from: '{normalized_search}', parts: {parts})")
 
         # Pattern 1: Exact match
         patterns.append(re.compile(re.escape(search_name), re.IGNORECASE))
@@ -675,11 +834,17 @@ class EtsyAPI:
             patterns.append(re.compile(re.escape(with_hyphens), re.IGNORECASE))
 
         # Pattern 5: Just the number part (for patterns like "UV 674" -> "674")
+        # This handles filenames like "Cup_Wrap_402.png" or "UVDTF_16oz_404.png"
         if len(parts) > 1 and parts[1].isdigit():
-            patterns.append(re.compile(re.escape(parts[1]), re.IGNORECASE))
+            number = parts[1]
+            # Match number with word boundaries or underscores (e.g., "_402" or "402.")
+            patterns.append(re.compile(rf'[_\s-]{re.escape(number)}(?:\.|$)', re.IGNORECASE))
+            # Also match just the number anywhere
+            patterns.append(re.compile(re.escape(number), re.IGNORECASE))
             # Also try with leading zeros
             padded_number = parts[1].zfill(3)  # e.g., "674" -> "674", "74" -> "074"
             if padded_number != parts[1]:
+                patterns.append(re.compile(rf'[_\s-]{re.escape(padded_number)}(?:\.|$)', re.IGNORECASE))
                 patterns.append(re.compile(re.escape(padded_number), re.IGNORECASE))
 
         # Pattern 6: More flexible matching - allow word boundaries
@@ -687,19 +852,28 @@ class EtsyAPI:
         flexible_pattern = search_name.replace(" ", r"[\s_-]*")
         patterns.append(re.compile(flexible_pattern, re.IGNORECASE))
 
-        logging.info(f"Created {len(patterns)} search patterns")
+        # Pattern 7: Strip all whitespace and match at start of filename (without extension)
+        # This handles cases where filename is "UV 632.png" and we're searching for "UV 632"
+        stripped_search = search_name.replace(" ", r"\s*")
+        patterns.append(re.compile(rf"^{stripped_search}(?:\\.|\s|$)", re.IGNORECASE))
+
+        logging.info(f"Created {len(patterns)} search patterns for '{search_name}'")
 
         # List files in the template directory on NAS
         template_relative_path = template_name  # Remove trailing slash - might cause issues
         try:
+            logging.info(f"📂 About to call nas_storage.list_files('{shop_name}', '{template_relative_path}')")
             files = nas_storage.list_files(shop_name, template_relative_path)
-            logging.info(f"NAS Search: Looking for '{search_name}' in {len(files) if files else 0} files in {shop_name}/{template_relative_path}")
+            logging.info(f"📂 nas_storage.list_files returned: {type(files)}, length: {len(files) if files else 0}")
+
             if files:
                 filenames = [f.get('filename', '') if isinstance(f, dict) else str(f) for f in files]
-                logging.info(f"Available filenames: {filenames}")
+                logging.info(f"📋 Available filenames ({len(filenames)} total): {filenames[:20]}")  # Show first 20
+                logging.info(f"🔍 NAS Search: Looking for '{search_name}' in {len(files)} files in {shop_name}/{template_relative_path}")
             else:
-                logging.warning(f"No files found in {shop_name}/{template_relative_path}")
+                logging.error(f"❌ No files returned from NAS in {shop_name}/{template_relative_path}")
 
+            matched = False
             for file_info in files:
                 # Extract filename from the file info dictionary
                 filename = file_info.get('filename', '') if isinstance(file_info, dict) else str(file_info)
@@ -707,23 +881,132 @@ class EtsyAPI:
                 if filename.lower().endswith(extensions):
                     # Try each pattern until we find a match
                     for i, pattern in enumerate(patterns):
-                        if pattern.search(filename):
-                            logging.info(f"NAS Search: Found match - {filename} using pattern {i}: {pattern.pattern}")
+                        match_result = pattern.search(filename)
+                        if match_result:
+                            logging.info(f"✅ NAS Match Found! '{filename}' matched pattern #{i}: '{pattern.pattern}' at position {match_result.span()}")
                             # Return the relative path that can be used for NAS operations
                             return f"{template_name}/{filename}"
-                    # Log why this file didn't match
-                    logging.debug(f"NAS Search: File '{filename}' didn't match any patterns for '{search_name}'")
 
-            logging.warning(f"NAS Search: No file found matching pattern '{search_name}' in {shop_name}/{template_relative_path}")
+                    # Log FIRST failing file with detailed pattern info
+                    if not matched:
+                        logging.error(f"❌ PATTERN MISMATCH DEBUG:")
+                        logging.error(f"   Searching for: '{search_name}'")
+                        logging.error(f"   Filename: '{filename}'")
+                        logging.error(f"   All patterns: {[p.pattern for p in patterns]}")
+                        # Test each pattern manually
+                        for i, pattern in enumerate(patterns):
+                            test_result = pattern.search(filename)
+                            logging.error(f"   Pattern #{i} '{pattern.pattern}': {'MATCH' if test_result else 'NO MATCH'}")
+                        matched = True  # Only log once
+
+            # Only log if no match was found at all
+            if not matched:
+                logging.error(f"❌ NAS Search FAILED: No file found matching '{search_name}' in {shop_name}/{template_relative_path}")
+                logging.error(f"   Searched {len(files)} files with {len(patterns)} patterns")
+                logging.error(f"   Patterns used: {[p.pattern for p in patterns]}")
         except Exception as e:
             logging.error(f"Error searching NAS for images: {e}")
 
         return None
 
+    def find_design_in_db(self, search_name, user_id, template_name=None):
+        """
+        Search for design file in database using fuzzy matching with PostgreSQL pattern matching.
+        Returns file_path if found, None otherwise.
+
+        Args:
+            search_name: Name to search for (e.g., "UV 632")
+            user_id: User ID to filter designs
+            template_name: Optional template name to filter by
+
+        Returns:
+            str: File path from database if found, None otherwise
+        """
+        if not self.db:
+            logging.warning("No database session available for design lookup")
+            return None
+
+        # Normalize whitespace in search name
+        import re as regex_module
+        normalized_search = regex_module.sub(r'\s+', ' ', search_name.strip())
+
+        from server.src.entities.designs import DesignImages
+
+        try:
+            # Base query
+            base_query = self.db.query(DesignImages).filter(
+                DesignImages.user_id == user_id,
+                DesignImages.is_active == True
+            )
+
+            # Optionally filter by template
+            if template_name:
+                from server.src.entities.template import EtsyProductTemplate
+                base_query = base_query.join(DesignImages.product_templates).filter(
+                    EtsyProductTemplate.name == template_name
+                )
+
+            # Strategy 1: Exact substring match (case-insensitive) using PostgreSQL ILIKE
+            # ILIKE is PostgreSQL's case-insensitive LIKE operator
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{normalized_search}%')
+            ).first()
+
+            if design:
+                logging.info(f"DB Search: Found exact match - '{design.filename}' for '{normalized_search}'")
+                return design.file_path
+
+            # Strategy 2: Match without spaces (e.g., "UV 632" -> "UV632")
+            no_space_search = normalized_search.replace(" ", "")
+            design = base_query.filter(
+                DesignImages.filename.ilike(f'%{no_space_search}%')
+            ).first()
+
+            if design:
+                logging.info(f"DB Search: Found no-space match - '{design.filename}' for '{normalized_search}'")
+                return design.file_path
+
+            # Strategy 3: Just the number part (for "UV 632" -> "632")
+            parts = normalized_search.split(" ")
+            if len(parts) > 1 and parts[1].isdigit():
+                design = base_query.filter(
+                    DesignImages.filename.ilike(f'%{parts[1]}%')
+                ).first()
+
+                if design:
+                    logging.info(f"DB Search: Found number match - '{design.filename}' for '{normalized_search}'")
+                    return design.file_path
+
+            # Strategy 4: Flexible matching with regex (allows spaces, underscores, hyphens)
+            # Convert "UV 632" to a pattern like "UV[\s_-]*632"
+            flexible_pattern = normalized_search.replace(" ", r"[\s_-]*")
+            design = base_query.filter(
+                DesignImages.filename.op('~*')(flexible_pattern)  # ~* is case-insensitive regex in PostgreSQL
+            ).first()
+
+            if design:
+                logging.info(f"DB Search: Found flexible match - '{design.filename}' for '{normalized_search}'")
+                return design.file_path
+
+            # Show what files ARE in the database for this template (for debugging)
+            all_designs = base_query.limit(10).all()
+            if all_designs:
+                sample_files = [d.filename for d in all_designs]
+                logging.debug(f"DB Search: Sample files in template '{template_name}': {sample_files}")
+            else:
+                logging.warning(f"DB Search: No files found in database for template '{template_name}'")
+
+            logging.warning(f"DB Search: No match found for '{normalized_search}' in template '{template_name}'")
+            return None
+
+        except Exception as e:
+            logging.error(f"Error searching database for design: {e}", exc_info=True)
+            return None
+
     def fetch_open_orders_items_nas(self, shop_name, template_name):
         """
-        NAS-compatible version of fetch_open_orders_items that uses QNAP NAS storage
-        instead of local file system to find design files.
+        NAS-compatible version of fetch_open_orders_items that uses database lookup first,
+        then batch downloads from NAS. This is much more efficient than searching NAS for each item.
 
         Args:
             shop_name: Shop name for NAS path
@@ -739,7 +1022,7 @@ class EtsyAPI:
             logging.error("NAS storage not enabled, cannot fetch orders with NAS support")
             return None
 
-        print(f"\n--- Fetching Open Orders Items (NAS Mode) for {shop_name}/{template_name} ---")
+        print(f"\n--- Fetching Open Orders Items (DB-First Mode) for {shop_name}/{template_name} ---")
 
         receipts_url = f"https://openapi.etsy.com/v3/application/shops/{self.shop_id}/receipts?was_paid=true&was_shipped=false&was_canceled=false"
         headers = {
@@ -770,9 +1053,15 @@ class EtsyAPI:
             for t in transactions:
                 title = t.get('title', 'Unknown')
                 quantity = t.get('quantity', 0)
+                search_term = title.split(" | ")[0]
 
-                # Use NAS-compatible image search
-                design_file_path = self.find_images_by_name_nas(title.split(" | ")[0], shop_name, template_name)
+                # Try database lookup first (much faster)
+                design_file_path = self.find_design_in_db(search_term, self.user_id, template_name)
+
+                # Fallback to NAS search if not in database
+                if not design_file_path:
+                    logging.debug(f"Design not in DB, searching NAS for: {search_term}")
+                    design_file_path = self.find_images_by_name_nas(search_term, shop_name, template_name)
 
                 if design_file_path:
                     i = self._find_index(item_summary[template_name]['Title'], design_file_path)
@@ -784,9 +1073,9 @@ class EtsyAPI:
                         item_summary[template_name]['Total'].append(quantity)
                     item_summary["Total QTY"] += quantity
                 else:
-                    logging.warning(f"No design file found on NAS for order item: {title}")
+                    logging.warning(f"No design file found in DB or NAS for order item: {title}")
                     # Still add to item summary but with a placeholder path so gang sheets can be processed
-                    placeholder_path = f"{template_name}/MISSING_{title.split(' | ')[0].replace(' ', '_')}.png"
+                    placeholder_path = f"{template_name}/MISSING_{search_term.replace(' ', '_')}.png"
                     i = self._find_index(item_summary[template_name]['Title'], placeholder_path)
                     if i >= 0:
                         item_summary[template_name]['Total'][i] += quantity
@@ -796,7 +1085,7 @@ class EtsyAPI:
                         item_summary[template_name]['Total'].append(quantity)
                     item_summary["Total QTY"] += quantity
 
-        print("\nOpen Orders Item Summary (NAS):")
+        print("\nOpen Orders Item Summary (DB-First):")
         for k, v in item_summary[template_name].items():
             print(f"{k}: {v}")
 
@@ -804,10 +1093,11 @@ class EtsyAPI:
 
     def upload_listing_file(self, listing_id: int, file_path: str, file_name: str) -> dict:
         """
-        Upload a digital file to a digital listing.
+        Upload a digital file to a digital listing (supports both local and NAS paths)
+
         Args:
             listing_id (int): The ID of the listing to add the file to
-            file_path (str): Path to the digital file
+            file_path (str): Path to the digital file (local or NAS path)
             file_name (str): The name of the file to show on Etsy
         Returns:
             dict: Response from Etsy API
@@ -817,55 +1107,174 @@ class EtsyAPI:
             "x-api-key": self.client_id,
             "Authorization": f"Bearer {self.oauth_token}"
         }
-        with open(file_path, 'rb') as file_obj:
-            files = {
-                'file': (file_name, file_obj, 'application/octet-stream'),
-                'name': (None, file_name)
-            }
-            response = self.session.post(endpoint, headers=headers, files=files)
-            response.raise_for_status()
-            return response.json()
 
-    def fetch_order_summary(self, model) -> dict:
+        # Check if running in production and path is NAS
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production and file_path.startswith('/share/'):
+            # Load from NAS
+            try:
+                from server.src.utils.nas_storage import nas_storage
+                logging.info(f"Loading digital file from NAS for Etsy upload: {file_path}")
+
+                # Extract shop_name and relative_path from full path
+                # Path format: /share/Graphics/ShopName/RelativePath
+                path_parts = file_path.split('/')
+                if len(path_parts) >= 4 and path_parts[2] == 'Graphics':
+                    shop_name = path_parts[3]
+                    relative_path = '/'.join(path_parts[4:])
+
+                    # Download file to memory
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        files = {
+                            'file': (file_name, file_content, 'application/octet-stream'),
+                            'name': (None, file_name)
+                        }
+                        response = self.session.post(endpoint, headers=headers, files=files)
+                        response.raise_for_status()
+                        logging.info(f"Successfully uploaded digital file from NAS to Etsy listing {listing_id}")
+                        return response.json()
+                    else:
+                        raise Exception(f"Failed to download digital file from NAS: {file_path}")
+                else:
+                    raise Exception(f"Invalid NAS path format: {file_path}")
+            except Exception as e:
+                logging.error(f"Error loading digital file from NAS: {str(e)}")
+                raise
+        else:
+            # Load from local filesystem
+            with open(file_path, 'rb') as file_obj:
+                files = {
+                    'file': (file_name, file_obj, 'application/octet-stream'),
+                    'name': (None, file_name)
+                }
+                response = self.session.post(endpoint, headers=headers, files=files)
+                response.raise_for_status()
+                return response.json()
+
+    def fetch_order_summary(self, model, was_shipped=None, was_paid=None, was_canceled=None) -> dict:
+        """
+        Fetch order summary with optional status filters.
+        Uses caching to prevent excessive API calls and rate limiting.
+
+        Args:
+            model: Model class for response formatting
+            was_shipped: Filter by shipped status ('true', 'false', or None for all)
+            was_paid: Filter by paid status ('true', 'false', or None for all)
+            was_canceled: Filter by canceled status ('true', 'false', or None for all)
+
+        Returns:
+            Dictionary with orders, count, and total
+        """
+        # Create cache key based on user and filters
+        cache_key = f"{self.user_id}:{was_shipped}:{was_paid}:{was_canceled}"
+
+        # Check if we have cached data that's still valid
+        current_time = time.time()
+        if cache_key in self._order_cache:
+            cached_entry = self._order_cache[cache_key]
+            if current_time - cached_entry['timestamp'] < self._cache_ttl:
+                logging.info(f"Returning cached order data for user {self.user_id}")
+                return cached_entry['data']
+            else:
+                # Cache expired, remove it
+                del self._order_cache[cache_key]
+                logging.info(f"Cache expired for user {self.user_id}, fetching fresh data")
+
         headers = {
             'x-api-key': self.client_id,
             'Authorization': f'Bearer {self.oauth_token}',
         }
         logging.info(f"Using shop ID: {self.shop_id}")
         receipts_url = f"{self.base_url}/application/shops/{self.shop_id}/receipts"
+
+        # Build params with only specified filters
         params = {
             'limit': 100,
             'offset': 0,
-            'was_paid': 'true',
-            'was_shipped': 'false',
-            'was_canceled': 'false'
         }
-        response = self.session.get(receipts_url, headers=headers, params=params)
-        if not response.ok:
-            logging.error(f"Failed to fetch orders: {response.status_code} {response.text}")
-            return {"success_code": 200, "message": f"Failed to fetch orders: {response.text}"}
-        receipts_data = response.json()
-        orders = []
-        for receipt in receipts_data.get('results', []):
-            items = [
-                model.OrderItem(
-                    title=transaction.get('title', 'N/A'),
-                    quantity=transaction.get('quantity', 0),
-                    price=float(transaction.get('price', {}).get('amount', 0)),
-                    listing_id=transaction.get('listing_id')
+
+        # Add filters only if specified (None means don't filter)
+        if was_paid is not None:
+            params['was_paid'] = was_paid
+        if was_shipped is not None:
+            params['was_shipped'] = was_shipped
+        if was_canceled is not None:
+            params['was_canceled'] = was_canceled
+
+        try:
+            response = self.session.get(receipts_url, headers=headers, params=params)
+
+            # Handle rate limiting with better error message
+            if response.status_code == 429:
+                logging.error(f"Etsy API rate limit hit for user {self.user_id}")
+                return {
+                    "success_code": 429,
+                    "message": "Etsy API rate limit reached. Please wait a minute before refreshing.",
+                    "orders": [],
+                    "count": 0,
+                    "total": 0
+                }
+
+            if not response.ok:
+                logging.error(f"Failed to fetch orders: {response.status_code} {response.text}")
+                return {
+                    "success_code": response.status_code,
+                    "message": f"Failed to fetch orders: {response.text}",
+                    "orders": [],
+                    "count": 0,
+                    "total": 0
+                }
+
+            receipts_data = response.json()
+            orders = []
+            for receipt in receipts_data.get('results', []):
+                items = [
+                    model.OrderItem(
+                        title=transaction.get('title', 'N/A'),
+                        quantity=transaction.get('quantity', 0),
+                        price=float(transaction.get('price', {}).get('amount', 0)),
+                        listing_id=transaction.get('listing_id')
+                    )
+                    for transaction in receipt.get('transactions', [])
+                ]
+                order = model.Order(
+                    order_id=receipt.get('receipt_id'),
+                    order_date=receipt.get('created_timestamp'),
+                    shipping_method=receipt.get('shipping_carrier', 'N/A'),
+                    shipping_cost=float(receipt.get('total_shipping_cost', {}).get('amount', 0)),
+                    customer_name=receipt.get('name', 'N/A'),
+                    items=items
                 )
-                for transaction in receipt.get('transactions', [])
-            ]
-            order = model.Order(
-                order_id=receipt.get('receipt_id'),
-                order_date=receipt.get('created_timestamp'),
-                shipping_method=receipt.get('shipping_carrier', 'N/A'),
-                shipping_cost=float(receipt.get('total_shipping_cost', {}).get('amount', 0)),
-                customer_name=receipt.get('name', 'N/A'),
-                items=items
-            )
-            orders.append(order)
-        return {"orders":  orders, "count": len(orders), "total": receipts_data.get('count', 0), "success_code": 200}
+                orders.append(order)
+
+            # Build result
+            result = {
+                "orders": orders,
+                "count": len(orders),
+                "total": receipts_data.get('count', 0),
+                "success_code": 200
+            }
+
+            # Cache the successful result
+            self._order_cache[cache_key] = {
+                'data': result,
+                'timestamp': current_time
+            }
+            logging.info(f"Cached order data for user {self.user_id}")
+
+            return result
+
+        except Exception as e:
+            logging.error(f"Exception while fetching orders: {str(e)}")
+            return {
+                "success_code": 500,
+                "message": f"Unexpected error: {str(e)}",
+                "orders": [],
+                "count": 0,
+                "total": 0
+            }
 
     def get_shop_listings(self, state: str = "active", limit: int = 100, offset: int = 0, include_images: bool = True) -> dict:
         """
@@ -1118,3 +1527,189 @@ class EtsyAPI:
             import traceback
             logging.error(f"Traceback: {traceback.format_exc()}")
             return []
+
+    def get_shop_receipts_with_items(self, shop_id, limit=100, offset=0, was_shipped=None, was_paid=None, was_canceled=None):
+        """
+        Get shop receipts (orders) with transaction items.
+
+        Args:
+            shop_id: Shop ID
+            limit: Maximum number of receipts to return
+            offset: Number of receipts to skip (for pagination)
+            was_shipped: Filter by shipped status ('true', 'false', or None for all)
+            was_paid: Filter by paid status ('true', 'false', or None for all)
+            was_canceled: Filter by canceled status ('true', 'false', or None for all)
+
+        Returns:
+            Dictionary with results and count
+        """
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        receipts_url = f"{self.base_url}/application/shops/{shop_id}/receipts"
+        params = {
+            'limit': min(limit, 100),  # Etsy API max is 100
+            'offset': offset,
+        }
+
+        # Add filters only if specified (None means don't filter)
+        if was_paid is not None:
+            params['was_paid'] = was_paid
+        if was_shipped is not None:
+            params['was_shipped'] = was_shipped
+        if was_canceled is not None:
+            params['was_canceled'] = was_canceled
+
+        response = self.session.get(receipts_url, headers=headers, params=params)
+        if not response.ok:
+            logging.error(f"Failed to fetch receipts: {response.status_code} {response.text}")
+            return None
+
+        return response.json()
+
+    def fetch_selected_order_items(self, shop_id, order_ids, template_name, shop_name=None):
+        """
+        Fetch items from specific selected orders and process them for gang sheet creation.
+
+        Args:
+            shop_id: Shop ID
+            order_ids: List of order/receipt IDs to fetch
+            template_name: Template name to filter items
+            shop_name: Shop name for NAS lookup (optional)
+
+        Returns:
+            Dictionary formatted for gang sheet creation with Title, Size, Total arrays
+        """
+        # Store shop_name for use in find_design_for_item
+        self.shop_name = shop_name
+        headers = {
+            'x-api-key': self.client_id,
+            'Authorization': f'Bearer {self.oauth_token}',
+        }
+
+        # Initialize result structure
+        image_data = {
+            'Title': [],
+            'Size': [],
+            'Total': []
+        }
+
+        processed_items = 0
+
+        # Fetch each order
+        for order_id in order_ids:
+            try:
+                receipt_url = f"{self.base_url}/application/shops/{shop_id}/receipts/{order_id}"
+                response = self.session.get(receipt_url, headers=headers)
+
+                if not response.ok:
+                    logging.warning(f"Failed to fetch order {order_id}: {response.status_code}")
+                    continue
+
+                receipt = response.json()
+
+                # Log order details with full diagnostic info
+                transactions = receipt.get('transactions', [])
+                was_shipped = receipt.get('was_shipped', False)
+                was_paid = receipt.get('was_paid', False)
+
+                logging.info(f"📦 Order {order_id}: Found {len(transactions)} items | shipped: {was_shipped} | paid: {was_paid}")
+
+                # Log full receipt data for debugging completed orders
+                if was_shipped:
+                    logging.debug(f"🔍 Full receipt data for shipped order {order_id}: {receipt}")
+
+                # Check if transactions list is empty
+                if not transactions:
+                    logging.warning(f"⚠️ Order {order_id} returned ZERO transactions! Receipt keys: {list(receipt.keys())}")
+                    logging.warning(f"⚠️ Full receipt: {receipt}")
+
+                # Process each transaction in the order
+                for idx, transaction in enumerate(transactions, 1):
+                    item_title = transaction.get('title', '')
+                    quantity = transaction.get('quantity', 1)
+                    transaction_id = transaction.get('transaction_id', 'unknown')
+
+                    logging.info(f"  Processing item {idx}/{len(transactions)} from order {order_id}: '{item_title}' (qty: {quantity}, tx_id: {transaction_id})")
+
+                    # Try to find design file for this item
+                    design_path = self.find_design_for_item(item_title, template_name)
+
+                    if design_path:
+                        # Check if this design already exists in our data
+                        # If so, add to its quantity instead of creating a duplicate entry
+                        if design_path in image_data['Title']:
+                            # Find the index and add to existing quantity
+                            existing_idx = image_data['Title'].index(design_path)
+                            image_data['Total'][existing_idx] += quantity
+                            logging.info(f"  ✅ Updated existing item: {item_title} (added qty: {quantity}, total now: {image_data['Total'][existing_idx]}) -> {design_path}")
+                        else:
+                            # New design, add to arrays
+                            image_data['Title'].append(design_path)
+                            image_data['Size'].append(template_name)
+                            image_data['Total'].append(quantity)
+                            logging.info(f"  ✅ Added new item from order {order_id}: {item_title} (qty: {quantity}) -> {design_path}")
+                        processed_items += 1
+                    else:
+                        logging.warning(f"  ❌ No design found for item: {item_title}")
+
+            except Exception as e:
+                logging.error(f"Error processing order {order_id}: {e}")
+                continue
+
+        logging.info(f"Processed {processed_items} items from {len(order_ids)} selected orders")
+
+        return {
+            'items': processed_items,
+            **image_data
+        }
+
+    def find_design_for_item(self, item_title, template_name):
+        """
+        Find design file path for an item title.
+
+        Args:
+            item_title: Item title from order (e.g., "UV 840 | UVDTF Cup wrap | ...")
+            template_name: Template name
+
+        Returns:
+            Design file path or None
+        """
+        import re
+
+        # Extract just the design number from the title
+        # Pattern matches "UV XXX" or "UV XXX |" at the start of the title
+        search_name = item_title
+        match = re.match(r'^(UV\s*\d+)', item_title.strip(), re.IGNORECASE)
+        if match:
+            search_name = match.group(1).strip()
+            logging.info(f"🔍 Extracted design number '{search_name}' from title '{item_title}'")
+        else:
+            logging.warning(f"⚠️ Could not extract UV number from title: '{item_title}'")
+
+        # Try database first with extracted design number
+        logging.info(f"🔍 Searching database for '{search_name}' in template '{template_name}'")
+        design_path = self.find_design_in_db(search_name, self.user_id, template_name)
+
+        if design_path:
+            logging.info(f"✅ Found in database: {design_path}")
+            return design_path
+
+        # Try NAS if database lookup failed
+        logging.info(f"🔍 Database search failed, trying NAS for '{search_name}'")
+        if hasattr(self, 'shop_name') and self.shop_name:
+            design_path = self.find_images_by_name_nas(
+                search_name,
+                self.shop_name,
+                template_name
+            )
+            if design_path:
+                logging.info(f"✅ Found on NAS: {design_path}")
+            else:
+                logging.warning(f"❌ Not found on NAS for '{search_name}'")
+        else:
+            logging.warning(f"⚠️ Cannot search NAS - shop_name not available")
+
+        return design_path

@@ -2,7 +2,7 @@ import numpy as np
 import cv2, os, tempfile
 from datetime import date
 from functools import lru_cache
-from server.src.utils.util import inches_to_pixels, rotate_image_90, save_single_image
+from server.src.utils.util import inches_to_pixels, rotate_image_90, save_single_image, save_image_with_format
 
 # Optional memory monitoring (install with: pip install psutil)
 # This provides detailed memory usage reporting and prevents out-of-memory errors
@@ -18,48 +18,227 @@ from sqlalchemy.orm import Session
 
 
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
-GANG_SHEET_MAX_WIDTH = 23  # inches
+
+# DEPRECATED: These constants are being replaced with dynamic values from printer and canvas_config
+# They remain here only for backward compatibility during migration
+GANG_SHEET_MAX_WIDTH = 23  # inches - USE printer.max_width_inches instead
 GANG_SHEET_SPACING = {
     'UVDTF 16oz': {'width': 0.32, 'height': 0.5},
     # Add more template spacing configurations here as needed
 }
-GANG_SHEET_MAX_HEIGHT = 215  # inches (was incorrectly set to 215)
-STD_DPI = 400
+GANG_SHEET_MAX_HEIGHT = 215  # inches - USE printer.max_height_inches instead
+STD_DPI = 400  # USE printer.dpi or canvas_config.dpi instead
 
 @lru_cache(maxsize=None)
 def cached_inches_to_pixels(inches, dpi):
    return inches_to_pixels(inches, dpi)
 
-def process_image(img_path):
+def process_image(img_path, normalize_dpi=True, target_dpi=400):
+   """
+   Process a single image: load, convert to BGRA, normalize DPI, and rotate.
+
+   Args:
+       img_path: Path to the image file
+       normalize_dpi: If True, normalize DPI metadata to target_dpi (default: True)
+       target_dpi: Target DPI for normalization (default: 400)
+
+   Returns:
+       Processed image as numpy array or None if failed
+   """
+   import logging
    if os.path.exists(img_path):
        img = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
        if img is None:
+           logging.warning(f"Failed to load image: {img_path}")
            return None
-       if img.shape[2] == 3:
+
+       # Ensure image has alpha channel (BGRA)
+       if len(img.shape) == 2:
+           # Grayscale - convert to BGRA
+           img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGRA)
+       elif img.shape[2] == 3:
+           # BGR - convert to BGRA
            img = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+       elif img.shape[2] == 4:
+           # Already BGRA, do nothing
+           pass
+
+       # CRITICAL FIX: Normalize DPI to handle mixed DPI images
+       # Images with 72 DPI, 96 DPI, 300 DPI, 400 DPI etc. can cause issues
+       # when combined in a gang sheet even if pixel dimensions are identical
+       if normalize_dpi:
+           try:
+               from PIL import Image
+               # Read DPI metadata using PIL
+               with Image.open(img_path) as pil_img:
+                   current_dpi = pil_img.info.get('dpi', (target_dpi, target_dpi))
+                   if isinstance(current_dpi, (int, float)):
+                       current_dpi = (current_dpi, current_dpi)
+
+                   # Log DPI normalization
+                   if current_dpi[0] != target_dpi or current_dpi[1] != target_dpi:
+                       logging.info(f"Normalizing DPI: {img_path} from {current_dpi} to ({target_dpi}, {target_dpi})")
+
+                       # Calculate scale factor based on DPI difference
+                       # If image is 72 DPI but we want 400 DPI, we need to scale it up
+                       # to maintain the same physical size
+                       scale_x = target_dpi / current_dpi[0]
+                       scale_y = target_dpi / current_dpi[1]
+
+                       # Only scale if there's a significant difference (> 1% variation)
+                       if abs(scale_x - 1.0) > 0.01 or abs(scale_y - 1.0) > 0.01:
+                           h, w = img.shape[:2]
+                           new_w = int(w * scale_x)
+                           new_h = int(h * scale_y)
+
+                           # Use high-quality interpolation
+                           interpolation = cv2.INTER_CUBIC if scale_x > 1 else cv2.INTER_AREA
+                           img = cv2.resize(img, (new_w, new_h), interpolation=interpolation)
+                           logging.info(f"Resized from {w}x{h} to {new_w}x{new_h} (scale: {scale_x:.2f}x, {scale_y:.2f}x)")
+           except Exception as e:
+               logging.warning(f"Failed to normalize DPI for {img_path}: {e}")
+
+       # Rotate image
        img = rotate_image_90(img, 1)
        return img
    return None
 
+@lru_cache(maxsize=128)
+def process_image_cached(img_path):
+   """Cached version of process_image for frequently accessed images."""
+   return process_image(img_path)
+
+def process_images_parallel(img_paths, max_workers=4):
+   """
+   OPTIMIZATION: Process multiple images in parallel using ThreadPoolExecutor.
+   Returns a dict mapping index to processed image.
+
+   Args:
+       img_paths: List of image paths to process
+       max_workers: Maximum number of concurrent threads (default: 4)
+
+   Returns:
+       Dict mapping image index to processed numpy array
+   """
+   import logging
+   from concurrent.futures import ThreadPoolExecutor, as_completed
+
+   processed = {}
+
+   # Filter out None values and track indices
+   valid_paths = [(i, path) for i, path in enumerate(img_paths) if path is not None]
+
+   if not valid_paths:
+       return processed
+
+   logging.info(f"Processing {len(valid_paths)} images in parallel with {max_workers} workers")
+
+   with ThreadPoolExecutor(max_workers=max_workers) as executor:
+       # Submit all image processing tasks
+       future_to_index = {
+           executor.submit(process_image, path): i
+           for i, path in valid_paths
+       }
+
+       # Collect results as they complete
+       for future in as_completed(future_to_index):
+           index = future_to_index[future]
+           try:
+               result = future.result()
+               if result is not None:
+                   processed[index] = result
+           except Exception as e:
+               logging.warning(f"Error processing image at index {index}: {e}")
+
+   logging.info(f"Successfully processed {len(processed)}/{len(valid_paths)} images")
+   return processed
+
 
 def get_mockup_images_with_mask_data_from_service(db, user_id, template_name):
     """
-    Helper to fetch mockup images with mask data using the service layer.
+    OPTIMIZED: Fetch mockup images with mask data using bulk queries with eager loading.
     Returns a list of dicts with keys: id, filename, file_path, template_name, image_type, design_id, mask_data, points_data, created_at
     """
+    import logging
+    from sqlalchemy.orm import joinedload
+    from server.src.entities.mockup import Mockup, MockupImage, MockupMaskData
+
+    try:
+        # OPTIMIZATION: Use a single query with eager loading instead of N+1 queries
+        # This loads mockups, images, and mask data in one database round-trip
+        query = db.query(MockupImage).join(
+            Mockup, MockupImage.mockup_id == Mockup.id
+        ).filter(
+            Mockup.user_id == user_id
+        ).options(
+            joinedload(MockupImage.mask_data)  # Eager load mask data
+        )
+
+        # Filter by template if provided
+        if template_name:
+            query = query.filter(MockupImage.image_type == template_name)
+
+        images = query.all()
+
+        result = []
+        for image in images:
+            # Each image can have multiple mask data entries
+            mask_data_list = image.mask_data if hasattr(image, 'mask_data') else []
+
+            if mask_data_list:
+                for mask_data in mask_data_list:
+                    result.append({
+                        'id': image.id,
+                        'filename': image.filename,
+                        'file_path': image.file_path,
+                        'template_name': image.image_type,
+                        'image_type': image.image_type,
+                        'design_id': getattr(image, 'design_id', None),
+                        'mask_data': mask_data.masks,
+                        'points_data': mask_data.points,
+                        'created_at': image.created_at
+                    })
+            else:
+                # Include images without mask data
+                result.append({
+                    'id': image.id,
+                    'filename': image.filename,
+                    'file_path': image.file_path,
+                    'template_name': image.image_type,
+                    'image_type': image.image_type,
+                    'design_id': getattr(image, 'design_id', None),
+                    'mask_data': None,
+                    'points_data': None,
+                    'created_at': image.created_at
+                })
+
+        logging.info(f"Loaded {len(result)} mockup images with mask data in single optimized query")
+        return result
+
+    except Exception as e:
+        logging.error(f"Error loading mockup images with mask data: {e}")
+        # Fallback to old method if there's an error
+        return get_mockup_images_with_mask_data_from_service_fallback(db, user_id, template_name)
+
+
+def get_mockup_images_with_mask_data_from_service_fallback(db, user_id, template_name):
+    """
+    Fallback method using the service layer (slower but more compatible).
+    """
+    import logging
+    logging.warning("Using fallback method for fetching mockup images")
+
     # Get all mockups for the user
     mockups_list = mockup_service.get_mockups_by_user_id(db, user_id).mockups
     result = []
     for mockup in mockups_list:
-        # Filter by template name if provided
-        if template_name and getattr(mockup, 'product_template_id', None):
-            # Get the template name from the template entity if needed
-            # For now, assume template_name is the id or name
-            # You may need to adapt this if template_name is not the id
-            pass  # Add filtering logic if needed
         # Get all images for this mockup
         images_resp = mockup_service.get_mockup_images_by_mockup_id(db, mockup.id, user_id)
         for image in images_resp.mockup_images:
+            # Filter by template
+            if template_name and image.image_type != template_name:
+                continue
+
             # Get mask data for this image
             mask_data_resp = mockup_service.get_mockup_mask_data_by_image_id(db, image.id, user_id)
             mask_data_list = mask_data_resp.mask_data if hasattr(mask_data_resp, 'mask_data') else []
@@ -68,7 +247,7 @@ def get_mockup_images_with_mask_data_from_service(db, user_id, template_name):
                     'id': image.id,
                     'filename': image.filename,
                     'file_path': image.file_path,
-                    'template_name': image.image_type,  # or use template_name
+                    'template_name': image.image_type,
                     'image_type': image.image_type,
                     'design_id': getattr(image, 'design_id', None),
                     'mask_data': mask_data.masks,
@@ -78,28 +257,84 @@ def get_mockup_images_with_mask_data_from_service(db, user_id, template_name):
     return result
 
 
-def create_gang_sheets_from_db(db: Session, user_id: int, template_name: str, output_path: str, dpi: int = 400, text: str = 'Single '):
+def create_gang_sheets_from_db(
+    db: Session,
+    user_id: int,
+    template_name: str,
+    output_path: str,
+    printer_id=None,
+    canvas_config_id=None,
+    dpi: int = None,
+    text: str = 'Single '
+):
    """
    Create gang sheets from mockup images stored in the database.
-   
+
    Args:
        db: Database session
        user_id: ID of the user
        template_name: Name of the template (e.g., 'UVDTF 16oz')
        output_path: Path where gang sheets will be saved
-       dpi: DPI for the gang sheets
+       printer_id: Optional printer ID to get dimensions and DPI from
+       canvas_config_id: Optional canvas config ID to get spacing from
+       dpi: DPI for the gang sheets (defaults to printer.dpi or canvas_config.dpi or 400)
        text: Text to include in the filename
    """
+   import logging
+   from server.src.entities.printer import Printer
+   from server.src.entities.canvas_config import CanvasConfig
+
+   # Get printer configuration if provided
+   printer = None
+   if printer_id:
+       printer = db.query(Printer).filter(Printer.id == printer_id).first()
+       if not printer:
+           logging.warning(f"Printer {printer_id} not found, using default dimensions")
+
+   # Get canvas configuration if provided
+   canvas_config = None
+   if canvas_config_id:
+       canvas_config = db.query(CanvasConfig).filter(CanvasConfig.id == canvas_config_id).first()
+       if not canvas_config:
+           logging.warning(f"Canvas config {canvas_config_id} not found, using default spacing")
+
+   # Determine gang sheet dimensions from printer or defaults
+   max_width = printer.max_width_inches if printer else GANG_SHEET_MAX_WIDTH
+   max_height = printer.max_height_inches if printer else GANG_SHEET_MAX_HEIGHT
+
+   # Determine DPI from canvas_config, printer, or parameter
+   if dpi is None:
+       if canvas_config and canvas_config.dpi:
+           dpi = canvas_config.dpi
+       elif printer and printer.dpi:
+           dpi = printer.dpi
+       else:
+           dpi = STD_DPI
+
+   # Determine spacing from canvas_config or defaults
+   if canvas_config:
+       spacing_width = canvas_config.spacing_width_inches
+       spacing_height = canvas_config.spacing_height_inches
+   elif template_name in GANG_SHEET_SPACING:
+       spacing_width = GANG_SHEET_SPACING[template_name]['width']
+       spacing_height = GANG_SHEET_SPACING[template_name]['height']
+   else:
+       # Default spacing
+       spacing_width = 0.125
+       spacing_height = 0.125
+
+   logging.info(f"Gang sheet config: {max_width}\"x{max_height}\" @ {dpi} DPI, spacing: {spacing_width}\"x{spacing_height}\"")
+
    # Get mockup images with mask data from service
    mockup_images = get_mockup_images_with_mask_data_from_service(db, user_id, template_name)
-   
+
    if not mockup_images:
        print(f"No mockup images found for user {user_id} and template {template_name}")
        return None
-   
+
    # Pre-calculate common values
-   width_px = cached_inches_to_pixels(GANG_SHEET_MAX_WIDTH, dpi)
-   height_px = cached_inches_to_pixels(GANG_SHEET_MAX_HEIGHT, dpi)
+   width_px = cached_inches_to_pixels(max_width, dpi)
+   height_px = cached_inches_to_pixels(max_height, dpi)
 
    # Group mockup images by design_id to handle multiple mockups per design
    design_groups = {}
@@ -109,44 +344,118 @@ def create_gang_sheets_from_db(db: Session, user_id: int, template_name: str, ou
            design_groups[design_id] = []
        design_groups[design_id].append(mockup)
 
-   # Create a list of image data for gangsheet processing
+   # OPTIMIZATION: Collect all image paths first, then process in parallel
+   image_paths_to_process = []
+   path_to_mockup = {}  # Map path to mockup data for later reference
+
+   for design_id, mockups in design_groups.items():
+       for mockup in mockups:
+           mask_data = mockup.get('mask_data')
+           points_data = mockup.get('points_data')
+
+           if mask_data and points_data:
+               img_path = mockup['file_path']
+               image_paths_to_process.append(img_path)
+               path_to_mockup[img_path] = mockup
+
+   if not image_paths_to_process:
+       logging.warning(f"No valid mockup images found for gangsheet creation")
+       return None
+
+   # OPTIMIZATION: Process all images in parallel
+   logging.info(f"Processing {len(image_paths_to_process)} images in parallel...")
+   import time
+   start_time = time.time()
+   processed_images = process_images_parallel(image_paths_to_process, max_workers=6)
+   processing_time = time.time() - start_time
+   logging.info(f"Parallel image processing completed in {processing_time:.2f}s ({len(processed_images)} images)")
+
+   # Build image_data structure from processed images
    image_data = {
        'Title': [],
        'Size': [],
        'Total': []
    }
-   
-   processed_images = {}
-   image_index = 0
-   
-   for design_id, mockups in design_groups.items():
-       for mockup in mockups:
-           # Use the first mockup's mask data for this design
-           mask_data = mockup.get('mask_data')
-           points_data = mockup.get('points_data')
-           
-           if mask_data and points_data:
-               # Process the mockup image
-               img_path = mockup['file_path']
-               processed_img = process_image(img_path)
-               
-               if processed_img is not None:
-                   image_data['Title'].append(img_path)
-                   image_data['Size'].append(template_name)
-                   image_data['Total'].append(1)  # Each mockup counts as 1
-                   processed_images[image_index] = processed_img
-                   image_index += 1
+
+   for idx, img_path in enumerate(image_paths_to_process):
+       if idx in processed_images:
+           image_data['Title'].append(img_path)
+           image_data['Size'].append(template_name)
+           image_data['Total'].append(1)  # Each mockup counts as 1
 
    if not image_data['Title']:
-       print(f"No valid mockup images found for gangsheet creation")
+       logging.warning(f"No valid images were successfully processed")
        return None
 
-   # Create gang sheets using the existing logic
-   return create_gang_sheets(image_data, template_name, output_path, len(image_data['Title']), dpi, text)
+   # Create gang sheets using the existing logic with dynamic parameters
+   # Pass pre-processed images to avoid re-processing
+   return create_gang_sheets(
+       image_data=image_data,
+       image_type=template_name,
+       output_path=output_path,
+       total_images=len(image_data['Title']),
+       max_width_inches=max_width,
+       max_height_inches=max_height,
+       spacing_width_inches=spacing_width,
+       spacing_height_inches=spacing_height,
+       dpi=dpi,
+       std_dpi=dpi,  # Use same DPI for output
+       text=text,
+       processed_images=processed_images  # Pass pre-processed images
+   )
 
 
-def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=400, text='Single '):
+def create_gang_sheets(
+    image_data,
+    image_type,
+    output_path,
+    total_images,
+    max_width_inches=None,
+    max_height_inches=None,
+    spacing_width_inches=None,
+    spacing_height_inches=None,
+    dpi=400,
+    std_dpi=None,
+    text='Single ',
+    processed_images=None,
+    file_format='PNG'
+):
+   """
+   Create gang sheets from image data.
+
+   Args:
+       image_data: Dictionary with 'Title', 'Size', and optionally 'Total' keys
+       image_type: Type/name of the template
+       output_path: Directory to save gang sheets
+       total_images: Total number of images to process
+       max_width_inches: Maximum width of gang sheet (defaults to GANG_SHEET_MAX_WIDTH)
+       max_height_inches: Maximum height of gang sheet (defaults to GANG_SHEET_MAX_HEIGHT)
+       spacing_width_inches: Horizontal spacing between images (defaults to template config or 0.125)
+       spacing_height_inches: Vertical spacing between images (defaults to template config or 0.125)
+       dpi: DPI for gang sheet creation
+       std_dpi: Standard DPI for output scaling (defaults to dpi)
+       text: Text prefix for output filename
+       file_format: Output file format ('PNG', 'SVG', or 'PSD')
+   """
    import logging
+
+   # Use defaults if not provided
+   if max_width_inches is None:
+       max_width_inches = GANG_SHEET_MAX_WIDTH
+   if max_height_inches is None:
+       max_height_inches = GANG_SHEET_MAX_HEIGHT
+   if std_dpi is None:
+       std_dpi = dpi
+
+   # Determine spacing
+   if spacing_width_inches is None or spacing_height_inches is None:
+       if image_type in GANG_SHEET_SPACING:
+           spacing_width_inches = spacing_width_inches or GANG_SHEET_SPACING[image_type]['width']
+           spacing_height_inches = spacing_height_inches or GANG_SHEET_SPACING[image_type]['height']
+       else:
+           spacing_width_inches = spacing_width_inches or 0.125
+           spacing_height_inches = spacing_height_inches or 0.125
+
    try:
        
        # Validate input data
@@ -168,9 +477,9 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
        
        # Pre-calculate common values with safety checks
        try:
-           width_px = cached_inches_to_pixels(GANG_SHEET_MAX_WIDTH, dpi)
-           height_px = cached_inches_to_pixels(GANG_SHEET_MAX_HEIGHT, dpi)
-           logging.info(f"Gang sheet dimensions: {GANG_SHEET_MAX_WIDTH}\"×{GANG_SHEET_MAX_HEIGHT}\" = {width_px}×{height_px} pixels at {dpi} DPI")
+           width_px = cached_inches_to_pixels(max_width_inches, dpi)
+           height_px = cached_inches_to_pixels(max_height_inches, dpi)
+           logging.info(f"Gang sheet dimensions: {max_width_inches}\"×{max_height_inches}\" = {width_px}×{height_px} pixels at {dpi} DPI")
        except Exception as e:
            logging.error(f"Error calculating dimensions: {e}")
            return None
@@ -198,24 +507,35 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
        if len(titles) != len(sizes):
            logging.error("Title and Size lists must have the same length")
            return None
-       
+
        for title, size in zip(titles, sizes):
            if title is None or size is None:
                logging.warning(f"Skipping None values: title={title}, size={size}")
                continue
-           key = f"{title} {size}"
+           # Skip placeholder files that don't actually exist
+           if "MISSING_" in str(title):
+               logging.warning(f"Skipping placeholder file in visited dictionary: {title}")
+               continue
+           # BUGFIX: Strip whitespace from title to match how paths are processed
+           title_clean = str(title).strip()
+           key = f"{title_clean} {size}"
            visited[key] = visited.get(key, 0) + 1
-       
+
        if not visited:
            logging.error("No valid title/size pairs found")
            return None
 
-       # Memory-optimized image loading
-       processed_images = {}
+       # OPTIMIZATION: Use pre-processed images if provided, otherwise load on-demand
+       if processed_images is None:
+           processed_images = {}
+           logging.info("No pre-processed images provided, will load on-demand")
+       else:
+           logging.info(f"Using {len(processed_images)} pre-processed images")
+
        image_cache_limit = 10  # Keep max 10 images in memory at once
-       
+
        def get_processed_image(index):
-           """Load image on-demand with memory management"""
+           """Load image on-demand with memory management (or return pre-processed)"""
            if index not in processed_images:
                try:
                    if index < len(titles) and titles[index] is not None:
@@ -228,7 +548,7 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                                if k in processed_images:
                                    del processed_images[k]
                                    logging.debug(f"Removed image {k} from cache to free memory")
-                       
+
                        processed_images[index] = process_image(titles[index])
                    else:
                        processed_images[index] = None
@@ -306,18 +626,22 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
         
            current_x, current_y = 0, 0
            row_height = 0
-           
+
            logging.info(f"Starting part {part} with image_index={image_index}, current_image_amount_left={current_image_amount_left}")
            logging.info(f"Processing range: {image_index} to {len(titles)-1}")
-           
+
            images_processed_in_part = 0
+           # Track individual images for layered export (SVG/PSD)
+           placed_images = []
            for i in range(image_index, len(titles)):
                try:
                    img = get_processed_image(i)
                    if img is None:
                        continue
-                   
-                   key = f"{titles[i]} {sizes[i]}"
+
+                   # BUGFIX: Strip whitespace from title to match visited dictionary keys
+                   title_clean = str(titles[i]).strip()
+                   key = f"{title_clean} {sizes[i]}"
                    if key not in visited:
                        continue  # Skip if key was already processed
                    
@@ -327,14 +651,10 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                        current_image_amount_left = 0
                    
                    logging.debug(f"Processing image {i}: key={key}, current_image_amount_left={current_image_amount_left}")
-                   
-                   # Check spacing configuration exists
-                   if image_type not in GANG_SHEET_SPACING:
-                       logging.error(f"No spacing configuration for image_type: {image_type}")
-                       continue
-                   
-                   spacing_width_px = cached_inches_to_pixels(GANG_SHEET_SPACING[image_type]['width'], dpi)
-                   spacing_height_px = cached_inches_to_pixels(GANG_SHEET_SPACING[image_type]['height'], dpi)
+
+                   # Use provided spacing configuration
+                   spacing_width_px = cached_inches_to_pixels(spacing_width_inches, dpi)
+                   spacing_height_px = cached_inches_to_pixels(spacing_height_inches, dpi)
 
                    img_height, img_width = img.shape[:2]
 
@@ -372,15 +692,26 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                        try:
                            y_end = min(current_y + img_height, height_px)
                            x_end = min(current_x + img_width, width_px)
-                           
+
                            # Place image on gang sheet
                            gang_sheet[current_y:y_end, current_x:x_end] = img[:y_end-current_y, :x_end-current_x]
-                           
+
+                           # Track this image's position and metadata for layered export
+                           image_label = os.path.splitext(os.path.basename(str(titles[i])))[0] if titles[i] else f"Image_{i}"
+                           placed_images.append({
+                               'label': image_label,
+                               'x': current_x,
+                               'y': current_y,
+                               'width': img_width,
+                               'height': img_height,
+                               'image_data': img.copy()  # Store copy of the image data
+                           })
+
                            # For memory-mapped arrays, flush data periodically
                            if hasattr(gang_sheet, '_temp_filename'):  # Memory-mapped array
                                if images_processed_in_part % 10 == 0:  # Flush every 10 images
                                    gang_sheet.flush()
-                           
+
                            images_processed_in_part += 1
                        except Exception as e:
                            logging.warning(f"Error placing image on gang sheet: {e}")
@@ -409,7 +740,9 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
            if images_processed_in_part > 0:  # Only if we processed something
                # Check if the last image we were working on is complete
                if image_index < len(titles):
-                   current_key = f"{titles[image_index]} {sizes[image_index]}"
+                   # BUGFIX: Strip whitespace from title to match visited dictionary keys
+                   title_clean = str(titles[image_index]).strip()
+                   current_key = f"{title_clean} {sizes[image_index]}"
                    current_total = 1
                    if 'Total' in image_data and image_index < len(image_data['Total']):
                        current_total = image_data['Total'][image_index]
@@ -452,21 +785,51 @@ def create_gang_sheets(image_data, image_type, output_path, total_images, dpi=40
                    xmax = min(xmax + margin, gang_sheet.shape[1] - 1)
                    cropped_gang_sheet = gang_sheet[ymin:ymax+1, xmin:xmax+1]
                    print(f"dpi: {dpi}")
-                   print(f"STD_DPI: {STD_DPI}")
-                   scale_factor = STD_DPI / dpi
+                   print(f"std_dpi: {std_dpi}")
+                   scale_factor = std_dpi / dpi
                    new_width, new_height = int((xmax - xmin + 1) * scale_factor), int((ymax - ymin + 1) * scale_factor)
                    
                    if new_width > 0 and new_height > 0:
                        resized_gang_sheet = cv2.resize(cropped_gang_sheet, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
                        today = date.today()
-                       filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}.png"
-                       save_single_image(
+                       # Base filename without extension
+                       base_filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}"
+
+                       # Adjust placed_images positions to account for cropping and scaling
+                       scale_factor = std_dpi / dpi
+                       adjusted_placed_images = []
+                       for img_info in placed_images:
+                           # Adjust for cropping
+                           adj_x = img_info['x'] - xmin
+                           adj_y = img_info['y'] - ymin
+                           # Adjust for scaling
+                           scaled_x = int(adj_x * scale_factor)
+                           scaled_y = int(adj_y * scale_factor)
+                           scaled_width = int(img_info['width'] * scale_factor)
+                           scaled_height = int(img_info['height'] * scale_factor)
+
+                           # Resize the image data as well
+                           scaled_image = cv2.resize(img_info['image_data'], (scaled_width, scaled_height), interpolation=cv2.INTER_CUBIC)
+
+                           adjusted_placed_images.append({
+                               'label': img_info['label'],
+                               'x': scaled_x,
+                               'y': scaled_y,
+                               'width': scaled_width,
+                               'height': scaled_height,
+                               'image_data': scaled_image
+                           })
+
+                       # Use the new save function that supports multiple formats with layers
+                       save_image_with_format(
                            resized_gang_sheet,
                            output_path,
-                           filename,
-                           target_dpi=(dpi, dpi)
+                           base_filename,
+                           file_format=file_format,
+                           target_dpi=(dpi, dpi),
+                           placed_images=adjusted_placed_images
                        )
-                       logging.info(f"Successfully created gang sheet: {filename}")
+                       logging.info(f"Successfully created gang sheet with {len(adjusted_placed_images)} layers: {base_filename}.{file_format.lower()}")
                        
                        # CRITICAL: Immediately free memory after successful save
                        # This frees up the ~2.95GB gang sheet memory before starting next part

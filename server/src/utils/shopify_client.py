@@ -71,7 +71,7 @@ class ShopifyClient:
         Retrieve store information from database.
 
         Args:
-            store_id: UUID of the store
+            store_id: UUID of the store (as string)
 
         Returns:
             ShopifyStore object
@@ -79,8 +79,19 @@ class ShopifyClient:
         Raises:
             ShopifyNotFoundError: If store not found or inactive
         """
+        from uuid import UUID
+
+        # Convert string to UUID if needed
+        try:
+            if isinstance(store_id, str):
+                store_uuid = UUID(store_id)
+            else:
+                store_uuid = store_id
+        except (ValueError, AttributeError) as e:
+            raise ShopifyNotFoundError(f"Invalid store ID format: {store_id}")
+
         store = self.db.query(ShopifyStore).filter(
-            ShopifyStore.id == store_id,
+            ShopifyStore.id == store_uuid,
             ShopifyStore.is_active == True
         ).first()
 
@@ -205,14 +216,56 @@ class ShopifyClient:
         headers = self._get_headers(store.access_token)
 
         try:
+            logger.info(f"🔗 Fetching orders from {store.shop_name}")
+            logger.info(f"   URL: {url}")
+            logger.info(f"   Params: {params}")
+
             response = self._make_request_with_retry('GET', url, headers, params=params)
             data = response.json()
 
-            logger.info(f"Successfully fetched {len(data.get('orders', []))} orders from store {store.shop_name}")
+            logger.info(f"✅ Successfully fetched {len(data.get('orders', []))} orders from store {store.shop_name}")
             return data.get('orders', [])
 
+        except ShopifyAPIError as e:
+            logger.error(f"❌ Shopify API error fetching orders from {store.shop_name}: {e}")
+            # If it's a 400 error about ID, it might be an empty store or API incompatibility - return empty list
+            if "expected String to be a id" in str(e) or ("400" in str(e) and "id" in str(e).lower()):
+                logger.warning(f"⚠️  Store {store.shop_name} has ID validation issue - returning empty orders list")
+                return []
+            raise
         except Exception as e:
-            logger.error(f"Failed to fetch orders from store {store_id}: {e}")
+            logger.error(f"❌ Failed to fetch orders from store {store_id}: {e}")
+            raise
+
+    def get_order_by_id(self, store_id: str, order_id: int) -> Dict[str, Any]:
+        """
+        Fetch a single order by ID from Shopify store.
+
+        Args:
+            store_id: UUID of the store
+            order_id: Shopify order ID
+
+        Returns:
+            Order dictionary with line items
+
+        Raises:
+            ShopifyAPIError: If API request fails
+        """
+        store = self._get_store_info(store_id)
+        url = f"https://{store.shop_domain}/admin/api/{self.API_VERSION}/orders/{order_id}.json"
+
+        headers = self._get_headers(store.access_token)
+
+        try:
+            logger.info(f"🔗 Fetching order {order_id} from {store.shop_name}")
+            response = self._make_request_with_retry('GET', url, headers)
+            data = response.json()
+
+            logger.info(f"✅ Successfully fetched order {order_id} with {len(data.get('order', {}).get('line_items', []))} items")
+            return data.get('order', {})
+
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch order {order_id} from store {store_id}: {e}")
             raise
 
     def get_products(self, store_id: str, limit: int = 250,

@@ -15,19 +15,46 @@ from server.src.routes.shopify.shopify_oauth import router as shopify_router
 from server.src.routes.template_editor.controller import router as template_editor_router
 from server.src.routes.platform_connections.controller import router as platform_connections_router
 from server.src.routes.admin.nas_migration import router as admin_router
+from server.src.routes.admin.user_management import router as admin_user_management_router
+from server.src.routes.cache.controller import router as cache_router
+from server.src.routes.oauth_tokens import router as oauth_tokens_router
+from server.src.routes.packing_slip.routes import router as packing_slip_router
+from server.src.routes.ecommerce.products import router as ecommerce_products_router
+from server.src.routes.ecommerce.cart import router as ecommerce_cart_router
+from server.src.routes.ecommerce.customers import router as ecommerce_customers_router
+from server.src.routes.ecommerce.orders import router as ecommerce_orders_router
+from server.src.routes.ecommerce.checkout import router as ecommerce_checkout_router
+from server.src.routes.ecommerce.storefront_settings import router as ecommerce_storefront_settings_router
+from server.src.routes.ecommerce.storefront_domain import router as ecommerce_storefront_domain_router
+from server.src.routes.ecommerce.storefront_public import router as ecommerce_storefront_public_router
+from server.src.routes.ecommerce.admin_products import router as ecommerce_admin_products_router
+from server.src.routes.ecommerce.admin_orders import router as ecommerce_admin_orders_router
+from server.src.routes.ecommerce.admin_customers import router as ecommerce_admin_customers_router
+from server.src.routes.ecommerce.product_images import router as ecommerce_product_images_router
+from server.src.routes.ecommerce.admin_emails.controller import router as ecommerce_admin_emails_router
+from server.src.routes.ecommerce.webhooks import router as ecommerce_webhooks_router
+from server.src.routes.subscriptions.routes import router as subscriptions_router
 
-# Multi-tenant routes - conditionally imported if multi-tenant is enabled
+# Multi-tenant routes - always import organizations router, conditionally import others
 def get_multi_tenant_routers():
-    """Import multi-tenant routers only if multi-tenant is enabled"""
+    """Import multi-tenant routers"""
     routers = []
-    if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
-        print("🔄 Multi-tenant enabled, attempting to import routers...")
-        try:
-            print("📋 Importing organization router...")
-            from server.src.routes.organizations.routes import router as organization_router
-            routers.append(organization_router)
-            print("✅ Organization router imported successfully")
 
+    # Always import organizations router (required by frontend login flow)
+    try:
+        print("📋 Importing organization router...")
+        from server.src.routes.organizations.routes import router as organization_router
+        routers.append(organization_router)
+        print("✅ Organization router imported successfully")
+    except ImportError as e:
+        print(f"❌ Warning: Could not import organization router: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # Conditionally import other multi-tenant features
+    if os.getenv('ENABLE_MULTI_TENANT', 'false').lower() == 'true':
+        print("🔄 Multi-tenant enabled, importing additional routers...")
+        try:
             print("📋 Importing printer router...")
             from server.src.routes.printers.routes import router as printer_router
             routers.append(printer_router)
@@ -35,11 +62,12 @@ def get_multi_tenant_routers():
 
             print(f"✅ Successfully imported {len(routers)} multi-tenant routers")
         except ImportError as e:
-            print(f"❌ Warning: Could not import multi-tenant routers: {e}")
+            print(f"❌ Warning: Could not import printer router: {e}")
             import traceback
             traceback.print_exc()
     else:
-        print("⚠️  Multi-tenant features disabled")
+        print("ℹ️  Additional multi-tenant features disabled")
+
     return routers
 import os
 import time
@@ -122,6 +150,25 @@ def register_routes(app: FastAPI):
         """Readiness check for Railway"""
         return {"status": "ready", "timestamp": int(time.time())}
 
+    # Debug endpoint to list all routes
+    @app.get("/api/debug/routes")
+    async def debug_routes():
+        """List all registered routes for debugging"""
+        routes = []
+        for route in app.routes:
+            if hasattr(route, 'path') and hasattr(route, 'methods'):
+                routes.append({
+                    "path": route.path,
+                    "methods": list(route.methods) if route.methods else [],
+                    "name": route.name if hasattr(route, 'name') else None
+                })
+        # Filter to show storefront routes
+        storefront_routes = [r for r in routes if '/storefront/' in r['path']]
+        return {
+            "total_routes": len(routes),
+            "storefront_routes": storefront_routes
+        }
+
     # Root endpoint
     @app.get("/")
     async def root():
@@ -141,7 +188,7 @@ def register_routes(app: FastAPI):
     app.include_router(canvas_config_router)
     app.include_router(dashboard_router)
     app.include_router(size_config_router)
-    app.include_router(order_router)
+    app.include_router(order_router, prefix="/api")
     app.include_router(design_router)
     app.include_router(mockup_router)
     app.include_router(third_party_listings_router)
@@ -149,6 +196,26 @@ def register_routes(app: FastAPI):
     app.include_router(template_editor_router, prefix="/api")
     app.include_router(platform_connections_router)
     app.include_router(admin_router)
+    app.include_router(admin_user_management_router)
+    app.include_router(cache_router, prefix="/api")
+    app.include_router(oauth_tokens_router)
+    app.include_router(packing_slip_router, prefix="/api")
+    app.include_router(ecommerce_products_router)
+    app.include_router(ecommerce_cart_router)
+    app.include_router(ecommerce_customers_router)
+    app.include_router(ecommerce_orders_router)
+    app.include_router(ecommerce_checkout_router)
+    print(f"✅ Checkout router registered with {len(ecommerce_checkout_router.routes)} routes")
+    app.include_router(ecommerce_storefront_settings_router)
+    app.include_router(ecommerce_storefront_domain_router)
+    app.include_router(ecommerce_storefront_public_router)
+    app.include_router(ecommerce_admin_products_router)
+    app.include_router(ecommerce_admin_orders_router)
+    app.include_router(ecommerce_admin_customers_router)
+    app.include_router(ecommerce_product_images_router)
+    app.include_router(ecommerce_admin_emails_router)
+    app.include_router(ecommerce_webhooks_router)
+    app.include_router(subscriptions_router, prefix="/api")
 
     # Multi-tenant routes - only enabled if multi-tenant is enabled
     multi_tenant_routers = get_multi_tenant_routers()

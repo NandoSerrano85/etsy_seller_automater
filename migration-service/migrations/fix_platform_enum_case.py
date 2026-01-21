@@ -27,110 +27,114 @@ def get_database_url():
         raise ValueError("DATABASE_URL environment variable is required")
     return database_url
 
-def run_migration():
+def run_migration(conn):
     """Run the platform enum case fix migration"""
     logger.info("Starting platform enum case fix migration")
 
     try:
-        # Create database connection
-        database_url = get_database_url()
-        engine = create_engine(database_url)
+        # Check current platform values
+        logger.info("Checking current platform values...")
+        result = conn.execute(text("SELECT DISTINCT platform FROM platform_connections"))
+        current_values = [row[0] for row in result.fetchall()]
+        logger.info(f"Current platform values: {current_values}")
 
-        with engine.connect() as conn:
-            # Start transaction
-            trans = conn.begin()
+        # Drop the check constraint if it exists
+        logger.info("Dropping check constraint if it exists...")
+        conn.execute(text("""
+            ALTER TABLE platform_connections
+            DROP CONSTRAINT IF EXISTS platform_connections_platform_check
+        """))
+        logger.info("✅ Check constraint dropped")
 
-            try:
-                # Check current platform values
-                logger.info("Checking current platform values...")
-                result = conn.execute(text("SELECT DISTINCT platform FROM platform_connections"))
-                current_values = [row[0] for row in result.fetchall()]
-                logger.info(f"Current platform values: {current_values}")
+        # Update platform values to uppercase
+        platform_mapping = {
+            'etsy': 'ETSY',
+            'shopify': 'SHOPIFY',
+            'amazon': 'AMAZON',
+            'ebay': 'EBAY'
+        }
 
-                # Update platform values to uppercase
-                platform_mapping = {
-                    'etsy': 'ETSY',
-                    'shopify': 'SHOPIFY',
-                    'amazon': 'AMAZON',
-                    'ebay': 'EBAY'
-                }
+        total_updated = 0
+        for lowercase_value, uppercase_value in platform_mapping.items():
+            # Update records with lowercase values to uppercase
+            result = conn.execute(
+                text("UPDATE platform_connections SET platform = :uppercase WHERE platform = :lowercase"),
+                {"uppercase": uppercase_value, "lowercase": lowercase_value}
+            )
+            updated_count = result.rowcount
+            total_updated += updated_count
 
-                total_updated = 0
-                for lowercase_value, uppercase_value in platform_mapping.items():
-                    # Update records with lowercase values to uppercase
-                    result = conn.execute(
-                        text("UPDATE platform_connections SET platform = :uppercase WHERE platform = :lowercase"),
-                        {"uppercase": uppercase_value, "lowercase": lowercase_value}
-                    )
-                    updated_count = result.rowcount
-                    total_updated += updated_count
+            if updated_count > 0:
+                logger.info(f"Updated {updated_count} records: '{lowercase_value}' -> '{uppercase_value}'")
 
-                    if updated_count > 0:
-                        logger.info(f"Updated {updated_count} records: '{lowercase_value}' -> '{uppercase_value}'")
+        # Recreate the check constraint with uppercase values
+        logger.info("Recreating check constraint with uppercase values...")
+        conn.execute(text("""
+            ALTER TABLE platform_connections
+            ADD CONSTRAINT platform_connections_platform_check
+            CHECK (platform IN ('ETSY', 'SHOPIFY', 'AMAZON', 'EBAY'))
+        """))
+        logger.info("✅ Check constraint recreated")
 
-                # Verify the changes
-                logger.info("Verifying platform values after update...")
-                result = conn.execute(text("SELECT DISTINCT platform FROM platform_connections"))
-                new_values = [row[0] for row in result.fetchall()]
-                logger.info(f"New platform values: {new_values}")
+        # Verify the changes
+        logger.info("Verifying platform values after update...")
+        result = conn.execute(text("SELECT DISTINCT platform FROM platform_connections"))
+        new_values = [row[0] for row in result.fetchall()]
+        logger.info(f"New platform values: {new_values}")
 
-                # Commit the transaction
-                trans.commit()
-                logger.info(f"Migration completed successfully. Total records updated: {total_updated}")
-
-            except Exception as e:
-                # Rollback on error
-                trans.rollback()
-                logger.error(f"Error during migration: {e}")
-                raise
+        logger.info(f"Migration completed successfully. Total records updated: {total_updated}")
 
     except Exception as e:
-        logger.error(f"Migration failed: {e}")
+        logger.error(f"Error during migration: {e}")
         raise
 
-def upgrade():
+def upgrade(connection):
     """Alembic upgrade function"""
-    run_migration()
+    run_migration(connection)
 
-def downgrade():
+def downgrade(connection):
     """Alembic downgrade function - convert back to lowercase"""
     logger.info("Starting platform enum case downgrade migration")
 
     try:
-        database_url = get_database_url()
-        engine = create_engine(database_url)
+        # Drop the check constraint if it exists
+        logger.info("Dropping check constraint if it exists...")
+        connection.execute(text("""
+            ALTER TABLE platform_connections
+            DROP CONSTRAINT IF EXISTS platform_connections_platform_check
+        """))
+        logger.info("✅ Check constraint dropped")
 
-        with engine.connect() as conn:
-            trans = conn.begin()
+        # Update platform values back to lowercase
+        platform_mapping = {
+            'ETSY': 'etsy',
+            'SHOPIFY': 'shopify',
+            'AMAZON': 'amazon',
+            'EBAY': 'ebay'
+        }
 
-            try:
-                # Update platform values back to lowercase
-                platform_mapping = {
-                    'ETSY': 'etsy',
-                    'SHOPIFY': 'shopify',
-                    'AMAZON': 'amazon',
-                    'EBAY': 'ebay'
-                }
+        total_updated = 0
+        for uppercase_value, lowercase_value in platform_mapping.items():
+            result = connection.execute(
+                text("UPDATE platform_connections SET platform = :lowercase WHERE platform = :uppercase"),
+                {"lowercase": lowercase_value, "uppercase": uppercase_value}
+            )
+            updated_count = result.rowcount
+            total_updated += updated_count
 
-                total_updated = 0
-                for uppercase_value, lowercase_value in platform_mapping.items():
-                    result = conn.execute(
-                        text("UPDATE platform_connections SET platform = :lowercase WHERE platform = :uppercase"),
-                        {"lowercase": lowercase_value, "uppercase": uppercase_value}
-                    )
-                    updated_count = result.rowcount
-                    total_updated += updated_count
+            if updated_count > 0:
+                logger.info(f"Downgraded {updated_count} records: '{uppercase_value}' -> '{lowercase_value}'")
 
-                    if updated_count > 0:
-                        logger.info(f"Downgraded {updated_count} records: '{uppercase_value}' -> '{lowercase_value}'")
+        # Recreate the check constraint with lowercase values
+        logger.info("Recreating check constraint with lowercase values...")
+        connection.execute(text("""
+            ALTER TABLE platform_connections
+            ADD CONSTRAINT platform_connections_platform_check
+            CHECK (platform IN ('etsy', 'shopify', 'amazon', 'ebay'))
+        """))
+        logger.info("✅ Check constraint recreated")
 
-                trans.commit()
-                logger.info(f"Downgrade completed successfully. Total records updated: {total_updated}")
-
-            except Exception as e:
-                trans.rollback()
-                logger.error(f"Error during downgrade: {e}")
-                raise
+        logger.info(f"Downgrade completed successfully. Total records updated: {total_updated}")
 
     except Exception as e:
         logger.error(f"Downgrade failed: {e}")
@@ -138,4 +142,14 @@ def downgrade():
 
 if __name__ == "__main__":
     # Allow running this migration directly
-    run_migration()
+    from sqlalchemy import create_engine
+    database_url = get_database_url()
+    engine = create_engine(database_url)
+    with engine.connect() as conn:
+        trans = conn.begin()
+        try:
+            run_migration(conn)
+            trans.commit()
+        except Exception:
+            trans.rollback()
+            raise

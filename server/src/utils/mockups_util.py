@@ -377,70 +377,113 @@ class MockupImageProcessor:
         return result
 
     def add_watermark(self, image, watermark_path, points_list, mask_points_list, image_type, opacity=0.5):
-        """Add watermark to the mockup image"""
-        if not os.path.exists(watermark_path):
-            return image
-        
-        watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
+        """Add watermark to the mockup image - centered on the entire image"""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"🖼️  Applying watermark from: {watermark_path}")
+
+        # Check if we're in production (Railway/Docker)
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+        logger.info(f"🔍 Production mode: {is_production}")
+
+        watermark = None
+
+        if is_production:
+            # In production, watermark is on NAS - download it to memory
+            from server.src.utils.nas_storage import nas_storage
+            import numpy as np
+
+            # Extract shop name and relative path from watermark_path
+            # Expected format: /share/Graphics/{shop_name}/Mockups/BaseMockups/Watermarks/{filename}
+            if watermark_path.startswith('/share/Graphics/'):
+                parts = watermark_path.replace('/share/Graphics/', '').split('/', 1)
+                if len(parts) == 2:
+                    shop_name = parts[0]
+                    relative_path = parts[1]  # Mockups/BaseMockups/Watermarks/{filename}
+
+                    # Download watermark from NAS
+                    file_content = nas_storage.download_file_to_memory(shop_name, relative_path)
+                    if file_content:
+                        # Convert bytes to CV2 image
+                        nparr = np.frombuffer(file_content, np.uint8)
+                        watermark = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+                    else:
+                        logging.warning(f"Failed to download watermark from NAS: {watermark_path}")
+                        return image
+                else:
+                    logging.warning(f"Invalid watermark path format: {watermark_path}")
+                    return image
+            else:
+                logging.warning(f"Watermark path doesn't start with /share/Graphics/: {watermark_path}")
+                return image
+        else:
+            # Local mode - use regular file path
+            if not os.path.exists(watermark_path):
+                logging.warning(f"Watermark file not found: {watermark_path}")
+                return image
+
+            watermark = cv2.imread(watermark_path, cv2.IMREAD_UNCHANGED)
+
         if watermark is None:
+            logging.warning(f"Failed to load watermark image from: {watermark_path}")
             return image
-        
+
         if watermark.shape[2] == 3:
             watermark = cv2.cvtColor(watermark, cv2.COLOR_BGR2BGRA)
-        
-        # Use first mask for watermark placement
-        if not mask_points_list or not points_list:
-            return image
-        
-        mask_points = mask_points_list[0]
-        points = points_list[0]
-        
-        if not mask_points or len(mask_points) < 3:
-            return image
-        
-        points_array = np.array(mask_points, dtype=np.int32)
-        mask = np.zeros(image.shape[:2], dtype=np.uint8)
-        cv2.fillPoly(mask, [points_array], (255,))
-        
-        # Find mask bounds
-        mask_indices = np.argwhere(mask)
-        if len(mask_indices) == 0:
-            return image
-        
-        y_min, x_min = mask_indices.min(axis=0)
-        y_max, x_max = mask_indices.max(axis=0)
-        
-        # Resize watermark to fit mask
-        mask_width = x_max - x_min
-        mask_height = y_max - y_min
-        
-        watermark_resized = cv2.resize(watermark, (mask_width, mask_height), interpolation=cv2.INTER_LANCZOS4)
-        
-        # Place watermark at mask position
-        y_start = max(y_min, 0)
-        y_end = min(y_max, image.shape[0])
-        x_start = max(x_min, 0)
-        x_end = min(x_max, image.shape[1])
-        
-        w_y_start = y_start - y_min
-        w_x_start = x_start - x_min
+
+        # Get image dimensions
+        img_height, img_width = image.shape[:2]
+
+        # Scale watermark to be 60% of the image width while maintaining aspect ratio
+        watermark_scale = 0.6
+        target_width = int(img_width * watermark_scale)
+        watermark_aspect = watermark.shape[1] / watermark.shape[0]
+        target_height = int(target_width / watermark_aspect)
+
+        # Resize watermark
+        watermark_resized = cv2.resize(
+            watermark,
+            (target_width, target_height),
+            interpolation=cv2.INTER_LANCZOS4
+        )
+
+        # Center the watermark on the image
+        y_offset = (img_height - target_height) // 2
+        x_offset = (img_width - target_width) // 2
+
+        # Ensure watermark fits within image bounds
+        y_start = max(0, y_offset)
+        y_end = min(img_height, y_offset + target_height)
+        x_start = max(0, x_offset)
+        x_end = min(img_width, x_offset + target_width)
+
+        # Adjust watermark region if needed
+        w_y_start = max(0, -y_offset)
         w_y_end = w_y_start + (y_end - y_start)
+        w_x_start = max(0, -x_offset)
         w_x_end = w_x_start + (x_end - x_start)
-        
-        # Get design alpha channel
-        design_alpha = image[y_start:y_end, x_start:x_end, 3] / 255.0
-        visible_mask = (design_alpha > 0) & (mask[y_start:y_end, x_start:x_end] > 0)
-        
-        # Watermark alpha
-        alpha = watermark_resized[w_y_start:w_y_end, w_x_start:w_x_end, 3] / 255.0 * opacity
-        alpha = alpha * visible_mask
-        
+
+        # Get watermark region
+        watermark_region = watermark_resized[w_y_start:w_y_end, w_x_start:w_x_end]
+
+        # Get alpha channel from watermark
+        if watermark_region.shape[2] == 4:
+            alpha = watermark_region[:, :, 3] / 255.0 * opacity
+        else:
+            alpha = np.ones((watermark_region.shape[0], watermark_region.shape[1])) * opacity
+
+        # Create 3-channel alpha for blending
+        alpha_3channel = np.stack([alpha] * 3, axis=2)
+
+        # Blend watermark with image
         for c in range(3):
             image[y_start:y_end, x_start:x_end, c] = (
-                watermark_resized[w_y_start:w_y_end, w_x_start:w_x_end, c] * alpha +
+                watermark_region[:, :, c] * alpha +
                 image[y_start:y_end, x_start:x_end, c] * (1.0 - alpha)
-            )
-        
+            ).astype(np.uint8)
+
+        logger.info(f"✅ Watermark successfully applied with {opacity*100}% opacity")
         return image
 
 def process_design_image(design_file_path: str, template_name: str) -> Tuple[np.ndarray, str]:
@@ -581,17 +624,60 @@ def create_mockup_images(
         
         # Generate mockup filename and path
         mockup_filename = f"UV {cup_wrap_id_number} Cup_Wrap{cup_wrap_id_number}{color}.jpg"
-        generated_mockup_path = f'{root_path}Mockups/Cup Wraps/{mockup_filename}'
-        
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(generated_mockup_path), exist_ok=True)
-        
-        # Save the mockup image
-        cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-        
+
+        # Extract shop name from root_path for NAS structure
+        shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+        shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+
+        # Use NAS structure: /share/Graphics/<shop_name>/Mockups/<template_name>/
+        nas_mockup_path = f"/share/Graphics/{shop_name}/Mockups/{template_name}/{mockup_filename}"
+
+        # Check if running in production (Railway/Docker)
+        is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+        if is_production:
+            # Use NAS storage service for production
+            try:
+                logger = logging.getLogger(__name__)
+                from server.src.utils.nas_storage import nas_storage
+
+                # Convert OpenCV image to bytes for upload
+                success, buffer = cv2.imencode('.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                if not success:
+                    raise ValueError(f"Failed to encode mockup image: {mockup_filename}")
+
+                image_bytes = buffer.tobytes()
+
+                # Upload to NAS using the correct path structure
+                nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
+                success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
+
+                if success:
+                    logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
+                else:
+                    logger.error(f"❌ Failed to save mockup to NAS: {nas_mockup_path}")
+                    raise ValueError(f"Failed to upload mockup to NAS: {mockup_filename}")
+
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ Error saving mockup to NAS {nas_mockup_path}: {e}")
+                raise
+        else:
+            # Local development - save to local filesystem
+            local_mockup_path = f'{root_path}Mockups/Cup Wraps/{mockup_filename}'
+
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(local_mockup_path), exist_ok=True)
+
+            # Save the mockup image locally
+            cv2.imwrite(local_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+            logger = logging.getLogger(__name__)
+            logger.info(f"📁 Mockup saved locally: {local_mockup_path}")
+
         generated_mockups.append({
             'filename': mockup_filename,
-            'file_path': generated_mockup_path,
+            'file_path': nas_mockup_path,  # Always return NAS path for consistency
             'watermark_path': watermark_path,
             'image_type': template_name,
             'color': color
@@ -642,18 +728,102 @@ def create_mockups_for_etsy(
     design_file_paths = set()
     design_filenames = list()
     design_image_path_list = list()
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 DEBUG create_mockups_for_etsy: Processing {len(designs)} design objects")
+
+    # Extract shop name from root_path for normalizing paths
+    shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+    shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+    logger.info(f"🔍 DEBUG: Extracted shop_name: {shop_name} from root_path: {root_path}")
+
     for design_image in designs:
         if hasattr(design_image, 'file_path') and design_image.file_path is not None:
-            split_path = design_image.file_path.split('/')
+            file_path = design_image.file_path
+            logger.info(f"🔍 DEBUG: Processing file_path: {file_path}")
+
+            # Normalize path: handle both full NAS paths and relative paths
+            if file_path.startswith('/share/Graphics/'):
+                # Full NAS path: /share/Graphics/ShopName/Template/filename.png
+                normalized_path = file_path
+            elif file_path.startswith(f'{shop_name}/'):
+                # Path with shop name: ShopName/Template/filename.png
+                normalized_path = f"/share/Graphics/{file_path}"
+            else:
+                # Relative path: Template/filename.png
+                normalized_path = f"/share/Graphics/{shop_name}/{file_path}"
+
+            # Extract directory (remove filename)
+            split_path = normalized_path.split('/')
             split_path.pop()  # Remove filename
-            split_path = ['/'.join(split_path)]+['/']
-            design_file_paths.add(''.join(split_path))
+            dir_path = '/'.join(split_path) + '/'
+
+            logger.info(f"🔍 DEBUG: Normalized to: {dir_path}")
+            design_file_paths.add(dir_path)
+
         if hasattr(design_image, 'filename') and design_image.filename is not None:
             design_filenames.append(design_image.filename)
+            logger.info(f"🔍 DEBUG: Added filename to list: {design_image.filename}")
         if hasattr(design_image, 'is_digital') and design_image.is_digital is True:
             design_image_path_list.append(design_image.file_path)
+
+    logger.info(f"🔍 DEBUG: Total design_filenames collected: {len(design_filenames)}")
+    logger.info(f"🔍 DEBUG: design_filenames list: {design_filenames}")
+    logger.info(f"🔍 DEBUG: Unique design_file_paths: {design_file_paths}")
+
+    # Handle multiple template paths by grouping designs
     if len(design_file_paths) > 1:
-        raise ValueError(f"More than one design file path {design_file_paths}")
+        logger.warning(f"⚠️ Found designs from {len(design_file_paths)} different templates: {design_file_paths}")
+        logger.info(f"🔄 Grouping designs by template and processing separately...")
+
+        # Group designs by their template path
+        from collections import defaultdict
+        designs_by_path = defaultdict(list)
+
+        for design_image in designs:
+            if hasattr(design_image, 'file_path') and design_image.file_path is not None:
+                file_path = design_image.file_path
+
+                # Normalize path (same logic as above)
+                if file_path.startswith('/share/Graphics/'):
+                    normalized_path = file_path
+                elif file_path.startswith(f'{shop_name}/'):
+                    normalized_path = f"/share/Graphics/{file_path}"
+                else:
+                    normalized_path = f"/share/Graphics/{shop_name}/{file_path}"
+
+                # Extract directory path
+                split_path = normalized_path.split('/')
+                split_path.pop()  # Remove filename
+                dir_path = '/'.join(split_path) + '/'
+
+                designs_by_path[dir_path].append(design_image)
+
+        # Process each group separately and combine results
+        combined_mockup_data = {}
+        combined_digital_paths = []
+        last_id_number = id_number
+
+        for template_path, grouped_designs in designs_by_path.items():
+            logger.info(f"📦 Processing {len(grouped_designs)} designs from template path: {template_path}")
+
+            # Recursive call with grouped designs
+            group_id_number, group_mockup_data, group_digital_paths = create_mockups_for_etsy(
+                designs=grouped_designs,
+                mockup=mockup,
+                template_name=template_name,
+                root_path=root_path,
+                mask_data=mask_data
+            )
+
+            # Combine results
+            combined_mockup_data.update(group_mockup_data)
+            combined_digital_paths.extend(group_digital_paths)
+            last_id_number = group_id_number
+
+        logger.info(f"✅ Combined mockups from {len(designs_by_path)} templates: {len(combined_mockup_data)} total mockups")
+        return str(last_id_number).zfill(3), combined_mockup_data, combined_digital_paths
+
     design_file_paths = str(design_file_paths.pop())
 
     mockup_processor = MockupImageProcessor(mockup_file_paths, design_file_paths)
@@ -661,87 +831,331 @@ def create_mockups_for_etsy(
     # Initialize current_id_number
     current_id_number = str(id_number).zfill(3)
 
-    for n, filename in enumerate(design_filenames):
-        current_id_number = str(n + id_number).zfill(3)
-        generated_mockup_path_list = list()
-        for i, mockup_image in enumerate(mockup.mockup_images):
-            if mockup_image.id in mask_data:
-                current_masks = []
-                current_points = []
-                current_is_cropped = []
-                current_alignments = []
-                # Get all masks with their individual properties
-                for mask in mockup_image.mask_data:
-                    if isinstance(mask.masks, str):
-                        masks = json.loads(mask.masks)
+    # Use parallel processing for large batches (>10 designs)
+    use_parallel = len(design_filenames) > 10
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 DEBUG: Using {'PARALLEL' if use_parallel else 'SEQUENTIAL'} processing for {len(design_filenames)} designs")
+
+    if use_parallel:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+
+        # Limit to 8 workers to match Etsy upload workers
+        max_workers = min(8, len(design_filenames))
+        logger = logging.getLogger(__name__)
+        logger.info(f"🚀 Processing {len(design_filenames)} mockups in parallel with {max_workers} workers")
+
+        def process_single_design(n, filename):
+            """Process mockups for a single design"""
+            design_id = str(n + id_number).zfill(3)
+            mockup_paths = []
+
+            try:
+                for i, mockup_image in enumerate(mockup.mockup_images):
+                    if mockup_image.id in mask_data:
+                        current_masks = []
+                        current_points = []
+                        current_is_cropped = []
+                        current_alignments = []
+
+                        # Get all masks with their individual properties
+                        for mask in mockup_image.mask_data:
+                            if isinstance(mask.masks, str):
+                                masks = json.loads(mask.masks)
+                            else:
+                                masks = mask.masks
+
+                            if isinstance(mask.points, str):
+                                points = json.loads(mask.points)
+                            else:
+                                points = mask.points
+
+                            is_cropped_list = mask.is_cropped_list if hasattr(mask, 'is_cropped_list') and mask.is_cropped_list else None
+                            alignment_list = mask.alignment_list if hasattr(mask, 'alignment_list') and mask.alignment_list else None
+
+                            for idx, (m, p) in enumerate(zip(masks, points)):
+                                current_masks.append(m)
+                                current_points.append(p)
+
+                                if is_cropped_list and idx < len(is_cropped_list):
+                                    current_is_cropped.append(is_cropped_list[idx])
+                                else:
+                                    current_is_cropped.append(mask.is_cropped)
+
+                                if alignment_list and idx < len(alignment_list):
+                                    current_alignments.append(alignment_list[idx])
+                                else:
+                                    current_alignments.append(mask.alignment)
                     else:
-                        masks = mask.masks
+                        current_masks = []
+                        current_points = []
+                        current_is_cropped = [False]
+                        current_alignments = ['center']
 
-                    if isinstance(mask.points, str):
-                        points = json.loads(mask.points)
+                    # Create mockup with all masks
+                    assembled_mockup = mockup_processor.create_mockup(
+                        current_masks,
+                        current_points,
+                        image_type=template_name,
+                        image=filename,
+                        index=i,
+                        is_cropped_list=current_is_cropped,
+                        alignment_list=current_alignments
+                    )
+
+                    # Add watermark
+                    assembled_mockup_with_watermark = mockup_processor.add_watermark(
+                        assembled_mockup,
+                        watermark_path,
+                        current_points,
+                        current_masks,
+                        image_type=template_name,
+                        opacity=0.45
+                    )
+
+                    # Resize for display
+                    height, width = assembled_mockup_with_watermark.shape[:2]
+                    scale_factor = min(2000 / width, 2000 / height)
+                    new_size = (int(width * scale_factor), int(height * scale_factor))
+                    resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
+
+                    # Determine color suffix
+                    postfix = "_".join(template_name.split()+[design_id]+[f"BG_{i}"])
+                    prefix = "UV" if re.search(type_pattern, template_name) else "DTF"
+                    mockup_filename = f"{prefix} {design_id} {postfix}.jpg"
+
+                    # Extract shop name
+                    shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+                    shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+                    nas_mockup_path = f"/share/Graphics/{shop_name}/Mockups/{template_name}/{mockup_filename}"
+
+                    # Check if production
+                    is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+                    if is_production:
+                        from server.src.utils.nas_storage import nas_storage
+                        logger = logging.getLogger(__name__)
+
+                        success, buffer = cv2.imencode('.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                        if not success:
+                            logger.error(f"❌ Failed to encode mockup {mockup_filename}")
+                            raise ValueError(f"Failed to encode mockup: {mockup_filename}")
+
+                        image_bytes = buffer.tobytes()
+                        nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
+
+                        # Try NAS upload with retry
+                        upload_success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
+
+                        if upload_success:
+                            logger.info(f"✅ Saved mockup to NAS: {mockup_filename}")
+                            mockup_paths.append(nas_mockup_path)
+                        else:
+                            logger.error(f"❌ Failed to save mockup to NAS: {mockup_filename}")
+                            # Still append path so Etsy knows to look for it
+                            mockup_paths.append(nas_mockup_path)
                     else:
-                        points = mask.points
+                        local_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
+                        os.makedirs(os.path.dirname(local_mockup_path), exist_ok=True)
+                        cv2.imwrite(local_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                        mockup_paths.append(nas_mockup_path)
 
-                    # Add each mask with its properties
-                    for m, p in zip(masks, points):
-                        current_masks.append(m)
-                        current_points.append(p)
-                        current_is_cropped.append(mask.is_cropped)
-                        current_alignments.append(mask.alignment)
-            else:
-                # Fallback to empty defaults if no mask data
-                current_masks = []
-                current_points = []
-                current_is_cropped = [False]
-                current_alignments = ['center']
+                return (filename, mockup_paths, design_id, True)
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ Failed to process mockup for {filename}: {e}")
+                # Log stack trace for debugging
+                import traceback
+                logger.error(f"Stack trace: {traceback.format_exc()}")
+                return (filename, [], design_id, False)
 
-            # Create mockup with all masks
-            logging.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
-            logging.info(f"Using {len(current_masks)} masks with properties:")
-            for idx, (is_crop, align) in enumerate(zip(current_is_cropped, current_alignments)):
-                logging.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
+        # Process all designs in parallel
+        failed_designs = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_single_design, n, filename): filename
+                      for n, filename in enumerate(design_filenames)}
 
-            assembled_mockup = mockup_processor.create_mockup(
-                current_masks,
-                current_points,
-                image_type=template_name, 
-                image=filename, 
-                index=i,
-                is_cropped_list=current_is_cropped,
-                alignment_list=current_alignments
-            )
-            
-            # Add watermark
-            assembled_mockup_with_watermark = mockup_processor.add_watermark(
-                assembled_mockup, 
-                watermark_path, 
-                current_points,
-                current_masks,
-                image_type=template_name,
-                opacity=0.45
-            )
-            
-            # Resize for display
-            height, width = assembled_mockup_with_watermark.shape[:2]
-            scale_factor = min(2000 / width, 2000 / height)
-            new_size = (int(width * scale_factor), int(height * scale_factor))
-            resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
+            for future in as_completed(futures):
+                filename, paths, design_id, success = future.result()
+                if success:
+                    mockup_return[filename] = paths
+                    current_id_number = design_id
+                    logger.info(f"✅ Successfully generated mockups for {filename}")
+                else:
+                    failed_designs.append(filename)
+                    logger.error(f"❌ Failed to generate mockups for {filename} - will not be uploaded to Etsy")
 
-            # Determine color suffix
-            postfix = "_".join(template_name.split()+[current_id_number]+[f"BG_{i}"])
-            prefix = "UV" if re.search(type_pattern, template_name) else "DTF"
-            
-            # Generate mockup filename and path
-            mockup_filename = f"{prefix} {current_id_number} {postfix}.jpg"
-            generated_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
-            
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(generated_mockup_path), exist_ok=True)
-            
-            generated_mockup_path_list.append(generated_mockup_path)
+        if failed_designs:
+            logger.error(f"⚠️ WARNING: {len(failed_designs)}/{len(design_filenames)} designs failed mockup generation and will NOT be uploaded to Etsy: {failed_designs}")
 
-            # Save the mockup image
-            cv2.imwrite(generated_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
-        mockup_return[filename] = generated_mockup_path_list
+        logger.info(f"✅ Completed parallel mockup generation: {len(mockup_return)}/{len(design_filenames)} successful")
+        logger.info(f"🔍 DEBUG: mockup_return dict has {len(mockup_return)} entries: {list(mockup_return.keys())}")
+
+    else:
+        # Use sequential processing for small batches (≤10 designs)
+        failed_designs = []
+        for n, filename in enumerate(design_filenames):
+            try:
+                logger.info(f"🔍 DEBUG: Processing design {n+1}/{len(design_filenames)}: {filename}")
+                current_id_number = str(n + id_number).zfill(3)
+                generated_mockup_path_list = list()
+                for i, mockup_image in enumerate(mockup.mockup_images):
+                    if mockup_image.id in mask_data:
+                        current_masks = []
+                        current_points = []
+                        current_is_cropped = []
+                        current_alignments = []
+                        # Get all masks with their individual properties
+                        for mask in mockup_image.mask_data:
+                            if isinstance(mask.masks, str):
+                                masks = json.loads(mask.masks)
+                            else:
+                                masks = mask.masks
+
+                            if isinstance(mask.points, str):
+                                points = json.loads(mask.points)
+                            else:
+                                points = mask.points
+
+                            # Use individual mask properties if available, otherwise fall back to single values
+                            is_cropped_list = mask.is_cropped_list if hasattr(mask, 'is_cropped_list') and mask.is_cropped_list else None
+                            alignment_list = mask.alignment_list if hasattr(mask, 'alignment_list') and mask.alignment_list else None
+
+                            # Add each mask with its properties
+                            for idx, (m, p) in enumerate(zip(masks, points)):
+                                current_masks.append(m)
+                                current_points.append(p)
+
+                                # Use individual properties if available, otherwise use the single value
+                                if is_cropped_list and idx < len(is_cropped_list):
+                                    current_is_cropped.append(is_cropped_list[idx])
+                                else:
+                                    current_is_cropped.append(mask.is_cropped)
+
+                                if alignment_list and idx < len(alignment_list):
+                                    current_alignments.append(alignment_list[idx])
+                                else:
+                                    current_alignments.append(mask.alignment)
+                    else:
+                        # Fallback to empty defaults if no mask data
+                        current_masks = []
+                        current_points = []
+                        current_is_cropped = [False]
+                        current_alignments = ['center']
+
+                    # Create mockup with all masks
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"Creating mockup for {filename} with template {template_name} (ID: {current_id_number})")
+                    logger.info(f"Using {len(current_masks)} masks with properties:")
+                    for idx, (is_crop, align) in enumerate(zip(current_is_cropped, current_alignments)):
+                        logger.info(f"Mask {idx}: cropped={is_crop}, alignment={align}")
+
+                    assembled_mockup = mockup_processor.create_mockup(
+                        current_masks,
+                        current_points,
+                        image_type=template_name,
+                        image=filename,
+                        index=i,
+                        is_cropped_list=current_is_cropped,
+                        alignment_list=current_alignments
+                    )
+
+                    # Add watermark
+                    assembled_mockup_with_watermark = mockup_processor.add_watermark(
+                        assembled_mockup,
+                        watermark_path,
+                        current_points,
+                        current_masks,
+                        image_type=template_name,
+                        opacity=0.45
+                    )
+
+                    # Resize for display
+                    height, width = assembled_mockup_with_watermark.shape[:2]
+                    scale_factor = min(2000 / width, 2000 / height)
+                    new_size = (int(width * scale_factor), int(height * scale_factor))
+                    resized_result = cv2.resize(assembled_mockup_with_watermark, new_size, interpolation=cv2.INTER_LANCZOS4)
+
+                    # Determine color suffix
+                    postfix = "_".join(template_name.split()+[current_id_number]+[f"BG_{i}"])
+                    prefix = "UV" if re.search(type_pattern, template_name) else "DTF"
+
+                    # Generate mockup filename and path
+                    mockup_filename = f"{prefix} {current_id_number} {postfix}.jpg"
+
+                    # Extract shop name from root_path for NAS structure
+                    # root_path format: /share/Graphics/<shop_name>/ or LOCAL_ROOT_PATH/<shop_name>/
+                    shop_name_match = re.search(r'/([^/]+)/?$', root_path.rstrip('/'))
+                    shop_name = shop_name_match.group(1) if shop_name_match else 'DefaultShop'
+
+                    # Use NAS structure: /share/Graphics/<shop_name>/Mockups/<template_name>/
+                    nas_mockup_path = f"/share/Graphics/{shop_name}/Mockups/{template_name}/{mockup_filename}"
+                    generated_mockup_path_list.append(nas_mockup_path)
+
+                    # Check if running in production (Railway/Docker)
+                    is_production = os.getenv('RAILWAY_ENVIRONMENT_NAME') or os.getenv('DOCKER_ENV')
+
+                    if is_production:
+                        # Use NAS storage service for production
+                        try:
+                            logger = logging.getLogger(__name__)
+                            from server.src.utils.nas_storage import nas_storage
+
+                            # Convert OpenCV image to bytes for upload
+                            success, buffer = cv2.imencode('.jpg', resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                            if not success:
+                                raise ValueError(f"Failed to encode mockup image: {mockup_filename}")
+
+                            image_bytes = buffer.tobytes()
+
+                            # Upload to NAS using the correct path structure
+                            nas_relative_path = f"Mockups/{template_name}/{mockup_filename}"
+                            upload_success = nas_storage.upload_file_content(image_bytes, shop_name, nas_relative_path)
+
+                            if upload_success:
+                                logger.info(f"✅ Mockup saved to NAS: {nas_mockup_path}")
+                            else:
+                                logger.error(f"❌ Failed to save mockup to NAS: {nas_mockup_path}")
+                                # Don't raise - continue processing other mockups
+
+                        except Exception as e:
+                            logger = logging.getLogger(__name__)
+                            logger.error(f"❌ Error saving mockup to NAS {nas_mockup_path}: {e}")
+                            # Don't raise - continue processing other mockups
+                    else:
+                        # Local development - save to local filesystem
+                        local_mockup_path = f'{root_path}Mockups/{template_name}/{mockup_filename}'
+
+                        # Ensure directory exists
+                        os.makedirs(os.path.dirname(local_mockup_path), exist_ok=True)
+
+                        # Save the mockup image locally
+                        cv2.imwrite(local_mockup_path, resized_result, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+
+                        logger = logging.getLogger(__name__)
+                        logger.info(f"📁 Mockup saved locally: {local_mockup_path}")
+
+                mockup_return[filename] = generated_mockup_path_list
+                logger.info(f"✅ Successfully generated mockups for {filename}")
+
+            except Exception as e:
+                logger.error(f"❌ Failed to process mockup for {filename}: {e}")
+                # Log detailed stack trace for debugging
+                import traceback
+                logger.error(f"Stack trace: {traceback.format_exc()}")
+                failed_designs.append(filename)
+
+        # Log failures after sequential processing
+        if failed_designs:
+            logger.error(f"⚠️ WARNING: {len(failed_designs)}/{len(design_filenames)} designs failed mockup generation and will NOT be uploaded to Etsy: {failed_designs}")
+
+        logger.info(f"✅ Completed sequential mockup generation: {len(mockup_return)}/{len(design_filenames)} successful")
+
+    # DEBUG: Final summary
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 DEBUG: Returning from create_mockups_for_etsy")
+    logger.info(f"🔍 DEBUG: mockup_return has {len(mockup_return)} entries: {list(mockup_return.keys())}")
+    logger.info(f"🔍 DEBUG: current_id_number = {current_id_number}")
 
     return current_id_number, mockup_return, design_image_path_list

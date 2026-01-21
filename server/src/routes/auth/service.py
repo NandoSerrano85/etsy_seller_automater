@@ -13,6 +13,7 @@ import os, jwt, logging
 from server.src.entities.user import User
 from server.src.database.core import get_db
 from .model import RegisterUserRequest, TokenData, UserToken, UserProfile, AuthResponse, ShopInfo
+from server.src.utils.railway_cache import railway_cached, cache_user_data, get_cached_user_data, invalidate_user_cache
 load_dotenv()
 
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
@@ -195,6 +196,22 @@ def register_user_multi_tenant(register_user_request: RegisterUserRequest, db: S
 def get_current_user(token: Annotated[str, Depends(oath2_bearer)]) -> TokenData:
     return verify_token(token)
 
+def get_current_user_db(
+    token: Annotated[str, Depends(oath2_bearer)],
+    db: Session = Depends(get_db)
+) -> User:
+    """Get the current user from database (returns full User object)."""
+    token_data = verify_token(token)
+    user_id = token_data.get_uuid()
+    if not user_id:
+        raise AuthUserNotFound()
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise AuthUserNotFound()
+
+    return user
+
 def get_current_shop_info(
     current_user: Annotated[TokenData, Depends(get_current_user)],
     db: Session = Depends(get_db)
@@ -228,8 +245,9 @@ def create_user_profile(user: User) -> UserProfile:
         created_at=user.created_at
     )
 
+@railway_cached(expire_seconds=900, key_prefix="user_token")
 def get_user_by_token(token: str, db: Session) -> User:
-    """Get full user details by token."""
+    """Get full user details by token (cached)."""
     token_data = verify_token(token)
     user = db.query(User).filter(User.id == token_data.get_uuid()).first()
     if not user:

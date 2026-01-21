@@ -34,21 +34,34 @@ class SFTPConnectionPool:
         self.lock = threading.Lock()
 
     def _create_connection(self):
-        """Create a new SFTP connection"""
+        """Create a new SFTP connection with keepalive settings"""
         if not PARAMIKO_AVAILABLE:
             raise Exception("paramiko not available")
 
-        ssh = paramiko.SSHClient()
-        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh.connect(
-            hostname=self.host,
-            port=self.port,
-            username=self.username,
-            password=self.password,
-            timeout=30
-        )
-        sftp = ssh.open_sftp()
-        return ssh, sftp
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                timeout=30
+            )
+
+            # Enable TCP keepalive to prevent connection timeouts during long operations
+            transport = ssh.get_transport()
+            if transport:
+                transport.set_keepalive(30)  # Send keepalive packet every 30 seconds
+
+            sftp = ssh.open_sftp()
+            # Set a longer timeout for SFTP operations
+            sftp.get_channel().settimeout(300)  # 5 minute timeout for operations
+
+            return ssh, sftp
+        except Exception as e:
+            logging.error(f"Failed to create NAS SFTP connection to {self.host}:{self.port}: {e}")
+            raise Exception(f"Failed to create NAS connection: {e}") from e
 
     @contextmanager
     def get_connection(self):
@@ -56,6 +69,7 @@ class SFTPConnectionPool:
         ssh = None
         sftp = None
         from_pool = False
+        connection_counted = False  # Track if we incremented active_connections
 
         try:
             # Try to get a connection from the pool
@@ -73,8 +87,10 @@ class SFTPConnectionPool:
                         ssh.close()
                     except:
                         pass
+                    # Don't adjust counter - we'll replace this stale connection
                     ssh, sftp = self._create_connection()
-                    from_pool = False
+                    # Still counts as from_pool since we're replacing a pool connection
+                    from_pool = True
 
             except queue.Empty:
                 # No connections available, create a new one if we're under the limit
@@ -82,25 +98,40 @@ class SFTPConnectionPool:
                     if self.active_connections < self.max_connections:
                         ssh, sftp = self._create_connection()
                         self.active_connections += 1
+                        connection_counted = True
                         from_pool = False
                     else:
                         # Wait for a connection to become available
-                        ssh, sftp = self.pool.get(timeout=30)
-                        from_pool = True
+                        try:
+                            ssh, sftp = self.pool.get(timeout=30)
+                            from_pool = True
+                        except queue.Empty:
+                            raise Exception(f"NAS connection pool exhausted: {self.active_connections} connections in use, unable to acquire connection within 30 seconds")
+
+            # Ensure we have a valid connection before yielding
+            if not sftp:
+                raise Exception("Failed to obtain SFTP connection: connection is None")
 
             yield sftp
 
         except Exception as e:
             # If there was an error, don't return a potentially broken connection to the pool
+            # Always close the connection
             if ssh:
                 try:
                     sftp.close()
                     ssh.close()
                 except:
                     pass
-                if from_pool:
-                    with self.lock:
-                        self.active_connections -= 1
+
+            # Decrement active connections only if we created a new one
+            if connection_counted:
+                with self.lock:
+                    self.active_connections -= 1
+
+            # Re-raise with more context if it's a bare exception
+            if not str(e):
+                raise Exception(f"NAS connection pool error: {type(e).__name__}")
             raise
         else:
             # Return the connection to the pool if it's healthy
@@ -115,7 +146,8 @@ class SFTPConnectionPool:
                         ssh.close()
                     except:
                         pass
-                    if not from_pool:
+                    # If we created this connection (not from pool), decrement the counter
+                    if connection_counted:
                         with self.lock:
                             self.active_connections -= 1
 
@@ -158,7 +190,8 @@ class NASStorage:
         else:
             self.enabled = True
             # Initialize connection pool for better concurrent access
-            max_connections = int(os.getenv('NAS_MAX_CONNECTIONS', '10'))
+            # Increased default to 20 for high-volume parallel uploads (supports 16+ threads)
+            max_connections = int(os.getenv('NAS_MAX_CONNECTIONS', '20'))
             self.connection_pool = SFTPConnectionPool(
                 host=self.host,
                 port=self.port,
@@ -166,19 +199,29 @@ class NASStorage:
                 password=self.password,
                 max_connections=max_connections
             )
-            logging.info(f"NAS storage configured for host: {self.host} with {max_connections} max connections")
+            logging.info(f"✅ NAS storage configured: {self.host}:{self.port} with connection pool (max={max_connections})")
     
     @contextmanager
     def get_sftp_connection(self):
         """Context manager for SFTP connections with automatic cleanup"""
-        if not self.enabled or not PARAMIKO_AVAILABLE or not self.connection_pool:
-            raise Exception("NAS storage is not enabled. Check QNAP configuration or paramiko installation.")
+        if not self.enabled:
+            raise Exception("NAS storage is not enabled. Check QNAP configuration.")
+        if not PARAMIKO_AVAILABLE:
+            raise Exception("paramiko module is not available. Install paramiko to use NAS storage.")
+        if not self.connection_pool:
+            raise Exception("NAS connection pool is not initialized.")
 
         try:
             with self.connection_pool.get_connection() as sftp:
                 yield sftp
+        except (FileNotFoundError, IOError, OSError) as e:
+            # These are legitimate file operation errors, not connection errors
+            # Re-raise without logging as "connection from pool" error
+            raise
         except Exception as e:
-            logging.error(f"Failed to get NAS connection from pool: {e}")
+            # Only log actual connection pool errors
+            error_msg = str(e) if str(e) else f"{type(e).__name__}"
+            logging.error(f"Failed to get NAS connection from pool: {error_msg}", exc_info=True)
             raise
     
     def ensure_directory(self, sftp, directory_path: str) -> bool:
@@ -321,31 +364,48 @@ class NASStorage:
     def download_file(self, shop_name: str, relative_path: str, local_file_path: str) -> bool:
         """
         Download a file from the NAS
-        
+
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
             local_file_path: Where to save the file locally
-        
+
         Returns:
             bool: True if download successful, False otherwise
         """
         if not self.enabled:
             logging.warning("NAS storage disabled, skipping download")
             return False
-        
+
+        # BUGFIX: Strip whitespace from paths to handle database entries with trailing spaces
+        original_path = relative_path
+        relative_path = relative_path.strip() if relative_path else relative_path
+
+        if original_path != relative_path:
+            logging.debug(f"Stripped whitespace from path: '{original_path}' -> '{relative_path}'")
+
+        # BUGFIX: Handle both absolute and relative paths
+        # If path starts with base_path, it's already absolute - use as is
+        # Otherwise, construct the full path
+        if relative_path.startswith(self.base_path):
+            remote_file_path = relative_path
+            logging.debug(f"Using absolute path from database: {remote_file_path}")
+        else:
+            remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
         try:
             with self.get_sftp_connection() as sftp:
-                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
-                
                 # Ensure local directory exists
                 os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
-                
+
                 # Download the file
                 sftp.get(remote_file_path, local_file_path)
                 logging.info(f"Successfully downloaded {remote_file_path} from NAS to {local_file_path}")
                 return True
-                
+
+        except FileNotFoundError as e:
+            logging.error(f"File not found on NAS: {remote_file_path}")
+            return False
         except Exception as e:
             logging.error(f"Failed to download {relative_path} from NAS: {e}")
             return False
@@ -353,20 +413,28 @@ class NASStorage:
     def file_exists(self, shop_name: str, relative_path: str) -> bool:
         """
         Check if a file exists on the NAS
-        
+
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
-        
+
         Returns:
             bool: True if file exists, False otherwise
         """
         if not self.enabled:
             return False
-        
+
+        # BUGFIX: Strip whitespace from paths
+        relative_path = relative_path.strip() if relative_path else relative_path
+
+        # BUGFIX: Handle both absolute and relative paths
+        if relative_path.startswith(self.base_path):
+            remote_file_path = relative_path
+        else:
+            remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
         try:
             with self.get_sftp_connection() as sftp:
-                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
                 sftp.stat(remote_file_path)
                 return True
         except FileNotFoundError:
@@ -375,13 +443,14 @@ class NASStorage:
             logging.error(f"Error checking file existence on NAS: {e}")
             return False
     
-    def list_files(self, shop_name: str, relative_path: str = "") -> list:
+    def list_files(self, shop_name: str, relative_path: str = "", max_retries: int = 2) -> list:
         """
         List files in a directory on the NAS with metadata
 
         Args:
             shop_name: Name of the shop
             relative_path: Relative path within the shop directory
+            max_retries: Number of times to retry on connection error
 
         Returns:
             list: List of file info dicts with filename, size, modified, empty list if error
@@ -389,23 +458,35 @@ class NASStorage:
         if not self.enabled:
             return []
 
-        try:
-            with self.get_sftp_connection() as sftp:
-                remote_dir = f"{self.base_path}/{shop_name}/{relative_path}" if relative_path else f"{self.base_path}/{shop_name}"
-                files = []
+        last_exception = None
+        for attempt in range(max_retries + 1):
+            try:
+                with self.get_sftp_connection() as sftp:
+                    remote_dir = f"{self.base_path}/{shop_name}/{relative_path}" if relative_path else f"{self.base_path}/{shop_name}"
+                    files = []
 
-                # List files with attributes
-                for attr in sftp.listdir_attr(remote_dir):
-                    if not stat.S_ISDIR(attr.st_mode):  # Only files, not directories
-                        files.append({
-                            'filename': attr.filename,
-                            'size': attr.st_size,
-                            'modified': datetime.fromtimestamp(attr.st_mtime) if attr.st_mtime else None
-                        })
-                return files
-        except Exception as e:
-            logging.error(f"Failed to list files in {relative_path} on NAS: {e}")
-            return []
+                    # List files with attributes
+                    for attr in sftp.listdir_attr(remote_dir):
+                        if not stat.S_ISDIR(attr.st_mode):  # Only files, not directories
+                            files.append({
+                                'filename': attr.filename,
+                                'size': attr.st_size,
+                                'modified': datetime.fromtimestamp(attr.st_mtime) if attr.st_mtime else None
+                            })
+                    return files
+            except FileNotFoundError:
+                # Directory doesn't exist - don't retry for this
+                logging.warning(f"Directory not found on NAS: {shop_name}/{relative_path}")
+                return []
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries:
+                    logging.warning(f"NAS connection error (attempt {attempt + 1}/{max_retries + 1}), retrying: {e}")
+                    import time
+                    time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                else:
+                    logging.error(f"Failed to list files in {relative_path} on NAS after {max_retries + 1} attempts: {e}")
+        return []
 
     def download_file_to_memory(self, shop_name: str, relative_path: str) -> bytes:
         """
@@ -422,10 +503,17 @@ class NASStorage:
             logging.warning("NAS storage disabled, skipping download")
             return None
 
+        # BUGFIX: Strip whitespace from paths to handle database entries with trailing spaces
+        relative_path = relative_path.strip() if relative_path else relative_path
+
+        # BUGFIX: Handle both absolute and relative paths
+        if relative_path.startswith(self.base_path):
+            remote_file_path = relative_path
+        else:
+            remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
+
         try:
             with self.get_sftp_connection() as sftp:
-                remote_file_path = f"{self.base_path}/{shop_name}/{relative_path}"
-
                 # Download the file to memory
                 file_obj = BytesIO()
                 sftp.getfo(remote_file_path, file_obj)

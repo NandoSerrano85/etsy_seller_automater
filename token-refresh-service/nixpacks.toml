@@ -1,0 +1,11 @@
+# Nixpacks configuration for Railway
+# This ensures Railway uses the correct build configuration
+
+[phases.build]
+nixPkgs = ["python311", "postgresql"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt"]
+
+[start]
+cmd = "python src/main.py"

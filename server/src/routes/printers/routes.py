@@ -8,7 +8,7 @@ from uuid import UUID
 from typing import List, Optional
 
 from server.src.database.core import get_db
-from server.src.routes.auth.service import get_current_user
+from server.src.routes.auth.service import get_current_user_db
 from server.src.entities.user import User
 from server.src.routes.organizations.service import OrganizationService
 from . import model
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/printers", tags=["printers"])
 def create_printer(
     printer_data: model.PrinterCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Create a new printer"""
     # Get or create default organization for user if multi-tenant is enabled
@@ -58,7 +58,7 @@ def get_my_printers(
     limit: int = Query(100, ge=1, le=1000),
     active_only: bool = Query(True, description="Show only active printers"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Get current user's printers"""
     # Handle both legacy users (without org_id) and multi-tenant users
@@ -86,7 +86,7 @@ def get_my_printers(
 def get_printer(
     printer_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Get printer by ID"""
     printer = PrinterService.get_printer_by_id(db=db, printer_id=printer_id)
@@ -104,7 +104,7 @@ def update_printer(
     printer_id: UUID,
     printer_data: model.PrinterUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Update printer"""
     # Verify ownership
@@ -130,7 +130,7 @@ def update_printer(
 def delete_printer(
     printer_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Delete printer"""
     # Verify ownership
@@ -156,7 +156,7 @@ def check_printer_capability(
     printer_id: UUID,
     capability_check: model.PrinterCapabilityCheck,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Check if printer can handle specific dimensions and template"""
     # Verify ownership
@@ -184,7 +184,7 @@ def find_compatible_printers(
     height_inches: float = Query(..., gt=0, description="Required height in inches"),
     template_id: Optional[UUID] = Query(None, description="Template ID to check compatibility"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Find printers compatible with given dimensions and template"""
     # Handle both legacy users (without org_id) and multi-tenant users
@@ -211,7 +211,7 @@ def find_compatible_printers(
 @router.get("/default/get", response_model=Optional[model.PrinterResponse])
 def get_default_printer(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Get user's default printer"""
     # Handle both legacy users (without org_id) and multi-tenant users
@@ -233,7 +233,7 @@ def get_default_printer(
 def set_default_printer(
     printer_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Set printer as default"""
     # Verify ownership
@@ -257,7 +257,7 @@ def set_default_printer(
 @router.get("/stats/summary", response_model=model.PrinterStatsResponse)
 def get_printer_stats(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_db)
 ):
     """Get printer statistics for current user"""
     # Handle both legacy users (without org_id) and multi-tenant users
@@ -275,3 +275,82 @@ def get_printer_stats(
 def get_printer_suggestions():
     """Get printer configuration suggestions"""
     return PrinterService.get_suggestions()
+
+@router.post("/{printer_id}/templates/{template_id}", response_model=model.PrinterResponse)
+def add_template_to_printer(
+    printer_id: UUID,
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_db)
+):
+    """Add a template to printer's supported templates"""
+    # Verify ownership
+    existing_printer = PrinterService.get_printer_by_id(db=db, printer_id=printer_id)
+    if not existing_printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if existing_printer.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this printer")
+
+    updated_printer = PrinterService.add_template_to_printer(
+        db=db,
+        printer_id=printer_id,
+        template_id=template_id,
+        user_id=current_user.id
+    )
+
+    if not updated_printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    return model.PrinterResponse.model_validate(updated_printer)
+
+@router.delete("/{printer_id}/templates/{template_id}", response_model=model.PrinterResponse)
+def remove_template_from_printer(
+    printer_id: UUID,
+    template_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_db)
+):
+    """Remove a template from printer's supported templates"""
+    # Verify ownership
+    existing_printer = PrinterService.get_printer_by_id(db=db, printer_id=printer_id)
+    if not existing_printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if existing_printer.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this printer")
+
+    updated_printer = PrinterService.remove_template_from_printer(
+        db=db,
+        printer_id=printer_id,
+        template_id=template_id,
+        user_id=current_user.id
+    )
+
+    if not updated_printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    return model.PrinterResponse.model_validate(updated_printer)
+
+@router.get("/{printer_id}/templates")
+def get_printer_templates(
+    printer_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_db)
+):
+    """Get all templates supported by a printer"""
+    # Verify ownership
+    existing_printer = PrinterService.get_printer_by_id(db=db, printer_id=printer_id)
+    if not existing_printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if existing_printer.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied to this printer")
+
+    templates = PrinterService.get_printer_templates(
+        db=db,
+        printer_id=printer_id,
+        user_id=current_user.id
+    )
+
+    return {"templates": [{"id": str(t.id), "name": t.name, "template_title": t.template_title} for t in templates]}

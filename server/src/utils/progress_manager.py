@@ -176,7 +176,15 @@ class ProgressManager:
             )
 
             # Clean up after a delay to allow final messages to be sent
-            asyncio.create_task(self._cleanup_session_delayed(session_id))
+            # Use threading timer to avoid event loop conflicts
+            import threading
+            import time
+
+            def delayed_cleanup():
+                time.sleep(5)
+                self.cleanup_session(session_id)
+
+            threading.Thread(target=delayed_cleanup, daemon=True).start()
 
     async def _cleanup_session_delayed(self, session_id: str):
         """Clean up session data after a delay"""

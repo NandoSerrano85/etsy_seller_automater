@@ -29,6 +29,7 @@ from server.src.message import (
 )
 from . import model
 import logging, os, random, json
+from server.src.utils.railway_cache import railway_cached, invalidate_user_cache
 from server.src.utils.mockups_util import create_mockup_images, create_mockups_for_etsy
 from server.src.utils.etsy_api_engine import EtsyAPI
 from server.src.utils.nas_storage import nas_storage
@@ -467,12 +468,13 @@ def create_mockup(db: Session, user_id: UUID, mockup_data: model.MockupFullCreat
         raise MockupCreateError()
 
 
+@railway_cached(expire_seconds=300, key_prefix="mockups")
 def get_mockups_by_user_id(db: Session, user_id: UUID, skip: int = 0, limit: int = 100) -> model.MockupsListResponse:
     try:
         mockups = db.query(Mockups).filter(
             Mockups.user_id == user_id
         ).offset(skip).limit(limit).all()
-        
+
         total = db.query(Mockups).filter(
             Mockups.user_id == user_id
         ).count()
@@ -511,6 +513,7 @@ def get_mockups_by_user_id(db: Session, user_id: UUID, skip: int = 0, limit: int
         raise MockupGetAllError()
 
 
+@railway_cached(expire_seconds=600, key_prefix="mockup")
 def get_mockup_by_id(db: Session, mockup_id: UUID, user_id: UUID) -> model.MockupsResponse:
     try:
         # Get mockup with related data (images and mask data)
@@ -518,7 +521,7 @@ def get_mockup_by_id(db: Session, mockup_id: UUID, user_id: UUID) -> model.Mocku
             Mockups.id == mockup_id,
             Mockups.user_id == user_id
         ).first()
-        
+
         if not mockup:
             logging.warning(f"Mockup not found with ID: {mockup_id} for user: {user_id}")
             raise MockupNotFoundError(mockup_id)
@@ -695,12 +698,15 @@ def create_mockup_image(db: Session, mockup_id: UUID, user_id: UUID, image_data:
             except Exception as file_err:
                 logging.error(f"Failed to copy image file: {file_err}")
                 raise MockupImageCreateError()
-        # 7. Create the MockupImage DB entry
+        # 7. Get default watermark if not provided
+        default_watermark_path = f"{root_path}Mockups/BaseMockups/Watermarks/Rectangle Watermark.png"
+
+        # 8. Create the MockupImage DB entry
         mockup_image = MockupImage(
             mockups_id=mockup_id,
             filename=os.path.basename(dest_path),
             file_path=dest_path,
-            watermark_path=None,
+            watermark_path=default_watermark_path if os.path.exists(default_watermark_path) else None,
             image_type=template_name
         )
         db.add(mockup_image)
@@ -858,12 +864,32 @@ def create_mockup_mask_data(db: Session, image_id: UUID, user_id: UUID, mask_dat
         masks = ensure_float_coords(mask_data.masks)
         points = ensure_float_coords(mask_data.points)
         
+        # Handle individual mask properties
+        is_cropped_list = mask_data.is_cropped_list
+        alignment_list = mask_data.alignment_list
+
+        # If individual properties are not provided, fall back to single values for all masks
+        if is_cropped_list is None and len(masks) > 0:
+            is_cropped_list = [mask_data.is_cropped] * len(masks)
+        if alignment_list is None and len(masks) > 0:
+            alignment_list = [mask_data.alignment] * len(masks)
+
+        # Validate that list lengths match mask count
+        if is_cropped_list and len(is_cropped_list) != len(masks):
+            logging.warning(f"is_cropped_list length ({len(is_cropped_list)}) doesn't match masks count ({len(masks)})")
+            is_cropped_list = [mask_data.is_cropped] * len(masks)
+        if alignment_list and len(alignment_list) != len(masks):
+            logging.warning(f"alignment_list length ({len(alignment_list)}) doesn't match masks count ({len(masks)})")
+            alignment_list = [mask_data.alignment] * len(masks)
+
         mockup_mask_data = MockupMaskData(
             mockup_image_id=image_id,
             masks=masks,  # List[List[List[float]]]
             points=points,  # List[List[List[float]]]
-            is_cropped=mask_data.is_cropped,
-            alignment=mask_data.alignment
+            is_cropped=mask_data.is_cropped,  # Keep for backward compatibility
+            alignment=mask_data.alignment,  # Keep for backward compatibility
+            is_cropped_list=is_cropped_list,  # New individual mask properties
+            alignment_list=alignment_list  # New individual mask properties
         )
         
         db.add(mockup_mask_data)
@@ -1270,8 +1296,8 @@ async def upload_mockup_files_to_etsy(
 
         # Use the design_ids provided in the request
         if not product_data.design_ids:
-            logging.error("upload_mockup_files_to_etsy: No design IDs provided in request")
-            raise HTTPException(status_code=400, detail="No design IDs provided")
+            logging.warning("upload_mockup_files_to_etsy: No design IDs provided - likely all uploads were duplicates")
+            raise HTTPException(status_code=400, detail="No design IDs provided. All uploaded images may have been duplicates.")
 
         designs = (
             db.query(DesignImages)
@@ -1282,6 +1308,13 @@ async def upload_mockup_files_to_etsy(
             )
             .all()
         )
+
+        # DEBUG: Log design details
+        logging.info(f"🔍 DEBUG: Received {len(product_data.design_ids)} design IDs from frontend")
+        logging.info(f"🔍 DEBUG: Design IDs: {product_data.design_ids}")
+        logging.info(f"🔍 DEBUG: Queried {len(designs)} designs from database")
+        for idx, design in enumerate(designs):
+            logging.info(f"🔍 DEBUG: Design {idx+1}: id={design.id}, filename={design.filename}, file_path={design.file_path}")
 
         shop_name = user.shop_name
 
@@ -1323,10 +1356,15 @@ async def upload_mockup_files_to_etsy(
         
         # Create appropriate directories based on template type
         local_root_path = os.getenv('LOCAL_ROOT_PATH', '')
-        if not local_root_path:
-            pass
-            # raise HTTPException(status_code=500, detail="LOCAL_ROOT_PATH environment variable not set")
-        
+
+        # Determine root_path based on environment
+        if local_root_path:
+            # Development/local mode: use local storage path
+            root_path = f"{local_root_path}{shop_name}/"
+        else:
+            # Production mode: pass shop name directly for NAS-only storage
+            root_path = f"/share/Graphics/{shop_name}/"
+
         mask_points_list, points_list, _, is_cropped, alignment = _get_mask_data_for_user_and_template(db, int(user_id), str(template.name))
         mask_data = {
             'masks': mask_points_list,
@@ -1334,77 +1372,182 @@ async def upload_mockup_files_to_etsy(
             'is_cropped': is_cropped,
             'alignment': alignment
         }
-        
+
         current_id_number, mockup_data, digital_image_paths = (create_mockups_for_etsy(
             designs=designs,
             mockup=mockup,
-            root_path=f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/",
+            root_path=root_path,
             template_name=template.name,
             mask_data=mockup_mask_data
         ))
         is_digital = len(digital_image_paths) > 0
         current_id_number = int(current_id_number)
 
-        logging.info(f"DEBUG API: finished processing uploaded files")
-        logging.info(f"DEBUG API: Starting Etsy API calls")
+        # DEBUG: Log mockup_data details
+        logging.info(f"🔍 DEBUG: mockup_data keys (filenames): {list(mockup_data.keys())}")
+        logging.info(f"🔍 DEBUG: mockup_data has {len(mockup_data)} entries")
+        for filename, mockup_paths in mockup_data.items():
+            logging.info(f"🔍 DEBUG: Mockup for '{filename}': {len(mockup_paths)} mockup file(s)")
+
+        # Check if mockup generation failed for some designs
+        designs_count = len(designs)
+        mockups_generated = len(mockup_data)
+        if mockups_generated < designs_count:
+            failed_count = designs_count - mockups_generated
+            logging.error(f"⚠️ MOCKUP GENERATION FAILURE: {failed_count}/{designs_count} designs failed to generate mockups and will NOT be uploaded to Etsy")
+            # Log which designs failed
+            design_filenames = {d.filename for d in designs}
+            successful_filenames = set(mockup_data.keys())
+            failed_filenames = design_filenames - successful_filenames
+            logging.error(f"⚠️ Failed designs: {failed_filenames}")
+
+        logging.info(f"DEBUG API: finished processing uploaded files - {mockups_generated}/{designs_count} mockups generated successfully")
+
+        # If NO mockups were generated, raise an error
+        if mockups_generated == 0:
+            error_msg = f"Failed to generate mockups for all {designs_count} designs. No Etsy listings will be created."
+            logging.error(error_msg)
+            raise HTTPException(status_code=500, detail=error_msg)
+
+        logging.info(f"DEBUG API: Starting Etsy API calls for {mockups_generated} listings")
         etsy_api = EtsyAPI(user_id, db)
         
         # Parse materials and tags from string to list if needed
         materials = template.materials.split(',') if template.materials else []
         tags = template.tags.split(',') if template.tags else []
-        
-        logging.info(f"DEBUG API: Creating Etsy listings for {len(mockup_data)} designs")
-        for i,(design, mockups) in enumerate(mockup_data.items()):
-            logging.info(f"DEBUG API: Creating listing {i+1}/{len(mockup_data)} for design: {design}")
-            title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
-            listing_response = etsy_api.create_draft_listing(
-                title=' '.join(title + [template.title]) if template.title else ' '.join(title),
-                description=template.description,
-                price=template.price,
-                quantity=template.quantity,
-                tags=tags,
-                materials=materials,
-                is_digital=is_digital,
-                when_made=template.when_made,
-                item_weight=template.item_weight,
-                item_length=template.item_length,
-                item_width=template.item_width,
-                item_height=template.item_height,
-                item_weight_unit=template.item_weight_unit,
-                item_dimensions_unit=template.item_dimensions_unit,
-                return_policy_id=template.return_policy_id,
-            )
-            listing_id = listing_response["listing_id"]
-            logging.info(f"DEBUG API: Created listing {listing_id}, uploading {len(mockups)} images")
-            
-            # Upload images to the listing
-            for j, mockup_image in enumerate(random.sample(mockups, len(mockups))):
-                logging.info(f"DEBUG API: Uploading image {j+1}/{len(mockups)} to listing {listing_id}")
-                etsy_api.upload_listing_image(listing_id, mockup_image)
-            logging.info(f"DEBUG API: Completed listing {i+1}")
 
-            # Upload digital file(s) if digital template
-            if is_digital:
-                # The digital file path and name are the key (design) in mockup_data.items()
-                digital_file_path = os.path.join(f"{os.getenv('LOCAL_ROOT_PATH')}{shop_name}/Digital/{template.name}/", design)
-                digital_file_name = design
-                logging.info(f"DEBUG API: Uploading digital file {digital_file_name} to listing {listing_id}")
-                try:
-                    etsy_api.upload_listing_file(listing_id, digital_file_path, digital_file_name)
-                    logging.info(f"DEBUG API: Successfully uploaded digital file {digital_file_name} to listing {listing_id}")
-                except Exception as e:
-                    logging.error(f"DEBUG API: Failed to upload digital file {digital_file_name} to listing {listing_id}: {e}")
+        # Parse production_partner_ids from template (required for physical listings)
+        production_partner_ids = None
+        if hasattr(template, 'production_partner_ids') and template.production_partner_ids:
+            # Convert comma-separated string to list of integers
+            try:
+                production_partner_ids = [int(pid.strip()) for pid in template.production_partner_ids.split(',') if pid.strip()]
+            except (ValueError, AttributeError):
+                logging.warning(f"Invalid production_partner_ids format: {template.production_partner_ids}")
+                production_partner_ids = None
 
-        setattr(mockup, "starting_name", current_id_number)
-        
+        # Process Etsy listings in parallel for much faster bulk uploads
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import threading
+
+        # Use thread pool to create listings in parallel
+        # Limit to 8 concurrent Etsy API calls to avoid rate limiting
+        max_workers = min(8, len(mockup_data))
+        logging.info(f"DEBUG API: Creating {len(mockup_data)} Etsy listings in parallel with {max_workers} workers")
+        logging.info(f"🔍 DEBUG: mockup_data.items() to be processed: {[(design, len(mockups)) for design, mockups in mockup_data.items()]}")
+
+        successful_listings = 0
+        failed_listings = 0
+
+        def process_single_listing(item_data):
+            """Process a single design: create listing, upload mockups, upload digital files"""
+            design, mockups = item_data
+            try:
+                title = design.split(' ')[:2] if not is_digital else design.split('.')[0]
+
+                # Create draft listing
+                listing_response = etsy_api.create_draft_listing(
+                    title=' '.join(title + [template.title]) if template.title else ' '.join(title),
+                    description=template.description,
+                    price=template.price,
+                    quantity=template.quantity,
+                    tags=tags,
+                    materials=materials,
+                    is_digital=is_digital,
+                    when_made=template.when_made,
+                    item_weight=template.item_weight,
+                    item_length=template.item_length,
+                    item_width=template.item_width,
+                    item_height=template.item_height,
+                    item_weight_unit=template.item_weight_unit,
+                    item_dimensions_unit=template.item_dimensions_unit,
+                    return_policy_id=template.return_policy_id,
+                    production_partner_ids=production_partner_ids,
+                )
+                listing_id = listing_response["listing_id"]
+                logging.info(f"✅ Created listing {listing_id} for {design}")
+
+                # Upload mockup images to the listing (ensure no duplicates)
+                # Convert to set to remove duplicates, then back to list
+                unique_mockups = list(set(mockups)) if mockups else []
+                logging.info(f"📤 Uploading {len(unique_mockups)} unique mockup(s) to listing {listing_id}")
+
+                for j, mockup_image in enumerate(unique_mockups):
+                    try:
+                        etsy_api.upload_listing_image(listing_id, mockup_image)
+                        logging.info(f"✅ Uploaded mockup {j+1}/{len(unique_mockups)}: {mockup_image}")
+                    except Exception as img_error:
+                        logging.error(f"❌ Failed to upload image {j+1} to listing {listing_id}: {img_error}")
+
+                # Upload digital file(s) if digital template
+                if is_digital:
+                    if local_root_path:
+                        digital_file_path = os.path.join(f"{local_root_path}{shop_name}/Digital/{template.name}/", design)
+                    else:
+                        digital_file_path = f"/share/Graphics/{shop_name}/Digital/{template.name}/{design}"
+
+                    try:
+                        etsy_api.upload_listing_file(listing_id, digital_file_path, design)
+                        logging.info(f"✅ Uploaded digital file for listing {listing_id}")
+                    except Exception as file_error:
+                        logging.error(f"❌ Failed to upload digital file for listing {listing_id}: {file_error}")
+
+                return (design, True, None)
+
+            except Exception as e:
+                logging.error(f"❌ Failed to process listing for {design}: {e}")
+                return (design, False, str(e))
+
+        # Process all listings in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(process_single_listing, item): item for item in mockup_data.items()}
+
+            for i, future in enumerate(as_completed(futures)):
+                design, success, error = future.result()
+                if success:
+                    successful_listings += 1
+                    logging.info(f"📊 Progress: {successful_listings + failed_listings}/{len(mockup_data)} completed")
+                else:
+                    failed_listings += 1
+                    logging.error(f"📊 Failed {failed_listings} listings so far")
+
+        logging.info(f"✅ Completed: {successful_listings} successful, {failed_listings} failed out of {len(mockup_data)} total")
+
+        # Update starting_name to next available number
+        # current_id_number is the last ID used, so increment by 1 for next batch
+        next_starting_name = current_id_number + 1
+        logging.info(f"Updating mockup starting_name from {mockup.starting_name} to {next_starting_name} (processed {len(designs)} designs)")
+        setattr(mockup, "starting_name", next_starting_name)
+
         db.commit()
         db.refresh(mockup)
 
-        logging.info(f"DEBUG API: Returning success response")
+        # Build response message with details about failures
+        mockup_gen_failures = designs_count - mockups_generated
+        etsy_upload_failures = failed_listings
+
+        if mockup_gen_failures > 0 or etsy_upload_failures > 0:
+            message_parts = []
+
+            if successful_listings > 0:
+                message_parts.append(f"✅ Successfully uploaded {successful_listings} listing(s) to Etsy")
+
+            if mockup_gen_failures > 0:
+                message_parts.append(f"⚠️ {mockup_gen_failures} design(s) failed mockup generation")
+
+            if etsy_upload_failures > 0:
+                message_parts.append(f"⚠️ {etsy_upload_failures} listing(s) failed to upload to Etsy")
+
+            message = ". ".join(message_parts) + "."
+            logging.warning(f"Partial success: {message}")
+        else:
+            message = f"✅ Successfully processed {successful_listings} mockup file(s) and created Etsy listings."
+
+        logging.info(f"DEBUG API: Returning response: {message}")
         return model.UploadToEtsyResponse(
             success=True,
             success_code=200,
-            message="Successfully processed mockup files and created Etsy listings.",
+            message=message,
         )
         
     except Exception as e:

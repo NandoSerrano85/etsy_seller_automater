@@ -8,6 +8,10 @@ alembic==1.13.1
 Pillow==10.1.0
 imagehash==4.3.1
 
+# Image processing for mockup generation with watermarks
+opencv-python-headless==4.8.1.78
+numpy==1.24.3
+
 # NAS/SFTP access
 paramiko==3.4.0
 
@@ -17,6 +21,8 @@ python-dotenv==1.0.0
 # FastAPI dependencies (needed by server imports)
 fastapi==0.104.1
 pydantic==2.5.0
+pydantic[email]
+email-validator==2.1.0
 starlette==0.27.0
 
 # Auth dependencies (used by server code)

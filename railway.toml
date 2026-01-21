@@ -9,7 +9,7 @@
 
 [build]
 builder = "dockerfile"
-dockerfilePath = "Dockerfile.railway-backend"
+dockerfilePath = "Dockerfile.backend"
 
 [deploy]
 startCommand = "python server/main.py"

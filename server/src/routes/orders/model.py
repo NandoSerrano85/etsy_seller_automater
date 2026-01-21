@@ -25,3 +25,8 @@ class PrintFilesResponse(BaseModel):
     message: Optional[str] = None
     error: Optional[str] = None
     sheets_created: Optional[int] = None
+
+class PrintFilesFromSelectionRequest(BaseModel):
+    order_ids: List[int]  # Etsy receipt IDs
+    template_name: str
+    format: Optional[str] = 'PNG'  # File format: PNG, SVG, or PSD

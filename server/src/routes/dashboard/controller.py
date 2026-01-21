@@ -80,8 +80,10 @@ async def get_monthly_analytics(
 
     result = await get_monthly_analytics_threaded()
 
-    # Cache the result for 1 hour
-    await ApiCache.set_analytics_cache(user_id, year, result, 3600)
+    # Cache the result for 6 hours (21600 seconds)
+    # Increased from 1 hour to reduce API calls and improve performance
+    # Analytics data doesn't change frequently, so longer cache is acceptable
+    await ApiCache.set_analytics_cache(user_id, year, result, 21600)
 
     return result
 
