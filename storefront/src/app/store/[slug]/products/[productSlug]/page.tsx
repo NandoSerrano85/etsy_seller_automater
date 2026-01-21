@@ -16,6 +16,77 @@ import { StoreNotFound } from "@/components/StoreNotFound";
 import { MaintenancePage } from "@/components/MaintenancePage";
 import toast from "react-hot-toast";
 
+// API response types
+interface ApiProductImage {
+  url: string;
+  alt?: string;
+  position: number;
+}
+
+interface ApiProductVariant {
+  id: string;
+  name: string;
+  sku?: string;
+  price: number;
+  compare_at_price?: number;
+  inventory_quantity?: number;
+  is_available: boolean;
+}
+
+interface ApiProduct {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string;
+  price: number;
+  compare_at_price?: number;
+  featured_image?: string;
+  images: ApiProductImage[];
+  category?: string;
+  product_type: string;
+  is_available: boolean;
+  has_variants: boolean;
+  variants: ApiProductVariant[];
+  meta_title?: string;
+  meta_description?: string;
+}
+
+// Convert API product to frontend Product type
+function mapApiProduct(apiProduct: ApiProduct): Product {
+  const variants: ProductVariant[] = (apiProduct.variants || []).map((v) => ({
+    id: v.id,
+    product_id: apiProduct.id,
+    name: v.name,
+    sku: v.sku,
+    price: v.price,
+    inventory_quantity: v.inventory_quantity || 0,
+  }));
+
+  return {
+    id: apiProduct.id,
+    name: apiProduct.title,
+    slug: apiProduct.slug,
+    product_type:
+      (apiProduct.product_type as "physical" | "digital") || "physical",
+    print_method: "other",
+    category: "other",
+    short_description: apiProduct.description,
+    long_description: apiProduct.meta_description,
+    price: apiProduct.price,
+    compare_at_price: apiProduct.compare_at_price,
+    image_url: apiProduct.featured_image || apiProduct.images?.[0]?.url,
+    image_gallery: apiProduct.images?.map((img) => img.url) || [],
+    is_active: apiProduct.is_available,
+    is_featured: false,
+    track_inventory: false,
+    inventory_quantity: apiProduct.is_available ? 100 : 0,
+    allow_backorder: false,
+    variants: variants.length > 0 ? variants : undefined,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 export default function StoreProductDetailPage({
   params,
 }: {
@@ -50,11 +121,12 @@ export default function StoreProductDetailPage({
 
         if (response.ok) {
           const data = await response.json();
-          setProduct(data);
+          const mappedProduct = mapApiProduct(data);
+          setProduct(mappedProduct);
 
           // Select first variant if available
-          if (data.variants && data.variants.length > 0) {
-            setSelectedVariant(data.variants[0]);
+          if (mappedProduct.variants && mappedProduct.variants.length > 0) {
+            setSelectedVariant(mappedProduct.variants[0]);
           }
         } else {
           console.error("Product not found");

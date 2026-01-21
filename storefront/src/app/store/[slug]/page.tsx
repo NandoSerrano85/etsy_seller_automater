@@ -6,16 +6,55 @@ import { ProductGrid } from "@/components/products/ProductGrid";
 import { StoreHeroSection } from "@/components/home/StoreHeroSection";
 import { StoreNotFound } from "@/components/StoreNotFound";
 import { MaintenancePage } from "@/components/MaintenancePage";
+import { Product } from "@/types";
 import Link from "next/link";
 
-interface Product {
-  id: number;
+// API response types
+interface ApiProductImage {
+  url: string;
+  alt?: string;
+  position: number;
+}
+
+interface ApiProduct {
+  id: string;
+  title: string;
   slug: string;
-  name: string;
-  description: string;
-  base_price: string;
-  images: Array<{ image_url: string; is_primary: boolean }>;
-  is_active: boolean;
+  description?: string;
+  price: number;
+  compare_at_price?: number;
+  featured_image?: string;
+  images: ApiProductImage[];
+  category?: string;
+  product_type: string;
+  is_available: boolean;
+  has_variants: boolean;
+  variants: any[];
+}
+
+// Convert API product to frontend Product type
+function mapApiProduct(apiProduct: ApiProduct): Product {
+  return {
+    id: apiProduct.id,
+    name: apiProduct.title,
+    slug: apiProduct.slug,
+    product_type:
+      (apiProduct.product_type as "physical" | "digital") || "physical",
+    print_method: "other",
+    category: "other",
+    short_description: apiProduct.description,
+    price: apiProduct.price,
+    compare_at_price: apiProduct.compare_at_price,
+    image_url: apiProduct.featured_image || apiProduct.images?.[0]?.url,
+    image_gallery: apiProduct.images?.map((img) => img.url) || [],
+    is_active: apiProduct.is_available,
+    is_featured: false,
+    track_inventory: false,
+    inventory_quantity: apiProduct.is_available ? 100 : 0,
+    allow_backorder: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
 }
 
 export default function StoreHomePage({
@@ -41,7 +80,8 @@ export default function StoreHomePage({
 
         if (response.ok) {
           const data = await response.json();
-          setProducts(data.items || []);
+          const mappedProducts = (data.items || []).map(mapApiProduct);
+          setProducts(mappedProducts);
         }
       } catch (err) {
         console.error("Error fetching products:", err);
