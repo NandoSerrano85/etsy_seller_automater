@@ -16,7 +16,6 @@ from uuid import UUID
 from server.src.database.core import get_db
 from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
 from server.src.entities.ecommerce.product import Product
-from server.src.entities.ecommerce.product_category import ProductCategory
 
 
 router = APIRouter(

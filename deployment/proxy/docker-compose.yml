@@ -1,0 +1,70 @@
+version: '3.8'
+
+# Docker Compose for CraftFlow Multi-Tenant Proxy
+# Choose either Caddy (recommended) or Nginx
+
+services:
+  # ====================================
+  # OPTION 1: Caddy (Recommended)
+  # Automatic HTTPS, easy configuration
+  # ====================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: craftflow-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - craftflow-network
+    environment:
+      - ACME_AGREE=true
+    profiles:
+      - caddy
+
+  # ====================================
+  # OPTION 2: Nginx + Certbot
+  # More control, manual cert management
+  # ====================================
+  nginx:
+    image: nginx:alpine
+    container_name: craftflow-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_conf:/etc/letsencrypt:ro
+    networks:
+      - craftflow-network
+    depends_on:
+      - certbot
+    profiles:
+      - nginx
+
+  certbot:
+    image: certbot/certbot
+    container_name: craftflow-certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    profiles:
+      - nginx
+
+networks:
+  craftflow-network:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  certbot_www:
+  certbot_conf:

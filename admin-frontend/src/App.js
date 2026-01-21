@@ -45,6 +45,7 @@ const CraftFlowOrders = React.lazy(() => import('./pages/CraftFlowOrders'));
 const CraftFlowOrderDetails = React.lazy(() => import('./pages/CraftFlowOrderDetails'));
 const CraftFlowCustomers = React.lazy(() => import('./pages/CraftFlowCustomers'));
 const CraftFlowStorefrontSettings = React.lazy(() => import('./pages/CraftFlowStorefrontSettings'));
+const CraftFlowDomainSettings = React.lazy(() => import('./pages/CraftFlowDomainSettings'));
 
 // Etsy components (lazy loaded)
 const EtsyDashboard = React.lazy(() => import('./pages/Etsy/Dashboard'));
@@ -442,6 +443,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <CraftFlowStorefrontSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/craftflow/domain"
+              element={
+                <ProtectedRoute>
+                  <CraftFlowDomainSettings />
                 </ProtectedRoute>
               }
             />

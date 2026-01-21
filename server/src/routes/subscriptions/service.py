@@ -12,6 +12,8 @@ import stripe
 
 from server.src.entities.subscription import Subscription, BillingHistory, SubscriptionUsage
 from server.src.entities.user import User
+from server.src.entities.ecommerce.storefront_settings import StorefrontSettings
+import secrets
 
 logger = logging.getLogger(__name__)
 
@@ -315,11 +317,14 @@ class SubscriptionService:
             subscription.cancel_at_period_end = stripe_subscription.get('cancel_at_period_end', False)
 
             # Determine tier from price ID
+            old_tier = subscription.tier
             price_id = subscription.stripe_price_id
             for tier_key, tier_config in SUBSCRIPTION_TIERS.items():
                 if tier_config.get('stripe_price_id') == price_id:
                     subscription.tier = tier_key
                     break
+
+            new_tier = subscription.tier
 
             # Update user's subscription plan
             user = db.query(User).filter(User.id == user_id).first()
@@ -330,6 +335,11 @@ class SubscriptionService:
             db.refresh(subscription)
 
             logger.info(f"Updated subscription for user {user_id} to tier {subscription.tier}")
+
+            # Handle subscription upgrade side effects (auto-provisioning, etc.)
+            if old_tier != new_tier:
+                SubscriptionService.handle_subscription_upgrade(db, user_id, old_tier, new_tier)
+
             return subscription
 
         except Exception as e:
@@ -594,3 +604,138 @@ class SubscriptionService:
                 "tier": "free",
                 "next_billing_date": None
             }
+
+    @staticmethod
+    def provision_storefront_for_tier(db: Session, user_id: UUID, tier: str) -> Optional[StorefrontSettings]:
+        """
+        Auto-provision storefront settings when a user upgrades to a qualifying tier.
+
+        For "full" or "pro" tier users, this creates their StorefrontSettings if they don't exist,
+        enabling them to set up their own storefront.
+
+        Args:
+            db: Database session
+            user_id: The user's UUID
+            tier: The subscription tier
+
+        Returns:
+            StorefrontSettings if created/updated, None if not applicable
+        """
+        # Only provision for full tier (CraftFlow Commerce access)
+        qualifying_tiers = ['full']
+
+        if tier not in qualifying_tiers:
+            return None
+
+        try:
+            # Check if user already has storefront settings
+            existing = db.query(StorefrontSettings).filter(
+                StorefrontSettings.user_id == user_id
+            ).first()
+
+            if existing:
+                logger.info(f"User {user_id} already has storefront settings")
+                return existing
+
+            # Get user info for defaults
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                logger.error(f"User {user_id} not found for storefront provisioning")
+                return None
+
+            # Generate a unique subdomain suggestion based on shop name
+            base_subdomain = (user.shop_name or user.email.split('@')[0]).lower()
+            # Clean the subdomain - only allow alphanumeric and hyphens
+            base_subdomain = ''.join(c if c.isalnum() else '-' for c in base_subdomain)
+            base_subdomain = base_subdomain.strip('-')[:50]  # Limit length
+
+            # Check if subdomain is available
+            subdomain = base_subdomain
+            counter = 1
+            while db.query(StorefrontSettings).filter(
+                StorefrontSettings.subdomain == subdomain
+            ).first():
+                subdomain = f"{base_subdomain}-{counter}"
+                counter += 1
+
+            # Generate verification token
+            verification_token = secrets.token_urlsafe(32)
+
+            # Create storefront settings with defaults
+            storefront = StorefrontSettings(
+                user_id=user_id,
+                store_name=user.shop_name or "My Store",
+                store_description=f"Welcome to {user.shop_name or 'my store'}",
+                subdomain=subdomain,
+                domain_verification_token=verification_token,
+                # Default theme colors
+                primary_color="#10b981",
+                secondary_color="#059669",
+                accent_color="#34d399",
+                text_color="#111827",
+                background_color="#ffffff",
+                font_family="Inter",
+                # Default settings
+                currency="USD",
+                timezone="America/New_York",
+                # Status
+                is_active=True,
+                is_published=False,  # Start unpublished until user configures
+                maintenance_mode=False,
+            )
+
+            db.add(storefront)
+            db.commit()
+            db.refresh(storefront)
+
+            logger.info(f"Auto-provisioned storefront for user {user_id} with subdomain: {subdomain}")
+            return storefront
+
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error provisioning storefront for user {user_id}: {e}")
+            return None
+
+    @staticmethod
+    def handle_subscription_upgrade(db: Session, user_id: UUID, old_tier: str, new_tier: str):
+        """
+        Handle side effects of subscription tier changes.
+
+        This is called when a subscription is upgraded or downgraded.
+
+        Args:
+            db: Database session
+            user_id: The user's UUID
+            old_tier: Previous subscription tier
+            new_tier: New subscription tier
+        """
+        try:
+            # Define tier hierarchy
+            tier_levels = {
+                'free': 0,
+                'starter': 1,
+                'pro': 2,
+                'full': 3
+            }
+
+            old_level = tier_levels.get(old_tier, 0)
+            new_level = tier_levels.get(new_tier, 0)
+
+            # Upgrade: provision new features
+            if new_level > old_level:
+                logger.info(f"User {user_id} upgraded from {old_tier} to {new_tier}")
+
+                # Auto-provision storefront for qualifying tiers
+                if new_tier in ['full']:
+                    storefront = SubscriptionService.provision_storefront_for_tier(db, user_id, new_tier)
+                    if storefront:
+                        logger.info(f"Storefront provisioned for user {user_id} on upgrade to {new_tier}")
+
+            # Downgrade: optionally clean up or notify
+            elif new_level < old_level:
+                logger.info(f"User {user_id} downgraded from {old_tier} to {new_tier}")
+                # Note: We don't remove storefront settings on downgrade
+                # The user retains their data but loses access to features
+
+        except Exception as e:
+            logger.error(f"Error handling subscription upgrade for user {user_id}: {e}")

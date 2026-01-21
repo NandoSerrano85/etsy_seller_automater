@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { useStore } from "@/store/useStore";
+import { useStore as useCartStore } from "@/store/useStore";
 import { customerApi } from "@/lib/api";
+import { StoreProvider } from "@/contexts/StoreContext";
 import { BrandingProvider } from "@/contexts/BrandingContext";
 
 export function Providers({ children }: { children: React.ReactNode }) {
-  const { setCustomer, fetchCart } = useStore();
+  const { setCustomer, fetchCart } = useCartStore();
 
   useEffect(() => {
     // Initialize auth state from localStorage
@@ -19,5 +20,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     fetchCart();
   }, [setCustomer, fetchCart]);
 
-  return <BrandingProvider>{children}</BrandingProvider>;
+  return (
+    <StoreProvider>
+      <BrandingProvider>{children}</BrandingProvider>
+    </StoreProvider>
+  );
 }

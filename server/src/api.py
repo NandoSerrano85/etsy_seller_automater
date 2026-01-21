@@ -26,6 +26,7 @@ from server.src.routes.ecommerce.orders import router as ecommerce_orders_router
 from server.src.routes.ecommerce.checkout import router as ecommerce_checkout_router
 from server.src.routes.ecommerce.storefront_settings import router as ecommerce_storefront_settings_router
 from server.src.routes.ecommerce.storefront_domain import router as ecommerce_storefront_domain_router
+from server.src.routes.ecommerce.storefront_public import router as ecommerce_storefront_public_router
 from server.src.routes.ecommerce.admin_products import router as ecommerce_admin_products_router
 from server.src.routes.ecommerce.admin_orders import router as ecommerce_admin_orders_router
 from server.src.routes.ecommerce.admin_customers import router as ecommerce_admin_customers_router
@@ -207,6 +208,7 @@ def register_routes(app: FastAPI):
     print(f"✅ Checkout router registered with {len(ecommerce_checkout_router.routes)} routes")
     app.include_router(ecommerce_storefront_settings_router)
     app.include_router(ecommerce_storefront_domain_router)
+    app.include_router(ecommerce_storefront_public_router)
     app.include_router(ecommerce_admin_products_router)
     app.include_router(ecommerce_admin_orders_router)
     app.include_router(ecommerce_admin_customers_router)

@@ -1,7 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext } from "react";
+import { useStore, StoreConfig } from "./StoreContext";
 
+// Legacy interface for backwards compatibility
 interface BrandingSettings {
   store_name: string;
   store_description: string;
@@ -38,76 +40,27 @@ export function useBranding() {
   return useContext(BrandingContext);
 }
 
+/**
+ * BrandingProvider now uses StoreContext for multi-tenant support
+ * This maintains backwards compatibility with existing components
+ */
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<BrandingSettings>(defaultSettings);
-  const [loading, setLoading] = useState(true);
+  const { config, loading } = useStore();
 
-  useEffect(() => {
-    // Fetch branding settings from API
-    const fetchSettings = async () => {
-      try {
-        const API_URL =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
-        // For now, use user_id = 1 as default. In production, this should be dynamic based on the store
-        const response = await fetch(
-          `${API_URL}/api/ecommerce/admin/storefront-settings/public/1`,
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          setSettings({
-            store_name: data.store_name || defaultSettings.store_name,
-            store_description:
-              data.store_description || defaultSettings.store_description,
-            logo_url: data.logo_url || defaultSettings.logo_url,
-            primary_color: data.primary_color || defaultSettings.primary_color,
-            secondary_color:
-              data.secondary_color || defaultSettings.secondary_color,
-            accent_color: data.accent_color || defaultSettings.accent_color,
-            text_color: data.text_color || defaultSettings.text_color,
-            background_color:
-              data.background_color || defaultSettings.background_color,
-          });
-        } else {
-          // If settings not found, use defaults
-          setSettings(defaultSettings);
-        }
-      } catch (error) {
-        console.error("Error fetching branding settings:", error);
-        setSettings(defaultSettings);
-      } finally {
-        setLoading(false);
+  // Convert StoreConfig to BrandingSettings for backwards compatibility
+  const settings: BrandingSettings = config
+    ? {
+        store_name: config.store_name,
+        store_description:
+          config.store_description || defaultSettings.store_description,
+        logo_url: config.logo_url || defaultSettings.logo_url,
+        primary_color: config.primary_color,
+        secondary_color: config.secondary_color,
+        accent_color: config.accent_color,
+        text_color: config.text_color,
+        background_color: config.background_color,
       }
-    };
-
-    fetchSettings();
-  }, []);
-
-  // Apply CSS custom properties to the document root
-  useEffect(() => {
-    if (!loading) {
-      document.documentElement.style.setProperty(
-        "--color-primary",
-        settings.primary_color,
-      );
-      document.documentElement.style.setProperty(
-        "--color-secondary",
-        settings.secondary_color,
-      );
-      document.documentElement.style.setProperty(
-        "--color-accent",
-        settings.accent_color,
-      );
-      document.documentElement.style.setProperty(
-        "--color-text",
-        settings.text_color,
-      );
-      document.documentElement.style.setProperty(
-        "--color-background",
-        settings.background_color,
-      );
-    }
-  }, [settings, loading]);
+    : defaultSettings;
 
   return (
     <BrandingContext.Provider value={{ settings, loading }}>

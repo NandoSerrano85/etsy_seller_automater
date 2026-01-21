@@ -104,6 +104,7 @@ const SidebarNavigation = ({ isOpen, onToggle }) => {
         { label: 'Customers', path: '/craftflow/customers' },
         { label: 'Email Management', path: '/craftflow/emails/templates' },
         { label: 'Storefront Settings', path: '/craftflow/settings' },
+        { label: 'Domain Settings', path: '/craftflow/domain' },
       ],
     },
     {

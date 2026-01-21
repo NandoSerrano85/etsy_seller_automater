@@ -5,6 +5,7 @@ import { Providers } from "./providers";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartSidebar } from "@/components/cart/CartSidebar";
+import { StoreWrapper } from "@/components/StoreWrapper";
 import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -25,10 +26,12 @@ export default function RootLayout({
     <html lang="en" className={inter.variable}>
       <body className="min-h-screen flex flex-col">
         <Providers>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
-          <CartSidebar />
+          <StoreWrapper>
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Footer />
+            <CartSidebar />
+          </StoreWrapper>
           <Toaster position="top-right" />
         </Providers>
       </body>
