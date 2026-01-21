@@ -7,10 +7,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3003";
 
 /**
  * Hook that provides multi-tenant aware API functions
- * Uses domain-based endpoints when in multi-tenant mode
+ * Uses path-based endpoints when in multi-tenant mode
  */
 export function useStoreApi() {
-  const { domain, isMultiTenant, config } = useStore();
+  const { storeSlug, isMultiTenant, config } = useStore();
 
   /**
    * Get products for the current store
@@ -23,18 +23,19 @@ export function useStoreApi() {
     sort?: string;
     order?: string;
   }): Promise<PaginatedResponse<Product>> => {
-    if (isMultiTenant && domain) {
-      // Multi-tenant mode: use domain-based public API
+    if (isMultiTenant && storeSlug) {
+      // Multi-tenant mode: use path-based public API
       const queryParams = new URLSearchParams();
       if (params?.page) queryParams.set("page", params.page.toString());
-      if (params?.page_size) queryParams.set("page_size", params.page_size.toString());
+      if (params?.page_size)
+        queryParams.set("page_size", params.page_size.toString());
       if (params?.category) queryParams.set("category", params.category);
       if (params?.search) queryParams.set("search", params.search);
       if (params?.sort) queryParams.set("sort", params.sort);
       if (params?.order) queryParams.set("order", params.order);
 
       const response = await fetch(
-        `${API_URL}/api/store/${domain}/products?${queryParams.toString()}`
+        `${API_URL}/api/store/${storeSlug}/products?${queryParams.toString()}`,
       );
 
       if (!response.ok) {
@@ -46,12 +47,13 @@ export function useStoreApi() {
       // Single-tenant mode: use existing API
       const queryParams = new URLSearchParams();
       if (params?.page) queryParams.set("page", params.page.toString());
-      if (params?.page_size) queryParams.set("page_size", params.page_size.toString());
+      if (params?.page_size)
+        queryParams.set("page_size", params.page_size.toString());
       if (params?.category) queryParams.set("category", params.category);
       if (params?.search) queryParams.set("search", params.search);
 
       const response = await fetch(
-        `${API_URL}/api/storefront/products/?${queryParams.toString()}`
+        `${API_URL}/api/storefront/products/?${queryParams.toString()}`,
       );
 
       if (!response.ok) {
@@ -66,8 +68,10 @@ export function useStoreApi() {
    * Get a single product by slug
    */
   const getProductBySlug = async (slug: string): Promise<Product> => {
-    if (isMultiTenant && domain) {
-      const response = await fetch(`${API_URL}/api/store/${domain}/products/${slug}`);
+    if (isMultiTenant && storeSlug) {
+      const response = await fetch(
+        `${API_URL}/api/store/${storeSlug}/products/${slug}`,
+      );
 
       if (!response.ok) {
         throw new Error("Product not found");
@@ -75,7 +79,9 @@ export function useStoreApi() {
 
       return response.json();
     } else {
-      const response = await fetch(`${API_URL}/api/storefront/products/${slug}`);
+      const response = await fetch(
+        `${API_URL}/api/storefront/products/${slug}`,
+      );
 
       if (!response.ok) {
         throw new Error("Product not found");
@@ -89,9 +95,9 @@ export function useStoreApi() {
    * Get featured products
    */
   const getFeaturedProducts = async (limit = 8): Promise<Product[]> => {
-    if (isMultiTenant && domain) {
+    if (isMultiTenant && storeSlug) {
       const response = await fetch(
-        `${API_URL}/api/store/${domain}/featured?limit=${limit}`
+        `${API_URL}/api/store/${storeSlug}/featured?limit=${limit}`,
       );
 
       if (!response.ok) {
@@ -101,7 +107,7 @@ export function useStoreApi() {
       return response.json();
     } else {
       const response = await fetch(
-        `${API_URL}/api/storefront/products/?page_size=${limit}&featured=true`
+        `${API_URL}/api/storefront/products/?page_size=${limit}&featured=true`,
       );
 
       if (!response.ok) {
@@ -119,8 +125,10 @@ export function useStoreApi() {
   const getCategories = async (): Promise<
     { id: string; name: string; slug: string; product_count: number }[]
   > => {
-    if (isMultiTenant && domain) {
-      const response = await fetch(`${API_URL}/api/store/${domain}/categories`);
+    if (isMultiTenant && storeSlug) {
+      const response = await fetch(
+        `${API_URL}/api/store/${storeSlug}/categories`,
+      );
 
       if (!response.ok) {
         throw new Error("Failed to fetch categories");
@@ -139,7 +147,7 @@ export function useStoreApi() {
     getProductBySlug,
     getFeaturedProducts,
     getCategories,
-    domain,
+    storeSlug,
     isMultiTenant,
     storeConfig: config,
   };
