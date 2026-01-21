@@ -51,6 +51,7 @@ interface StoreContextType {
   error: string | null;
   storeSlug: string | null;
   isMultiTenant: boolean;
+  domain?: string;
   getStoreUrl: (path?: string) => string;
 }
 
@@ -147,9 +148,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (isMulti && slug) {
           // Multi-tenant mode: fetch config by store slug
           // The slug is the same as the subdomain field in the database
-          const response = await fetch(
-            `${API_URL}/api/store/${slug}/config`
-          );
+          const response = await fetch(`${API_URL}/api/store/${slug}/config`);
 
           if (response.ok) {
             const data = await response.json();
@@ -178,7 +177,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         } else {
           // Single-tenant mode or root path: fetch from existing endpoint
           const response = await fetch(
-            `${API_URL}/api/ecommerce/admin/storefront-settings/public/1`
+            `${API_URL}/api/ecommerce/admin/storefront-settings/public/1`,
           );
 
           if (response.ok) {
@@ -219,23 +218,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (config && !loading) {
       document.documentElement.style.setProperty(
         "--color-primary",
-        config.primary_color
+        config.primary_color,
       );
       document.documentElement.style.setProperty(
         "--color-secondary",
-        config.secondary_color
+        config.secondary_color,
       );
       document.documentElement.style.setProperty(
         "--color-accent",
-        config.accent_color
+        config.accent_color,
       );
       document.documentElement.style.setProperty(
         "--color-text",
-        config.text_color
+        config.text_color,
       );
       document.documentElement.style.setProperty(
         "--color-background",
-        config.background_color
+        config.background_color,
       );
 
       // Update document title
@@ -256,7 +255,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // Add Google Analytics if configured
       if (config.google_analytics_id) {
         const existingScript = document.querySelector(
-          `script[src*="googletagmanager.com/gtag/js?id=${config.google_analytics_id}"]`
+          `script[src*="googletagmanager.com/gtag/js?id=${config.google_analytics_id}"]`,
         );
         if (!existingScript) {
           const script = document.createElement("script");
@@ -278,7 +277,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // Add Facebook Pixel if configured
       if (config.facebook_pixel_id) {
         const existingFb = document.querySelector(
-          'script[src*="connect.facebook.net"]'
+          'script[src*="connect.facebook.net"]',
         );
         if (!existingFb) {
           const fbScript = document.createElement("script");
