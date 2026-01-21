@@ -6,7 +6,6 @@ Tracks domain verification attempts and status for custom domains.
 
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 from server.src.database.core import Base
 from datetime import datetime
 import uuid
@@ -36,9 +35,6 @@ class DomainVerification(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
-
-    # Relationship
-    storefront = relationship('StorefrontSettings', backref='domain_verifications')
 
     def to_dict(self):
         """Convert to dictionary"""
