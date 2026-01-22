@@ -16,20 +16,14 @@ const TopNavigation = ({
   const [searchParams, setSearchParams] = useSearchParams();
 
   const handleTabChange = tabId => {
-    const pathname = location.pathname;
     const newParams = new URLSearchParams(searchParams);
 
-    // For Etsy and other page-based routes, use subtab parameter
-    if (pathname.startsWith('/etsy/') || pathname.startsWith('/craftflow/')) {
+    // Legacy: For old tab-based routes
+    const currentTab = searchParams.get('tab');
+    if (currentTab === 'orders' || currentTab === 'products') {
       newParams.set('subtab', tabId);
     } else {
-      // Legacy: For old tab-based routes
-      const currentTab = searchParams.get('tab');
-      if (currentTab === 'orders' || currentTab === 'products') {
-        newParams.set('subtab', tabId);
-      } else {
-        newParams.set('tab', tabId);
-      }
+      newParams.set('tab', tabId);
     }
 
     // Update URL and trigger callback if provided
@@ -161,12 +155,7 @@ const TopNavigation = ({
           { label: 'Etsy', href: '/etsy/dashboard' },
           { label: 'Orders', active: true },
         ],
-        tabs: [
-          { id: 'all', label: 'All Orders', icon: '📋' },
-          { id: 'active', label: 'Active', icon: '🟢', badge: unshippedOrdersCount || undefined },
-          { id: 'shipped', label: 'Shipped', icon: '📦' },
-          { id: 'print', label: 'Send to Print', icon: '🖨️' },
-        ],
+        tabs: [],
       };
     }
 
@@ -178,11 +167,7 @@ const TopNavigation = ({
           { label: 'Etsy', href: '/etsy/dashboard' },
           { label: 'Products', active: true },
         ],
-        tabs: [
-          { id: 'productMockup', label: 'Product Mockups', icon: '🖼️' },
-          { id: 'productDesign', label: 'Product Designs', icon: '🎨' },
-          { id: 'upload', label: 'Upload Product', icon: '⬆️' },
-        ],
+        tabs: [],
       };
     }
 

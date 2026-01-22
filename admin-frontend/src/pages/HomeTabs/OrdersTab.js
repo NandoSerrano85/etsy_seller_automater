@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 
 const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
-  const [searchParams] = useSearchParams();
-  const activeSubTab = searchParams.get('subtab') || 'active';
+  const [activeTab, setActiveTab] = useState('active');
   const [expandedOrders, setExpandedOrders] = useState([]);
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [printLoading, setPrintLoading] = useState(false);
@@ -56,20 +54,20 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     }
   };
 
-  // Sync filter with activeSubTab and fetch orders
+  // Sync filter with activeTab and fetch orders
   useEffect(() => {
-    if (isConnected && activeSubTab !== 'print') {
-      // Map subtab to filter state
+    if (isConnected && activeTab !== 'print') {
+      // Map tab to filter state
       const filterMap = {
         active: 'active',
         shipped: 'shipped',
         all: 'all',
       };
-      const newFilter = filterMap[activeSubTab] || 'active';
+      const newFilter = filterMap[activeTab] || 'active';
       setOrderFilter(newFilter);
       fetchOrdersByFilter(newFilter);
     }
-  }, [isConnected, activeSubTab]); // Re-run when connection status or subtab changes
+  }, [isConnected, activeTab]); // Re-run when connection status or tab changes
 
   // Get the orders to display (filtered if filter is active, otherwise from props)
   const getDisplayOrders = () => {
@@ -603,6 +601,13 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     }).format(amount / divisor);
   };
 
+  const tabs = [
+    { id: 'active', label: 'Active', icon: '🟢' },
+    { id: 'shipped', label: 'Shipped', icon: '📦' },
+    { id: 'all', label: 'All Orders', icon: '📋' },
+    { id: 'print', label: 'Send to Print', icon: '🖨️' },
+  ];
+
   if (!isConnected) {
     return (
       <div className="card p-8 text-center">
@@ -633,129 +638,152 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
       </div>
     );
   }
-  // Modify the main return to include the print tab
-  if (activeSubTab === 'print') {
-    return renderPrintTab();
-  }
   return (
-    <div className="space-y-8">
-      {/* Orders Summary Card */}
-      <div className="card p-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-          <div className="text-center">
-            <h3 className="text-2xl font-bold text-gray-900">{getDisplayOrders().length}</h3>
-            <p className="text-gray-600">
-              {orderFilter === 'active' && 'Active Orders'}
-              {orderFilter === 'shipped' && 'Shipped Orders'}
-              {orderFilter === 'all' && 'All Orders'}
-            </p>
-          </div>
-          <div className="text-center">
-            <h3 className="text-2xl font-bold text-gray-900">
-              {getDisplayOrders().reduce(
-                (sum, order) => sum + (order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0),
-                0
-              )}
-            </h3>
-            <p className="text-gray-600">Total Items</p>
-          </div>
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-2">
+        <div className="flex flex-wrap gap-1">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                activeTab === tab.id
+                  ? 'bg-lavender-500 text-white shadow-md'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              <span className="text-base mr-2">{tab.icon}</span>
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
-      {/* Orders Table */}
-      <div className="card p-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {orderFilter === 'active' && '🟢 Showing active orders (ready to process)'}
-              {orderFilter === 'shipped' && '📦 Showing shipped orders'}
-              {orderFilter === 'all' && '📋 Showing all orders'}
-            </p>
-          </div>
-        </div>
 
-        {loadingOrders && (
-          <div className="flex items-center justify-center p-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
-            <span className="ml-2 text-gray-600">Loading orders...</span>
+      {/* Tab Content */}
+      {activeTab === 'print' ? (
+        renderPrintTab()
+      ) : (
+        <div className="space-y-8">
+          {/* Orders Summary Card */}
+          <div className="card p-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-gray-900">{getDisplayOrders().length}</h3>
+                <p className="text-gray-600">
+                  {orderFilter === 'active' && 'Active Orders'}
+                  {orderFilter === 'shipped' && 'Shipped Orders'}
+                  {orderFilter === 'all' && 'All Orders'}
+                </p>
+              </div>
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-gray-900">
+                  {getDisplayOrders().reduce(
+                    (sum, order) => sum + (order.items?.reduce((total, item) => total + (item.quantity || 0), 0) || 0),
+                    0
+                  )}
+                </h3>
+                <p className="text-gray-600">Total Items</p>
+              </div>
+            </div>
           </div>
-        )}
+          {/* Orders Table */}
+          <div className="card p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {orderFilter === 'active' && '🟢 Showing active orders (ready to process)'}
+                  {orderFilter === 'shipped' && '📦 Showing shipped orders'}
+                  {orderFilter === 'all' && '📋 Showing all orders'}
+                </p>
+              </div>
+            </div>
 
-        {!loadingOrders && (
-          <div className="overflow-x-auto rounded-lg shadow">
-            <table className="w-full bg-white">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-700"></th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Order ID</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Customer Name</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Method</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Cost</th>
-                  <th className="px-6 py-4 text-left font-semibold text-gray-700">Order Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {getDisplayOrders().map(order => (
-                  <React.Fragment key={order.order_id}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-2 py-4 text-center">
-                        <button
-                          onClick={() => toggleOrderExpand(order.order_id)}
-                          className="focus:outline-none"
-                          aria-label={expandedOrders.includes(order.order_id) ? 'Collapse' : 'Expand'}
-                        >
-                          {expandedOrders.includes(order.order_id) ? <span>&#9660;</span> : <span>&#9654;</span>}
-                        </button>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-gray-900">{order.order_id}</td>
-                      <td className="px-6 py-4 text-gray-700">{order.customer_name || 'N/A'}</td>
-                      <td className="px-6 py-4 text-gray-700">{order.shipping_method || 'N/A'}</td>
-                      <td className="px-6 py-4 text-gray-700">{formatCurrency(order.shipping_cost || 0)}</td>
-                      <td className="px-6 py-4 text-gray-700">
-                        {new Date(order.order_date * 1000).toLocaleDateString()}
-                      </td>
+            {loadingOrders && (
+              <div className="flex items-center justify-center p-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lavender-500"></div>
+                <span className="ml-2 text-gray-600">Loading orders...</span>
+              </div>
+            )}
+
+            {!loadingOrders && (
+              <div className="overflow-x-auto rounded-lg shadow">
+                <table className="w-full bg-white">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700"></th>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700">Order ID</th>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700">Customer Name</th>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Method</th>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700">Shipping Cost</th>
+                      <th className="px-6 py-4 text-left font-semibold text-gray-700">Order Date</th>
                     </tr>
-                    {/* Transactions Dropdown */}
-                    {expandedOrders.includes(order.order_id) && (
-                      <tr>
-                        <td colSpan={6} className="bg-gray-50 px-6 py-4">
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead>
-                                <tr>
-                                  <th className="px-4 py-2 text-left font-semibold text-gray-700">Item Name</th>
-                                  <th className="px-4 py-2 text-left font-semibold text-gray-700">Quantity</th>
-                                  <th className="px-4 py-2 text-left font-semibold text-gray-700">Price</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(order.items || []).map((item, idx) => (
-                                  <tr key={idx}>
-                                    <td className="px-4 py-2 text-gray-700">{item.title || 'N/A'}</td>
-                                    <td className="px-4 py-2 text-gray-700">{item.quantity || 0}</td>
-                                    <td className="px-4 py-2 text-gray-700">{formatCurrency(item.price || 0)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-            {getDisplayOrders().length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                {orderFilter === 'active' && 'No active orders found'}
-                {orderFilter === 'shipped' && 'No shipped orders found'}
-                {orderFilter === 'all' && 'No orders found'}
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {getDisplayOrders().map(order => (
+                      <React.Fragment key={order.order_id}>
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-2 py-4 text-center">
+                            <button
+                              onClick={() => toggleOrderExpand(order.order_id)}
+                              className="focus:outline-none"
+                              aria-label={expandedOrders.includes(order.order_id) ? 'Collapse' : 'Expand'}
+                            >
+                              {expandedOrders.includes(order.order_id) ? <span>&#9660;</span> : <span>&#9654;</span>}
+                            </button>
+                          </td>
+                          <td className="px-6 py-4 font-medium text-gray-900">{order.order_id}</td>
+                          <td className="px-6 py-4 text-gray-700">{order.customer_name || 'N/A'}</td>
+                          <td className="px-6 py-4 text-gray-700">{order.shipping_method || 'N/A'}</td>
+                          <td className="px-6 py-4 text-gray-700">{formatCurrency(order.shipping_cost || 0)}</td>
+                          <td className="px-6 py-4 text-gray-700">
+                            {new Date(order.order_date * 1000).toLocaleDateString()}
+                          </td>
+                        </tr>
+                        {/* Transactions Dropdown */}
+                        {expandedOrders.includes(order.order_id) && (
+                          <tr>
+                            <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                              <div className="overflow-x-auto">
+                                <table className="w-full">
+                                  <thead>
+                                    <tr>
+                                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Item Name</th>
+                                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Quantity</th>
+                                      <th className="px-4 py-2 text-left font-semibold text-gray-700">Price</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {(order.items || []).map((item, idx) => (
+                                      <tr key={idx}>
+                                        <td className="px-4 py-2 text-gray-700">{item.title || 'N/A'}</td>
+                                        <td className="px-4 py-2 text-gray-700">{item.quantity || 0}</td>
+                                        <td className="px-4 py-2 text-gray-700">{formatCurrency(item.price || 0)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+                {getDisplayOrders().length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    {orderFilter === 'active' && 'No active orders found'}
+                    {orderFilter === 'shipped' && 'No shipped orders found'}
+                    {orderFilter === 'all' && 'No orders found'}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
