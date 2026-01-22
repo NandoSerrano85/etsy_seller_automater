@@ -3,8 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../../hooks/useApi';
 
 const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeSubTab = searchParams.get('subtab') || 'all';
+  const [searchParams] = useSearchParams();
+  const activeSubTab = searchParams.get('subtab') || 'active';
   const [expandedOrders, setExpandedOrders] = useState([]);
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [printLoading, setPrintLoading] = useState(false);
@@ -56,18 +56,20 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
     }
   };
 
-  // Handle filter change
-  const handleFilterChange = filter => {
-    setOrderFilter(filter);
-    fetchOrdersByFilter(filter);
-  };
-
-  // Fetch initial orders when component mounts or when connected status changes
+  // Sync filter with activeSubTab and fetch orders
   useEffect(() => {
     if (isConnected && activeSubTab !== 'print') {
-      fetchOrdersByFilter(orderFilter);
+      // Map subtab to filter state
+      const filterMap = {
+        active: 'active',
+        shipped: 'shipped',
+        all: 'all',
+      };
+      const newFilter = filterMap[activeSubTab] || 'active';
+      setOrderFilter(newFilter);
+      fetchOrdersByFilter(newFilter);
     }
-  }, [isConnected, activeSubTab]); // Only re-run if connection status or tab changes
+  }, [isConnected, activeSubTab]); // Re-run when connection status or subtab changes
 
   // Get the orders to display (filtered if filter is active, otherwise from props)
   const getDisplayOrders = () => {
@@ -665,45 +667,10 @@ const OrdersTab = ({ isConnected, authUrl, orders, error, onRefresh }) => {
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Orders</h2>
             <p className="text-sm text-gray-600 mt-1">
-              {orderFilter === 'active' && '🟢 Showing unshipped orders (ready to process)'}
+              {orderFilter === 'active' && '🟢 Showing active orders (ready to process)'}
               {orderFilter === 'shipped' && '📦 Showing shipped orders'}
               {orderFilter === 'all' && '📋 Showing all orders'}
             </p>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            <button
-              onClick={() => handleFilterChange('active')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                orderFilter === 'active'
-                  ? 'bg-green-600 text-white shadow-md'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <span>🟢</span>
-              <span>Unshipped</span>
-            </button>
-            <button
-              onClick={() => handleFilterChange('shipped')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                orderFilter === 'shipped'
-                  ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <span>📦</span>
-              <span>Shipped</span>
-            </button>
-            <button
-              onClick={() => handleFilterChange('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                orderFilter === 'all'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <span>📋</span>
-              <span>All</span>
-            </button>
           </div>
         </div>
 

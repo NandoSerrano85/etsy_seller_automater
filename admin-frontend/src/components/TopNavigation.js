@@ -163,6 +163,8 @@ const TopNavigation = ({
         ],
         tabs: [
           { id: 'all', label: 'All Orders', icon: '📋' },
+          { id: 'active', label: 'Active', icon: '🟢', badge: unshippedOrdersCount || undefined },
+          { id: 'shipped', label: 'Shipped', icon: '📦' },
           { id: 'print', label: 'Send to Print', icon: '🖨️' },
         ],
       };
