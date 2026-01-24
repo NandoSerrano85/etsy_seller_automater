@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import functools
 from datetime import datetime, timezone
 import io
+from server.src.routes.designs.service import get_etsy_shop_name
 
 router = APIRouter(
     prefix='/orders',
@@ -233,10 +234,11 @@ async def list_print_files(
     if not nas_storage.enabled:
         return {"files": [], "message": "NAS storage is not enabled"}
 
-    # Get user's shop name
-    shop_name = current_user.shop_name
-    if not shop_name:
-        raise HTTPException(status_code=404, detail="No shop name configured for user")
+    # Get shop name from etsy_stores table
+    user_id = current_user.get_uuid()
+    shop_name = get_etsy_shop_name(db, user_id)
+    if not shop_name or shop_name.startswith("user_"):
+        raise HTTPException(status_code=404, detail="No Etsy shop configured. Please connect your Etsy store first.")
 
     print_files_path = f"PrintFiles"
 
@@ -289,10 +291,11 @@ async def download_print_file(
     if not nas_storage.enabled:
         raise HTTPException(status_code=503, detail="NAS storage is not enabled")
 
-    # Get user's shop name
-    shop_name = current_user.shop_name
-    if not shop_name:
-        raise HTTPException(status_code=404, detail="No shop name configured for user")
+    # Get shop name from etsy_stores table
+    user_id = current_user.get_uuid()
+    shop_name = get_etsy_shop_name(db, user_id)
+    if not shop_name or shop_name.startswith("user_"):
+        raise HTTPException(status_code=404, detail="No Etsy shop configured. Please connect your Etsy store first.")
 
     # Security: Prevent directory traversal
     if '..' in filename or '/' in filename or '\\' in filename:

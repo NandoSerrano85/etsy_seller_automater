@@ -10,6 +10,7 @@ from server.src.utils.gangsheet_engine import create_gang_sheets_from_db, create
 from server.src.utils.etsy_api_engine import EtsyAPI
 from server.src.utils.nas_storage import nas_storage
 from server.src.entities.template import EtsyProductTemplate
+from server.src.routes.designs.service import get_etsy_shop_name
 
 load_dotenv()
 API_CONFIG = {
@@ -73,8 +74,10 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not user.shop_name:
-        raise HTTPException(status_code=400, detail="User shop name not set")
+    # Get shop name from etsy_stores table
+    shop_name = get_etsy_shop_name(db, user_id)
+    if not shop_name or shop_name.startswith("user_"):
+        raise HTTPException(status_code=400, detail="No Etsy shop configured. Please connect your Etsy store first.")
 
     # OPTIMIZATION: Fetch printer, template, and canvas config in a single optimized query
     db_fetch_start = time.time()
@@ -146,7 +149,7 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
                         relative_path = f"Printfiles/{filename}"
                         success = nas_storage.upload_file(
                             local_file_path=file_path,
-                            shop_name=user.shop_name,
+                            shop_name=shop_name,
                             relative_path=relative_path
                         )
                         if success:
@@ -185,9 +188,10 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        shop_name = user.shop_name
-        if not shop_name:
-            raise HTTPException(status_code=400, detail="User shop name not set")
+        # Get shop name from etsy_stores table
+        shop_name = get_etsy_shop_name(db, user_id)
+        if not shop_name or shop_name.startswith("user_"):
+            raise HTTPException(status_code=400, detail="No Etsy shop configured. Please connect your Etsy store first.")
 
         logging.info(f"Creating print files for user: {user_id}, shop: {shop_name}, template: {template_name}")
 
@@ -525,8 +529,10 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if not user.shop_name:
-            raise HTTPException(status_code=400, detail="User shop name not set")
+        # Get shop name from etsy_stores table
+        shop_name = get_etsy_shop_name(db, user_id)
+        if not shop_name or shop_name.startswith("user_"):
+            raise HTTPException(status_code=400, detail="No Etsy shop configured. Please connect your Etsy store first.")
 
         logging.info(f"Creating print files for {len(order_ids)} selected orders")
 
@@ -535,7 +541,7 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
             shop_id=user.etsy_shop_id,
             order_ids=order_ids,
             template_name=template_name,
-            shop_name=user.shop_name
+            shop_name=shop_name
         )
 
         if not order_items_data or not order_items_data.get('items'):
@@ -604,7 +610,7 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
 
                         # Download from NAS
                         success = nas_storage.download_file(
-                            shop_name=user.shop_name,
+                            shop_name=shop_name,
                             relative_path=design_file_path,
                             local_file_path=local_file_path
                         )
@@ -660,7 +666,7 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                             relative_path = f"Printfiles/{filename}"
                             success = nas_storage.upload_file(
                                 local_file_path=file_path,
-                                shop_name=user.shop_name,
+                                shop_name=shop_name,
                                 relative_path=relative_path
                             )
                             if success:
