@@ -230,6 +230,10 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                 os.makedirs(temp_printfiles_dir, exist_ok=True)
                 os.makedirs(temp_designs_dir, exist_ok=True)
 
+                # Initialize counters
+                download_count = 0
+                skipped_count = 0
+
                 # Download design files from NAS if using NAS storage
                 processed_item_data = item_summary[template_name] if template_name in item_summary else item_summary.get("UVDTF 16oz", {})
 
@@ -240,13 +244,15 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                     logging.info(f"Starting download of {len(processed_item_data['Title'])} design files from NAS")
 
                     updated_titles = []
-                    download_count = 0
-                    for design_file_path in processed_item_data['Title']:
+                    updated_totals = []
+                    original_totals = processed_item_data.get('Total', [])
+
+                    for idx, design_file_path in enumerate(processed_item_data['Title']):
                         if design_file_path:  # Skip empty paths
                             # Skip placeholder files that don't actually exist
                             if "MISSING_" in design_file_path:
-                                logging.warning(f"Skipping download of placeholder file: {design_file_path}")
-                                updated_titles.append(design_file_path)  # Keep placeholder path
+                                logging.warning(f"Skipping placeholder file: {design_file_path}")
+                                skipped_count += 1
                                 continue
 
                             # Design file path is relative to shop (e.g., "UVDTF 16oz/design.png")
@@ -262,21 +268,35 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
 
                             if success:
                                 updated_titles.append(local_file_path)
+                                # Keep the corresponding quantity
+                                if idx < len(original_totals):
+                                    updated_totals.append(original_totals[idx])
                                 download_count += 1
-                                logging.debug(f"Downloaded design file from NAS: {design_file_path} -> {local_file_path}")
+                                logging.debug(f"✅ Downloaded: {design_file_path} -> {local_file_path}")
                             else:
-                                logging.error(f"Failed to download design file from NAS: {design_file_path}")
-                                # Keep original path as fallback (though it might fail)
-                                updated_titles.append(design_file_path)
+                                logging.warning(f"⚠️  Skipping missing file: {design_file_path}")
+                                skipped_count += 1
+                                # Don't add failed files to the list - skip them entirely
                         else:
-                            updated_titles.append(design_file_path)
+                            # Empty path - skip it
+                            skipped_count += 1
 
                     download_duration = time.time() - download_start
-                    logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s")
+                    logging.info(f"✅ Downloaded {download_count} files, ⚠️  skipped {skipped_count} missing files in {download_duration:.2f}s")
 
-                    # Update the processed data with local file paths
+                    # Update the processed data with local file paths and updated totals
                     processed_item_data = processed_item_data.copy()
                     processed_item_data['Title'] = updated_titles
+                    processed_item_data['Total'] = updated_totals
+
+                    # If we have no valid files, return early with error
+                    if not updated_titles:
+                        logging.error("❌ No valid design files found - all files missing or failed to download")
+                        return {
+                            "success": False,
+                            "error": f"No design files available. {skipped_count} files were missing or failed to download.",
+                            "skipped_files": skipped_count
+                        }
 
                 logging.info("Starting gangsheet creation (all NAS connections now closed)")
                 result = create_gang_sheets(
@@ -331,12 +351,18 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                         logging.error(f"Error handling print files: {e}")
                         # Don't fail the entire process if file handling fails
 
+                    success_message = f"Print files created successfully - {result.get('sheets_created', 0)} sheets generated"
+                    if skipped_count > 0:
+                        success_message += f" (⚠️  {skipped_count} missing files skipped)"
+
                     return {
                         "success": True,
-                        "message": f"Print files created successfully - {result.get('sheets_created', 0)} sheets generated",
+                        "message": success_message,
                         "sheets_created": result.get('sheets_created', 0),
                         "uploaded_files": uploaded_files,
-                        "storage_mode": "NAS" if nas_storage.enabled else "Local"
+                        "storage_mode": "NAS" if nas_storage.enabled else "Local",
+                        "files_downloaded": download_count,
+                        "files_skipped": skipped_count
                     }
                 else:
                     return {
