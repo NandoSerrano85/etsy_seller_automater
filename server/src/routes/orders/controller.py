@@ -69,6 +69,71 @@ async def create_gang_sheets_from_mockups(
 
     return await create_gang_sheets_threaded()
 
+@router.get('/print-files-debug')
+async def print_files_debug(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
+    """Debug endpoint to check what's failing in create_print_files"""
+    try:
+        from server.src.entities.printer import Printer
+        from server.src.routes.third_party.service import EtsyAPI
+        from server.src.entities.etsy_product_template import EtsyProductTemplate
+        from server.src.entities.user import User
+        from server.src.utils.file_storage import nas_storage
+
+        user_id = current_user.get_uuid()
+        debug_info = {
+            "user_id": str(user_id),
+            "nas_enabled": nas_storage.enabled if hasattr(nas_storage, 'enabled') else False,
+            "checks": {}
+        }
+
+        # Check 1: User exists
+        try:
+            user = db.query(User).filter(User.id == user_id).first()
+            debug_info["checks"]["user_found"] = user is not None
+            debug_info["checks"]["shop_name"] = user.shop_name if user else None
+        except Exception as e:
+            debug_info["checks"]["user_error"] = str(e)
+
+        # Check 2: Template exists
+        try:
+            template = db.query(EtsyProductTemplate).filter(
+                EtsyProductTemplate.user_id == user_id
+            ).first()
+            debug_info["checks"]["template_found"] = template is not None
+            debug_info["checks"]["template_name"] = template.name if template else None
+        except Exception as e:
+            debug_info["checks"]["template_error"] = str(e)
+
+        # Check 3: Printer exists
+        try:
+            printer = db.query(Printer).filter(
+                Printer.user_id == user_id,
+                Printer.is_default == True,
+                Printer.is_active == True
+            ).first()
+            debug_info["checks"]["printer_found"] = printer is not None
+        except Exception as e:
+            debug_info["checks"]["printer_error"] = str(e)
+
+        # Check 4: Etsy API connection
+        try:
+            etsy_api = EtsyAPI(user_id, db)
+            debug_info["checks"]["etsy_api_created"] = True
+        except Exception as e:
+            debug_info["checks"]["etsy_api_error"] = str(e)
+
+        return debug_info
+
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 @router.get('/create-print-files', response_model=model.PrintFilesResponse)
 async def create_print_files(
     current_user: CurrentUser,
