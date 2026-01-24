@@ -76,11 +76,22 @@ async def create_print_files(
     format: str = 'PNG'
 ):
     """Create print files (threaded - heavy file processing)"""
-    @run_in_thread
-    def create_print_files_threaded():
-        return service.create_print_files(current_user, db, format=format)
+    try:
+        @run_in_thread
+        def create_print_files_threaded():
+            return service.create_print_files(current_user, db, format=format)
 
-    return await create_print_files_threaded()
+        result = await create_print_files_threaded()
+        return result
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"❌ Error in create_print_files: {str(e)}")
+        print(f"📋 Traceback: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create print files: {str(e)}"
+        )
 
 @router.get('/all-orders')
 async def get_all_orders(

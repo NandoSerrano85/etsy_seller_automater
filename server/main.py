@@ -213,9 +213,10 @@ app.add_middleware(
         "http://127.0.0.1:3001"
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=["*"],
-    allow_origin_regex=r"https://.*\.railway\.app",  # Use regex for Railway subdomains
+    max_age=3600,  # Cache preflight requests for 1 hour
+    allow_origin_regex=r"https://.*\.railway\.app|https://.*\.vercel\.app|https://.*\.netlify\.app",  # Allow all deployment platforms
     expose_headers=["*"]
 )
 
@@ -232,6 +233,25 @@ print("🚀 Backend fixes for CORS and 500 errors applied")
 @app.options("/{path:path}")
 async def options_handler(path: str):
     return {"message": "OK"}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "environment": os.getenv('RAILWAY_ENVIRONMENT', 'development'),
+        "cors_enabled": True,
+        "multi_tenant": os.getenv('ENABLE_MULTI_TENANT', 'false')
+    }
+
+# CORS debug endpoint
+@app.get("/api/cors-test")
+async def cors_test():
+    return {
+        "message": "CORS is working correctly",
+        "frontend_url": os.getenv('FRONTEND_URL', 'not-set'),
+        "timestamp": str(asyncio.get_event_loop().time())
+    }
 
 print("📋 Registering routes...")
 register_routes(app)
