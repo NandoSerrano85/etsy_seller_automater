@@ -1,7 +1,13 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": ".next",
   "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/store/:slug/:path*",
+      "destination": "/store/:slug/:path*"
+    }
+  ],
   "env": {
     "NEXT_PUBLIC_API_URL": "https://printer-automation-backend-production.up.railway.app"
   }
