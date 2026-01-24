@@ -245,7 +245,9 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
 
                     updated_titles = []
                     updated_totals = []
+                    updated_sizes = []
                     original_totals = processed_item_data.get('Total', [])
+                    original_sizes = processed_item_data.get('Size', [])
 
                     for idx, design_file_path in enumerate(processed_item_data['Title']):
                         if design_file_path:  # Skip empty paths
@@ -268,9 +270,13 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
 
                             if success:
                                 updated_titles.append(local_file_path)
-                                # Keep the corresponding quantity
+                                # Keep the corresponding quantity and size
                                 if idx < len(original_totals):
                                     updated_totals.append(original_totals[idx])
+                                if idx < len(original_sizes):
+                                    updated_sizes.append(original_sizes[idx])
+                                else:
+                                    updated_sizes.append('')  # Default to empty if size not available
                                 download_count += 1
                                 logging.debug(f"✅ Downloaded: {design_file_path} -> {local_file_path}")
                             else:
@@ -284,10 +290,19 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                     download_duration = time.time() - download_start
                     logging.info(f"✅ Downloaded {download_count} files, ⚠️  skipped {skipped_count} missing files in {download_duration:.2f}s")
 
-                    # Update the processed data with local file paths and updated totals
+                    # Update the processed data with local file paths and updated arrays
                     processed_item_data = processed_item_data.copy()
                     processed_item_data['Title'] = updated_titles
                     processed_item_data['Total'] = updated_totals
+                    processed_item_data['Size'] = updated_sizes
+
+                    # Verify array lengths match
+                    if len(updated_titles) != len(updated_totals) or len(updated_titles) != len(updated_sizes):
+                        logging.error(f"❌ Array length mismatch: Title={len(updated_titles)}, Total={len(updated_totals)}, Size={len(updated_sizes)}")
+                        return {
+                            "success": False,
+                            "error": "Data mismatch after filtering missing files"
+                        }
 
                     # If we have no valid files, return early with error
                     if not updated_titles:
