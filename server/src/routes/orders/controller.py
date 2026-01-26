@@ -142,16 +142,25 @@ async def create_print_files(
     format: str = 'PNG'
 ):
     """Create print files (threaded - heavy file processing)"""
+    logging.info(f"🎯 /create-print-files endpoint called by user: {current_user.get_uuid()}")
     try:
         @run_in_thread
         def create_print_files_threaded():
             return service.create_print_files(current_user, db, format=format)
 
+        logging.info("⏳ Starting threaded print file creation...")
         result = await create_print_files_threaded()
+        logging.info(f"✅ Print file creation completed: {result}")
         return result
+    except HTTPException as http_exc:
+        # Re-raise HTTP exceptions with proper status codes
+        logging.error(f"❌ HTTP Exception in controller: {http_exc.status_code} - {http_exc.detail}")
+        raise
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
+        logging.error(f"❌ Error in create_print_files controller: {str(e)}")
+        logging.error(f"📋 Traceback: {error_details}")
         print(f"❌ Error in create_print_files: {str(e)}")
         print(f"📋 Traceback: {error_details}")
         raise HTTPException(
@@ -234,11 +243,14 @@ async def list_print_files(
     if not nas_storage.enabled:
         return {"files": [], "message": "NAS storage is not enabled"}
 
-    # Get shop name from etsy_stores table
+    # Get shop name from etsy_stores table, fallback to current_user.shop_name
     user_id = current_user.get_uuid()
     shop_name = get_etsy_shop_name(db, user_id)
     if not shop_name or shop_name.startswith("user_"):
-        raise HTTPException(status_code=404, detail="No Etsy shop configured. Please connect your Etsy store first.")
+        # Fallback to user.shop_name for backwards compatibility
+        shop_name = current_user.shop_name if hasattr(current_user, 'shop_name') else None
+        if not shop_name:
+            raise HTTPException(status_code=404, detail="No shop name configured. Please connect your Etsy store or set shop name in settings.")
 
     print_files_path = f"PrintFiles"
 
@@ -291,11 +303,14 @@ async def download_print_file(
     if not nas_storage.enabled:
         raise HTTPException(status_code=503, detail="NAS storage is not enabled")
 
-    # Get shop name from etsy_stores table
+    # Get shop name from etsy_stores table, fallback to current_user.shop_name
     user_id = current_user.get_uuid()
     shop_name = get_etsy_shop_name(db, user_id)
     if not shop_name or shop_name.startswith("user_"):
-        raise HTTPException(status_code=404, detail="No Etsy shop configured. Please connect your Etsy store first.")
+        # Fallback to user.shop_name for backwards compatibility
+        shop_name = current_user.shop_name if hasattr(current_user, 'shop_name') else None
+        if not shop_name:
+            raise HTTPException(status_code=404, detail="No shop name configured. Please connect your Etsy store or set shop name in settings.")
 
     # Security: Prevent directory traversal
     if '..' in filename or '/' in filename or '\\' in filename:

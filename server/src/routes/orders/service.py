@@ -74,10 +74,13 @@ def create_gang_sheets_from_mockups(template_name: str, current_user, db, printe
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Get shop name from etsy_stores table
+    # Get shop name from etsy_stores table, fallback to user.shop_name
     shop_name = get_etsy_shop_name(db, user_id)
     if not shop_name or shop_name.startswith("user_"):
-        raise HTTPException(status_code=400, detail="No Etsy shop configured. Please connect your Etsy store first.")
+        # Fallback to user.shop_name for backwards compatibility
+        shop_name = user.shop_name if hasattr(user, 'shop_name') else None
+        if not shop_name:
+            raise HTTPException(status_code=400, detail="No shop name configured. Please connect your Etsy store or set shop name in settings.")
 
     # OPTIMIZATION: Fetch printer, template, and canvas config in a single optimized query
     db_fetch_start = time.time()
@@ -180,20 +183,38 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
     from server.src.entities.canvas_config import CanvasConfig
 
     try:
+        logging.info("🚀 create_print_files: Starting request")
+
         user_id = current_user.get_uuid()
+        logging.info(f"📋 create_print_files: User ID: {user_id}")
+
         etsy_api = EtsyAPI(user_id, db)
+        logging.info("✅ create_print_files: EtsyAPI initialized")
+
         template = db.query(EtsyProductTemplate).filter(EtsyProductTemplate.user_id == user_id).first() if hasattr(db, 'query') else None
         template_name = template.name if template else "UVDTF 16oz"
+        logging.info(f"📋 create_print_files: Template name: {template_name}")
+
         user = db.query(User).filter(User.id==user_id).first()
         if not user:
+            logging.error(f"❌ create_print_files: User not found for ID {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Get shop name from etsy_stores table
-        shop_name = get_etsy_shop_name(db, user_id)
-        if not shop_name or shop_name.startswith("user_"):
-            raise HTTPException(status_code=400, detail="No Etsy shop configured. Please connect your Etsy store first.")
+        logging.info(f"✅ create_print_files: User found: {user.email if hasattr(user, 'email') else 'no email'}")
 
-        logging.info(f"Creating print files for user: {user_id}, shop: {shop_name}, template: {template_name}")
+        # Get shop name from etsy_stores table, fallback to user.shop_name
+        shop_name = get_etsy_shop_name(db, user_id)
+        logging.info(f"📋 create_print_files: Shop name from etsy_stores: {shop_name}")
+
+        if not shop_name or shop_name.startswith("user_"):
+            # Fallback to user.shop_name for backwards compatibility
+            shop_name = user.shop_name if hasattr(user, 'shop_name') else None
+            logging.info(f"📋 create_print_files: Using fallback shop_name from user: {shop_name}")
+            if not shop_name:
+                logging.error("❌ create_print_files: No shop name found in etsy_stores or user table")
+                raise HTTPException(status_code=400, detail="No shop name configured. Please connect your Etsy store or set shop name in settings.")
+
+        logging.info(f"✅ Creating print files for user: {user_id}, shop: {shop_name}, template: {template_name}")
 
         # Get default printer if not specified
         if printer_id is None:
@@ -217,15 +238,24 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
 
         # Use NAS-compatible version for production, fallback to local for development
         if nas_storage.enabled:
-            logging.info("Using NAS storage - fetching design files from QNAP NAS")
-            # Use NAS-compatible method to get item summary with design files from NAS
-            item_summary = etsy_api.fetch_open_orders_items_nas(shop_name, template_name) if etsy_api else None
+            logging.info("🔵 Using NAS storage - fetching design files from QNAP NAS")
+            try:
+                # Use NAS-compatible method to get item summary with design files from NAS
+                item_summary = etsy_api.fetch_open_orders_items_nas(shop_name, template_name) if etsy_api else None
+                logging.info(f"✅ fetch_open_orders_items_nas completed. Summary exists: {item_summary is not None}")
+            except Exception as e:
+                logging.error(f"❌ Error in fetch_open_orders_items_nas: {str(e)}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
+                raise
         else:
             # Fallback to local storage if NAS is not available (development mode)
+            logging.info("🔵 Using local storage")
             local_root = os.getenv('LOCAL_ROOT_PATH')
             if not local_root:
                 raise HTTPException(status_code=500, detail="Neither NAS storage nor LOCAL_ROOT_PATH are available")
             item_summary = etsy_api.fetch_open_orders_items(f"{local_root}{shop_name}/", template_name) if etsy_api else None
+            logging.info(f"✅ fetch_open_orders_items completed. Summary exists: {item_summary is not None}")
         if item_summary and isinstance(item_summary, dict):
             # Use temporary directory for gang sheet generation
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -393,11 +423,19 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                 "success": False,
                 "error": "No valid item summary data available"
             }
+    except HTTPException as e:
+        # Re-raise HTTPExceptions so they propagate with proper status codes
+        logging.error(f"❌ HTTP Error in create_print_files: {e.status_code} - {e.detail}")
+        raise
     except Exception as e:
-        logging.error(f"Error creating gang sheets: {str(e)}")
+        import traceback
+        error_traceback = traceback.format_exc()
+        logging.error(f"❌ Error creating print files: {str(e)}")
+        logging.error(f"📋 Full traceback:\n{error_traceback}")
         return {
             "success": False,
-            "error": f"Failed to create gang sheets: {str(e)}"
+            "error": f"Failed to create print files: {str(e)}",
+            "traceback": error_traceback[:500]  # Include first 500 chars of traceback for debugging
         }
 
 def get_all_orders_with_details(current_user, db, limit=100, offset=0, was_shipped=None, was_paid=None, was_canceled=None):
@@ -529,10 +567,13 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Get shop name from etsy_stores table
+        # Get shop name from etsy_stores table, fallback to user.shop_name
         shop_name = get_etsy_shop_name(db, user_id)
         if not shop_name or shop_name.startswith("user_"):
-            raise HTTPException(status_code=400, detail="No Etsy shop configured. Please connect your Etsy store first.")
+            # Fallback to user.shop_name for backwards compatibility
+            shop_name = user.shop_name if hasattr(user, 'shop_name') else None
+            if not shop_name:
+                raise HTTPException(status_code=400, detail="No shop name configured. Please connect your Etsy store or set shop name in settings.")
 
         logging.info(f"Creating print files for {len(order_ids)} selected orders")
 
