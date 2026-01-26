@@ -786,82 +786,109 @@ def create_gang_sheets(
                    cropped_gang_sheet = gang_sheet[ymin:ymax+1, xmin:xmax+1]
                    print(f"dpi: {dpi}")
                    print(f"std_dpi: {std_dpi}")
-                   scale_factor = std_dpi / dpi
-                   new_width, new_height = int((xmax - xmin + 1) * scale_factor), int((ymax - ymin + 1) * scale_factor)
-                   
-                   if new_width > 0 and new_height > 0:
-                       resized_gang_sheet = cv2.resize(cropped_gang_sheet, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
-                       today = date.today()
-                       # Base filename without extension
-                       base_filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}"
+                   logging.info(f"📐 DPI settings - dpi: {dpi}, std_dpi: {std_dpi}")
 
-                       # Adjust placed_images positions to account for cropping and scaling
+                   try:
                        scale_factor = std_dpi / dpi
-                       adjusted_placed_images = []
-                       for img_info in placed_images:
-                           # Adjust for cropping
-                           adj_x = img_info['x'] - xmin
-                           adj_y = img_info['y'] - ymin
-                           # Adjust for scaling
-                           scaled_x = int(adj_x * scale_factor)
-                           scaled_y = int(adj_y * scale_factor)
-                           scaled_width = int(img_info['width'] * scale_factor)
-                           scaled_height = int(img_info['height'] * scale_factor)
+                       new_width, new_height = int((xmax - xmin + 1) * scale_factor), int((ymax - ymin + 1) * scale_factor)
+                       logging.info(f"📏 Calculated dimensions - width: {new_width}, height: {new_height}, scale: {scale_factor}")
 
-                           # Resize the image data as well
-                           scaled_image = cv2.resize(img_info['image_data'], (scaled_width, scaled_height), interpolation=cv2.INTER_CUBIC)
+                       if new_width > 0 and new_height > 0:
+                           logging.info(f"🔄 Resizing gang sheet from {cropped_gang_sheet.shape} to ({new_width}, {new_height})")
+                           resized_gang_sheet = cv2.resize(cropped_gang_sheet, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
+                           logging.info(f"✅ Gang sheet resized successfully")
 
-                           adjusted_placed_images.append({
-                               'label': img_info['label'],
-                               'x': scaled_x,
-                               'y': scaled_y,
-                               'width': scaled_width,
-                               'height': scaled_height,
-                               'image_data': scaled_image
-                           })
+                           today = date.today()
+                           # Base filename without extension
+                           base_filename = f"NookTransfers {today.strftime('%m%d%Y')} UVDTF {image_type} {text} part {part}"
+                           logging.info(f"💾 Preparing to save: {base_filename}")
 
-                       # Use the new save function that supports multiple formats with layers
-                       save_image_with_format(
-                           resized_gang_sheet,
-                           output_path,
-                           base_filename,
-                           file_format=file_format,
-                           target_dpi=(dpi, dpi),
-                           placed_images=adjusted_placed_images
-                       )
-                       logging.info(f"Successfully created gang sheet with {len(adjusted_placed_images)} layers: {base_filename}.{file_format.lower()}")
-                       
-                       # CRITICAL: Immediately free memory after successful save
-                       # This frees up the ~2.95GB gang sheet memory before starting next part
-                       memory_before_dump = None
-                       if PSUTIL_AVAILABLE:
-                           try:
-                               memory_before_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-                           except:
-                               pass
-                       
-                       # Delete processed arrays to free memory immediately
-                       del resized_gang_sheet
-                       del cropped_gang_sheet
-                       
-                       # Force immediate garbage collection
-                       import gc
-                       for _ in range(2):
-                           gc.collect()
-                       
-                       if PSUTIL_AVAILABLE and memory_before_dump:
-                           try:
-                               memory_after_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-                               memory_freed = memory_before_dump - memory_after_dump
-                               logging.info(f"Immediately freed {memory_freed:.2f}GB after saving part {part}")
-                           except:
+                           # Adjust placed_images positions to account for cropping and scaling
+                           scale_factor = std_dpi / dpi
+                           adjusted_placed_images = []
+                           logging.info(f"🔄 Adjusting {len(placed_images)} image layers...")
+
+                           for idx, img_info in enumerate(placed_images):
+                               try:
+                                   # Adjust for cropping
+                                   adj_x = img_info['x'] - xmin
+                                   adj_y = img_info['y'] - ymin
+                                   # Adjust for scaling
+                                   scaled_x = int(adj_x * scale_factor)
+                                   scaled_y = int(adj_y * scale_factor)
+                                   scaled_width = int(img_info['width'] * scale_factor)
+                                   scaled_height = int(img_info['height'] * scale_factor)
+
+                                   # Resize the image data as well
+                                   if scaled_width > 0 and scaled_height > 0:
+                                       scaled_image = cv2.resize(img_info['image_data'], (scaled_width, scaled_height), interpolation=cv2.INTER_CUBIC)
+
+                                       adjusted_placed_images.append({
+                                           'label': img_info['label'],
+                                           'x': scaled_x,
+                                           'y': scaled_y,
+                                           'width': scaled_width,
+                                           'height': scaled_height,
+                                           'image_data': scaled_image
+                                       })
+                                   else:
+                                       logging.warning(f"⚠️  Skipping image layer {idx}: invalid dimensions ({scaled_width}x{scaled_height})")
+                               except Exception as layer_error:
+                                   logging.error(f"❌ Error resizing image layer {idx}: {str(layer_error)}")
+                                   # Continue with other layers
+
+                           logging.info(f"✅ Adjusted {len(adjusted_placed_images)} image layers")
+                           logging.info(f"💾 Saving gang sheet as {file_format}...")
+
+                           # Use the new save function that supports multiple formats with layers
+                           save_image_with_format(
+                               resized_gang_sheet,
+                               output_path,
+                               base_filename,
+                               file_format=file_format,
+                               target_dpi=(dpi, dpi),
+                               placed_images=adjusted_placed_images
+                           )
+                           logging.info(f"✅ Successfully created gang sheet with {len(adjusted_placed_images)} layers: {base_filename}.{file_format.lower()}")
+
+                           # CRITICAL: Immediately free memory after successful save
+                           # This frees up the ~2.95GB gang sheet memory before starting next part
+                           memory_before_dump = None
+                           if PSUTIL_AVAILABLE:
+                               try:
+                                   memory_before_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                               except:
+                                   pass
+
+                           # Delete processed arrays to free memory immediately
+                           del resized_gang_sheet
+                           del cropped_gang_sheet
+
+                           # Force immediate garbage collection
+                           import gc
+                           for _ in range(2):
+                               gc.collect()
+
+                           if PSUTIL_AVAILABLE and memory_before_dump:
+                               try:
+                                   memory_after_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                   memory_freed = memory_before_dump - memory_after_dump
+                                   logging.info(f"Immediately freed {memory_freed:.2f}GB after saving part {part}")
+                               except:
+                                   logging.info(f"Memory freed after saving part {part}")
+                           else:
                                logging.info(f"Memory freed after saving part {part}")
+
+                           part += 1
                        else:
-                           logging.info(f"Memory freed after saving part {part}")
-                       
-                       part += 1
-                   else:
-                       logging.warning(f"Invalid dimensions for gang sheet {part}: {new_width}x{new_height}")
+                           logging.warning(f"Invalid dimensions for gang sheet {part}: {new_width}x{new_height}")
+                   except Exception as resize_error:
+                       logging.error(f"❌ CRASH during gang sheet processing: {str(resize_error)}")
+                       logging.error(f"📋 Gang sheet shape: {cropped_gang_sheet.shape if cropped_gang_sheet is not None else 'None'}")
+                       logging.error(f"📋 Target size: ({new_width if 'new_width' in locals() else 'unknown'}, {new_height if 'new_height' in locals() else 'unknown'})")
+                       import traceback
+                       logging.error(f"📋 Traceback:\n{traceback.format_exc()}")
+                       raise
                else:
                    logging.warning(f"Sheet {part} is empty (all transparent). Skipping.")
            except Exception as e:
