@@ -18,7 +18,8 @@ const TemplateSelector = ({ printerId, currentTemplateIds = [], onTemplatesUpdat
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/settings/product-template');
+      // Fetch templates from all platforms (Etsy, Shopify, CraftFlow)
+      const response = await api.get('/settings/all-templates');
       setAvailableTemplates(response || []);
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -40,6 +41,34 @@ const TemplateSelector = ({ printerId, currentTemplateIds = [], onTemplatesUpdat
       newSelected.add(templateId);
     }
     setSelectedTemplates(newSelected);
+  };
+
+  // Group templates by platform
+  const groupTemplatesByPlatform = () => {
+    const grouped = {
+      etsy: [],
+      shopify: [],
+      craftflow: [],
+    };
+
+    availableTemplates.forEach(template => {
+      const platform = template.source || 'etsy'; // Default to etsy for backwards compatibility
+      if (grouped[platform]) {
+        grouped[platform].push(template);
+      }
+    });
+
+    return grouped;
+  };
+
+  // Get platform badge color and label
+  const getPlatformBadge = platform => {
+    const badges = {
+      etsy: { label: 'Etsy', color: 'bg-orange-100 text-orange-700 border-orange-300' },
+      shopify: { label: 'Shopify', color: 'bg-green-100 text-green-700 border-green-300' },
+      craftflow: { label: 'CraftFlow', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+    };
+    return badges[platform] || badges.etsy;
   };
 
   const handleSave = async () => {
@@ -133,39 +162,65 @@ const TemplateSelector = ({ printerId, currentTemplateIds = [], onTemplatesUpdat
                 <p className="text-sage-600">Create some templates first to associate them with this printer.</p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {availableTemplates.map(template => (
-                  <div
-                    key={template.id}
-                    onClick={() => toggleTemplate(template.id)}
-                    className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
-                      selectedTemplates.has(template.id)
-                        ? 'border-sage-500 bg-sage-50'
-                        : 'border-sage-200 hover:border-sage-300'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                          selectedTemplates.has(template.id)
-                            ? 'bg-sage-600 border-sage-600'
-                            : 'border-sage-300 bg-white'
-                        }`}
-                      >
-                        {selectedTemplates.has(template.id) && (
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 12 12">
-                            <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" fill="none" />
-                          </svg>
-                        )}
+              <div className="space-y-6">
+                {Object.entries(groupTemplatesByPlatform()).map(([platform, templates]) => {
+                  if (templates.length === 0) return null;
+                  const platformBadge = getPlatformBadge(platform);
+
+                  return (
+                    <div key={platform}>
+                      <div className="flex items-center space-x-2 mb-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${platformBadge.color}`}>
+                          {platformBadge.label}
+                        </span>
+                        <span className="text-sm text-sage-500">
+                          {templates.length} template{templates.length !== 1 ? 's' : ''}
+                        </span>
                       </div>
 
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sage-900">{template.name}</h4>
-                        {template.template_title && <p className="text-sm text-sage-500">{template.template_title}</p>}
+                      <div className="space-y-2 ml-2">
+                        {templates.map(template => (
+                          <div
+                            key={template.id}
+                            onClick={() => toggleTemplate(template.id)}
+                            className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                              selectedTemplates.has(template.id)
+                                ? 'border-sage-500 bg-sage-50'
+                                : 'border-sage-200 hover:border-sage-300'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div
+                                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                  selectedTemplates.has(template.id)
+                                    ? 'bg-sage-600 border-sage-600'
+                                    : 'border-sage-300 bg-white'
+                                }`}
+                              >
+                                {selectedTemplates.has(template.id) && (
+                                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 12 12">
+                                    <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" fill="none" />
+                                  </svg>
+                                )}
+                              </div>
+
+                              <div className="flex-1">
+                                <h4 className="font-medium text-sage-900">{template.name}</h4>
+                                {template.template_title && (
+                                  <p className="text-sm text-sage-500">{template.template_title}</p>
+                                )}
+                              </div>
+
+                              <span className={`px-2 py-1 rounded text-xs font-medium border ${platformBadge.color}`}>
+                                {platformBadge.label}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

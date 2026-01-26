@@ -254,7 +254,8 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
             if canvas_config:
                 logging.info(f"Using canvas config: {canvas_config.name}")
 
-        # Extract dimensions and DPI from database (with fallbacks if not configured)
+        # Extract gang sheet dimensions and DPI from PRINTER table only
+        # CanvasConfig is for design dimensions, not gang sheet dimensions
         if printer and printer.dpi:
             gang_sheet_dpi = printer.dpi
         else:
@@ -265,20 +266,20 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
         else:
             gang_sheet_max_width = 23
 
-        if canvas_config and canvas_config.max_height_inches:
-            gang_sheet_max_height = canvas_config.max_height_inches
+        if printer and printer.max_height_inches:
+            gang_sheet_max_height = printer.max_height_inches
         else:
             gang_sheet_max_height = 215
 
         logging.info(f"📐 Gang sheet config: {gang_sheet_max_width}\"W × {gang_sheet_max_height}\"H @ {gang_sheet_dpi} DPI")
         if printer:
-            logging.info(f"   Printer: {printer.name} (ID: {printer.id})")
+            logging.info(f"   Source: Printer '{printer.name}' (ID: {printer.id})")
         else:
-            logging.info(f"   Printer: Using defaults (no printer configured)")
+            logging.info(f"   Source: Defaults (no printer configured)")
         if canvas_config:
-            logging.info(f"   Canvas: {canvas_config.name} (ID: {canvas_config.id})")
+            logging.info(f"   Canvas config: {canvas_config.name} (for design dimensions only)")
         else:
-            logging.info(f"   Canvas: Using defaults (no canvas config found)")
+            logging.info(f"   Canvas config: None found")
 
         # Use NAS-compatible version for production, fallback to local for development
         if nas_storage.enabled:
@@ -730,7 +731,8 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
             if canvas_config:
                 logging.info(f"Using canvas config: {canvas_config.name}")
 
-        # Extract dimensions and DPI from database (with fallbacks if not configured)
+        # Extract gang sheet dimensions and DPI from PRINTER table only
+        # CanvasConfig is for design dimensions, not gang sheet dimensions
         if printer and printer.dpi:
             gang_sheet_dpi = printer.dpi
         else:
@@ -741,20 +743,20 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         else:
             gang_sheet_max_width = 23
 
-        if canvas_config and canvas_config.max_height_inches:
-            gang_sheet_max_height = canvas_config.max_height_inches
+        if printer and printer.max_height_inches:
+            gang_sheet_max_height = printer.max_height_inches
         else:
             gang_sheet_max_height = 215
 
         logging.info(f"📐 Gang sheet config: {gang_sheet_max_width}\"W × {gang_sheet_max_height}\"H @ {gang_sheet_dpi} DPI")
         if printer:
-            logging.info(f"   Printer: {printer.name} (ID: {printer.id})")
+            logging.info(f"   Source: Printer '{printer.name}' (ID: {printer.id})")
         else:
-            logging.info(f"   Printer: Using defaults (no printer configured)")
+            logging.info(f"   Source: Defaults (no printer configured)")
         if canvas_config:
-            logging.info(f"   Canvas: {canvas_config.name} (ID: {canvas_config.id})")
+            logging.info(f"   Canvas config: {canvas_config.name} (for design dimensions only)")
         else:
-            logging.info(f"   Canvas: Using defaults (no canvas config found)")
+            logging.info(f"   Canvas config: None found")
 
         db_fetch_time = time.time() - db_fetch_start
         logging.info(f"Database configuration fetch completed in {db_fetch_time:.3f}s")
