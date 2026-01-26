@@ -216,25 +216,64 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
 
         logging.info(f"✅ Creating print files for user: {user_id}, shop: {shop_name}, template: {template_name}")
 
-        # Get default printer if not specified
+        # Fetch printer configuration from database
+        printer = None
         if printer_id is None:
-            default_printer = db.query(Printer).filter(
+            printer = db.query(Printer).filter(
                 Printer.user_id == user_id,
                 Printer.is_default == True,
                 Printer.is_active == True
             ).first()
-            if default_printer:
-                printer_id = default_printer.id
-                logging.info(f"Using default printer: {default_printer.name}")
+            if printer:
+                printer_id = printer.id
+                logging.info(f"Using default printer: {printer.name}")
+        else:
+            # Fetch printer by ID
+            printer = db.query(Printer).filter(
+                Printer.id == printer_id,
+                Printer.user_id == user_id
+            ).first()
+            if printer:
+                logging.info(f"Using printer: {printer.name}")
 
-        # Get canvas config from template if not specified
+        if not printer:
+            return {
+                "success": False,
+                "error": "No printer found. Please configure a printer in settings."
+            }
+
+        # Fetch canvas configuration from database
+        canvas_config = None
         if canvas_config_id is None and template and template.canvas_configs:
             # Use first active canvas config
             for canvas in template.canvas_configs:
                 if canvas.is_active:
+                    canvas_config = canvas
                     canvas_config_id = canvas.id
                     logging.info(f"Using canvas config: {canvas.name}")
                     break
+        else:
+            # Fetch canvas config by ID
+            canvas_config = db.query(CanvasConfig).filter(
+                CanvasConfig.id == canvas_config_id
+            ).first()
+            if canvas_config:
+                logging.info(f"Using canvas config: {canvas_config.name}")
+
+        if not canvas_config:
+            return {
+                "success": False,
+                "error": f"No canvas configuration found for template '{template_name}'"
+            }
+
+        # Extract dimensions and DPI from database
+        gang_sheet_dpi = printer.dpi if printer.dpi else 400
+        gang_sheet_max_width = printer.max_width_inches if printer.max_width_inches else 23
+        gang_sheet_max_height = canvas_config.max_height_inches if canvas_config.max_height_inches else 215
+
+        logging.info(f"📐 Gang sheet config from DB: {gang_sheet_max_width}\"W × {gang_sheet_max_height}\"H @ {gang_sheet_dpi} DPI")
+        logging.info(f"   Printer: {printer.name} (ID: {printer.id})")
+        logging.info(f"   Canvas: {canvas_config.name} (ID: {canvas_config.id})")
 
         # Use NAS-compatible version for production, fallback to local for development
         if nas_storage.enabled:
@@ -353,6 +392,10 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                     template_name,
                     temp_printfiles_dir + "/",
                     item_summary["Total QTY"] if "Total QTY" in item_summary else 0,
+                    max_width_inches=gang_sheet_max_width,
+                    max_height_inches=gang_sheet_max_height,
+                    dpi=gang_sheet_dpi,
+                    std_dpi=gang_sheet_dpi,
                     file_format=format
                 )
 
@@ -638,16 +681,34 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         # Get configuration (same as create_print_files)
         db_fetch_start = time.time()
 
+        # Fetch printer configuration from database
+        printer = None
         if printer_id is None:
-            default_printer = db.query(Printer).filter(
+            printer = db.query(Printer).filter(
                 Printer.user_id == user_id,
                 Printer.is_default == True,
                 Printer.is_active == True
             ).first()
-            if default_printer:
-                printer_id = default_printer.id
-                logging.info(f"Using default printer: {default_printer.name}")
+            if printer:
+                printer_id = printer.id
+                logging.info(f"Using default printer: {printer.name}")
+        else:
+            # Fetch printer by ID
+            printer = db.query(Printer).filter(
+                Printer.id == printer_id,
+                Printer.user_id == user_id
+            ).first()
+            if printer:
+                logging.info(f"Using printer: {printer.name}")
 
+        if not printer:
+            return {
+                "success": False,
+                "error": "No printer found. Please configure a printer in settings."
+            }
+
+        # Fetch canvas configuration from database
+        canvas_config = None
         if canvas_config_id is None:
             template = db.query(EtsyProductTemplate).options(
                 joinedload(EtsyProductTemplate.canvas_configs)
@@ -658,9 +719,32 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
             if template and template.canvas_configs:
                 for canvas in template.canvas_configs:
                     if canvas.is_active:
+                        canvas_config = canvas
                         canvas_config_id = canvas.id
                         logging.info(f"Using canvas config: {canvas.name}")
                         break
+        else:
+            # Fetch canvas config by ID
+            canvas_config = db.query(CanvasConfig).filter(
+                CanvasConfig.id == canvas_config_id
+            ).first()
+            if canvas_config:
+                logging.info(f"Using canvas config: {canvas_config.name}")
+
+        if not canvas_config:
+            return {
+                "success": False,
+                "error": f"No canvas configuration found for template '{template_name}'"
+            }
+
+        # Extract dimensions and DPI from database
+        gang_sheet_dpi = printer.dpi if printer.dpi else 400
+        gang_sheet_max_width = printer.max_width_inches if printer.max_width_inches else 23
+        gang_sheet_max_height = canvas_config.max_height_inches if canvas_config.max_height_inches else 215
+
+        logging.info(f"📐 Gang sheet config from DB: {gang_sheet_max_width}\"W × {gang_sheet_max_height}\"H @ {gang_sheet_dpi} DPI")
+        logging.info(f"   Printer: {printer.name} (ID: {printer.id})")
+        logging.info(f"   Canvas: {canvas_config.name} (ID: {canvas_config.id})")
 
         db_fetch_time = time.time() - db_fetch_start
         logging.info(f"Database configuration fetch completed in {db_fetch_time:.3f}s")
@@ -788,8 +872,10 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                 image_type=template_name,
                 output_path=output_dir,
                 total_images=len(order_items_data.get('Title', [])),
-                dpi=400,
-                std_dpi=400,
+                max_width_inches=gang_sheet_max_width,
+                max_height_inches=gang_sheet_max_height,
+                dpi=gang_sheet_dpi,
+                std_dpi=gang_sheet_dpi,
                 file_format=format
             )
             gangsheet_time = time.time() - gangsheet_start
