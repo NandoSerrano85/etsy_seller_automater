@@ -606,23 +606,47 @@ def create_gang_sheets(
                    gc.collect()
                logging.info("✅ Garbage collection complete")
                
-               # Check available memory if psutil is available
+               # CRITICAL: Check memory limits and prevent OOM kills
                if PSUTIL_AVAILABLE:
                    try:
                        process = psutil.Process(os.getpid())
                        memory_info = process.memory_info()
                        available_memory_gb = psutil.virtual_memory().available / (1024**3)
                        current_memory_gb = memory_info.rss / (1024**3)
-                       
-                       logging.info(f"Memory before allocation: {current_memory_gb:.2f}GB used, {available_memory_gb:.2f}GB available")
-                       
-                       if memory_gb > available_memory_gb * 0.8:  # Don't use more than 80% of available memory
-                           logging.error(f"Insufficient memory: need {memory_gb:.2f}GB, only {available_memory_gb:.2f}GB available")
+                       total_memory_gb = psutil.virtual_memory().total / (1024**3)
+                       memory_percent = (current_memory_gb / total_memory_gb) * 100
+
+                       logging.info(f"💾 Memory status: {current_memory_gb:.2f}GB / {total_memory_gb:.2f}GB ({memory_percent:.1f}%)")
+                       logging.info(f"💾 Available: {available_memory_gb:.2f}GB, Need: {memory_gb:.2f}GB")
+
+                       # Railway typically has 8GB on Hobby plan
+                       # If we're using > 80% before allocation, we'll likely OOM
+                       if memory_percent > 80:
+                           logging.error(f"❌ CRITICAL: Already using {memory_percent:.1f}% of system memory!")
+                           logging.error(f"❌ Cannot allocate {memory_gb:.2f}GB - would exceed memory limit")
+                           logging.error(f"❌ Current usage: {current_memory_gb:.2f}GB / {total_memory_gb:.2f}GB")
+                           logging.error(f"🔥 EMERGENCY: Process will be OOM killed if we continue")
                            return None
+
+                       # Warn if we'll exceed 90% after allocation
+                       projected_usage_gb = current_memory_gb + memory_gb
+                       projected_percent = (projected_usage_gb / total_memory_gb) * 100
+
+                       if projected_percent > 90:
+                           logging.error(f"❌ Memory limit exceeded: {projected_usage_gb:.2f}GB would be {projected_percent:.1f}%")
+                           logging.error(f"❌ Railway will OOM kill the process at ~95%")
+                           logging.error(f"💡 Solution: Enable more aggressive memory optimizations or process fewer items")
+                           return None
+                       elif projected_percent > 75:
+                           logging.warning(f"⚠️  High memory usage: {projected_usage_gb:.2f}GB ({projected_percent:.1f}%)")
+                           logging.warning(f"⚠️  Getting close to Railway's limit!")
+
+                       logging.info(f"✅ Projected usage after allocation: {projected_usage_gb:.2f}GB ({projected_percent:.1f}%)")
+
                    except Exception as e:
                        logging.debug(f"Memory monitoring error: {e}")
                else:
-                   logging.info(f"Memory monitoring unavailable (install psutil for detailed memory info)")
+                   logging.warning(f"⚠️  Memory monitoring unavailable - install psutil to prevent OOM kills")
                
                # Verify gang_sheet was cleaned up from previous iteration
                if 'gang_sheet' in locals():
