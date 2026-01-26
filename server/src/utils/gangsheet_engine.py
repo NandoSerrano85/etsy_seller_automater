@@ -847,6 +847,24 @@ def create_gang_sheets(
                        if key in visited:
                            del visited[key]
                            logging.info(f"Completed all items for key {key}")
+
+                           # CRITICAL OPTIMIZATION: Immediately free the design image from memory
+                           # Once all copies are placed, we don't need this design anymore
+                           if i in processed_images:
+                               design_name = titles[i] if i < len(titles) else f"index_{i}"
+                               logging.info(f"🗑️  Freeing design from memory: {design_name} (index {i})")
+                               del processed_images[i]
+
+                               # Force immediate GC for this design
+                               import gc
+                               gc.collect()
+
+                               if PSUTIL_AVAILABLE:
+                                   try:
+                                       current_mem = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                       logging.debug(f"   Memory after freeing design: {current_mem:.2f}GB")
+                                   except:
+                                       pass
                        
                except Exception as e:
                    logging.error(f"Error processing image {i}: {e}")
@@ -871,6 +889,23 @@ def create_gang_sheets(
                        if current_key in visited:
                            del visited[current_key]
                            logging.info(f"Completed processing for {current_key} after sheet became full")
+
+                           # CRITICAL OPTIMIZATION: Free the design image from memory
+                           if image_index in processed_images:
+                               design_name = titles[image_index] if image_index < len(titles) else f"index_{image_index}"
+                               logging.info(f"🗑️  Freeing design from memory: {design_name} (index {image_index})")
+                               del processed_images[image_index]
+
+                               # Force immediate GC
+                               import gc
+                               gc.collect()
+
+                               if PSUTIL_AVAILABLE:
+                                   try:
+                                       current_mem = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                       logging.debug(f"   Memory after freeing design: {current_mem:.2f}GB")
+                                   except:
+                                       pass
            
            # If no images were processed in this part, we might have a problem
            if images_processed_in_part == 0:
@@ -971,32 +1006,73 @@ def create_gang_sheets(
                            logging.info(f"✅ Successfully created gang sheet with {len(adjusted_placed_images)} layers: {base_filename}.{file_format.lower()}")
 
                            # CRITICAL: Immediately free memory after successful save
-                           # This frees up the ~2.95GB gang sheet memory before starting next part
+                           # Gang sheet is now written to disk, we don't need these arrays anymore
                            memory_before_dump = None
                            if PSUTIL_AVAILABLE:
                                try:
                                    memory_before_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                   logging.info(f"💾 Memory before cleanup: {memory_before_dump:.2f}GB")
                                except:
                                    pass
 
-                           # Delete processed arrays to free memory immediately
-                           del resized_gang_sheet
-                           del cropped_gang_sheet
+                           # Delete ALL arrays related to this gang sheet part
+                           logging.info(f"🗑️  Deleting gang sheet arrays for part {part}...")
 
-                           # Force immediate garbage collection
+                           # Delete resized/cropped gang sheets
+                           if 'resized_gang_sheet' in locals():
+                               del resized_gang_sheet
+                               logging.debug("   Deleted resized_gang_sheet")
+
+                           if 'cropped_gang_sheet' in locals():
+                               del cropped_gang_sheet
+                               logging.debug("   Deleted cropped_gang_sheet")
+
+                           # Delete placed images array (can be large with many layers)
+                           if 'adjusted_placed_images' in locals():
+                               del adjusted_placed_images
+                               logging.debug("   Deleted adjusted_placed_images")
+
+                           # Delete the main gang_sheet array NOW (don't wait for finally block)
+                           # This is the critical ~2.95GB memory
+                           if 'gang_sheet' in locals():
+                               logging.info(f"🗑️  Deleting main gang_sheet array ({memory_gb:.2f}GB)...")
+                               # Clean up memory-mapped file if used
+                               if hasattr(gang_sheet, '_temp_filename'):
+                                   temp_filename = gang_sheet._temp_filename
+                                   del gang_sheet
+                                   try:
+                                       os.unlink(temp_filename)
+                                       logging.debug(f"   Deleted memory-mapped file: {temp_filename}")
+                                   except Exception as e:
+                                       logging.warning(f"⚠️  Failed to delete temp file {temp_filename}: {e}")
+                               else:
+                                   del gang_sheet
+                                   logging.debug("   Deleted in-memory gang_sheet")
+
+                           # Force AGGRESSIVE garbage collection (5 cycles)
+                           logging.info("🧹 Running aggressive garbage collection...")
                            import gc
-                           for _ in range(2):
-                               gc.collect()
+                           collected_total = 0
+                           for i in range(5):
+                               collected = gc.collect()
+                               collected_total += collected
+                               if collected > 0:
+                                   logging.debug(f"   GC cycle {i+1}: collected {collected} objects")
+                               else:
+                                   break  # No more objects to collect
+
+                           logging.info(f"✅ Garbage collection complete: {collected_total} objects collected")
 
                            if PSUTIL_AVAILABLE and memory_before_dump:
                                try:
                                    memory_after_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
                                    memory_freed = memory_before_dump - memory_after_dump
-                                   logging.info(f"Immediately freed {memory_freed:.2f}GB after saving part {part}")
+                                   logging.info(f"✅ FREED {memory_freed:.2f}GB after saving part {part}")
+                                   logging.info(f"   Before: {memory_before_dump:.2f}GB → After: {memory_after_dump:.2f}GB")
                                except:
-                                   logging.info(f"Memory freed after saving part {part}")
+                                   logging.info(f"✅ Memory freed after saving part {part}")
                            else:
-                               logging.info(f"Memory freed after saving part {part}")
+                               logging.info(f"✅ Memory freed after saving part {part}")
 
                            part += 1
                        else:
@@ -1014,20 +1090,20 @@ def create_gang_sheets(
                logging.error(f"Error saving gang sheet {part}: {e}")
                continue
            finally:
-               # PRIORITY: Dump main gang sheet memory IMMEDIATELY after save attempt
-               # This is the critical 2.95GB memory that must be freed before next iteration
-               logging.info(f"🧹 CLEANUP: Starting cleanup for part {part}")
-               try:
-                   memory_before_main_dump = None
-                   if PSUTIL_AVAILABLE:
-                       try:
-                           memory_before_main_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-                           logging.info(f"📊 Memory before cleanup: {memory_before_main_dump:.2f}GB")
-                       except:
-                           pass
+               # SAFETY: Clean up gang_sheet if it still exists (error path)
+               # In success path, gang_sheet is already deleted immediately after save
+               if 'gang_sheet' in locals():
+                   logging.info(f"🧹 CLEANUP (Error Path): Gang sheet still exists, cleaning up...")
+                   try:
+                       memory_before_main_dump = None
+                       if PSUTIL_AVAILABLE:
+                           try:
+                               memory_before_main_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                               logging.info(f"📊 Memory before cleanup: {memory_before_main_dump:.2f}GB")
+                           except:
+                               pass
 
-                   # Delete the main gang sheet array (2.95GB)
-                   if 'gang_sheet' in locals():
+                       # Delete the main gang sheet array (2.95GB)
                        logging.info("🗑️  Deleting gang_sheet from memory...")
                        # Clean up memory-mapped file if used
                        if hasattr(gang_sheet, '_temp_filename'):
@@ -1041,30 +1117,11 @@ def create_gang_sheets(
                                logging.warning(f"⚠️  Failed to delete temp file {temp_filename}: {e}")
                        else:
                            del gang_sheet
-                           logging.info(f"✅ Deleted in-memory gang_sheet")
-                   else:
-                       logging.warning("⚠️  gang_sheet not found in locals() - may have been cleaned up already")
-
-                   # Force immediate GC of the main gang sheet
-                   logging.info("🧹 Forcing garbage collection...")
-                   import gc
-                   for i in range(2):
-                       collected = gc.collect()
-                       logging.info(f"🧹 GC cycle {i+1}: collected {collected} objects")
-
-                   if PSUTIL_AVAILABLE and memory_before_main_dump:
-                       try:
-                           memory_after_main_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-                           main_memory_freed = memory_before_main_dump - memory_after_main_dump
-                           logging.info(f"✅ CLEANUP COMPLETE: Freed {main_memory_freed:.2f}GB (from {memory_before_main_dump:.2f}GB to {memory_after_main_dump:.2f}GB)")
-                       except:
-                           logging.info("✅ CLEANUP COMPLETE: Memory freed")
-                   else:
-                       logging.info("✅ CLEANUP COMPLETE: Memory freed")
-               except Exception as e:
-                   logging.error(f"❌ Error during cleanup: {e}")
-                   import traceback
-                   logging.error(f"📋 Cleanup traceback:\n{traceback.format_exc()}")
+                           logging.info(f"✅ Deleted in-memory gang_sheet (error recovery)")
+                   except Exception as cleanup_err:
+                       logging.error(f"❌ Error during error-path cleanup: {cleanup_err}")
+               else:
+                   logging.debug("✅ Gang sheet already cleaned up (success path)")
                # Additional cleanup of processed images cache
                try:
                    memory_before = None
