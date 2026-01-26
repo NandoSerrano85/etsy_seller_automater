@@ -675,11 +675,25 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
             # Download design files from NAS to temp directory
             if nas_storage.enabled and order_items_data.get('Title'):
                 download_start = time.time()
-                logging.info(f"Starting download of {len(order_items_data['Title'])} design files from NAS")
+
+                # OPTIMIZATION: Calculate unique files to avoid duplicate downloads
+                total_files = len(order_items_data['Title'])
+                unique_files = len(set([f for f in order_items_data['Title'] if f and not f.startswith("MISSING_")]))
+
+                if unique_files < total_files:
+                    duplicate_count = total_files - unique_files
+                    savings_percent = (duplicate_count / total_files) * 100
+                    logging.info(f"📊 Deduplication: {total_files} total files, {unique_files} unique ({duplicate_count} duplicates, {savings_percent:.1f}% savings)")
+
+                logging.info(f"Starting download of {unique_files} unique design files from NAS (out of {total_files} total)")
 
                 updated_titles = []
                 download_count = 0
                 skipped_count = 0
+                reused_count = 0
+
+                # Cache to track already downloaded files {design_file_path: local_file_path}
+                downloaded_files_cache = {}
 
                 # Memory monitoring during downloads
                 try:
@@ -713,11 +727,20 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                             skipped_count += 1
                             continue
 
+                        # OPTIMIZATION: Check if we already downloaded this file
+                        if design_file_path in downloaded_files_cache:
+                            # Reuse existing local file path
+                            cached_local_path = downloaded_files_cache[design_file_path]
+                            updated_titles.append(cached_local_path)
+                            reused_count += 1
+                            logging.debug(f"♻️  Reusing cached file: {design_file_path} -> {cached_local_path}")
+                            continue
+
                         # Design file path is relative to shop (e.g., "UVDTF 16oz/UV840.png")
                         local_filename = os.path.basename(design_file_path)
                         local_file_path = os.path.join(temp_designs_dir, local_filename)
 
-                        # Download from NAS
+                        # Download from NAS (only if not already downloaded)
                         success = nas_storage.download_file(
                             shop_name=shop_name,
                             relative_path=design_file_path,
@@ -725,6 +748,8 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                         )
 
                         if success:
+                            # Cache the downloaded file for reuse
+                            downloaded_files_cache[design_file_path] = local_file_path
                             updated_titles.append(local_file_path)
                             download_count += 1
                             logging.debug(f"Downloaded design file from NAS: {design_file_path} -> {local_file_path}")
@@ -737,10 +762,21 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                         updated_titles.append(design_file_path)
 
                 download_duration = time.time() - download_start
+
+                # Build summary message
+                summary_parts = [f"Downloaded {download_count} unique files from NAS in {download_duration:.2f}s"]
+                if reused_count > 0:
+                    time_saved_estimate = reused_count * (download_duration / max(download_count, 1))
+                    summary_parts.append(f"♻️  Reused {reused_count} cached files (saved ~{time_saved_estimate:.1f}s)")
                 if skipped_count > 0:
-                    logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s ({skipped_count} skipped)")
-                else:
-                    logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s")
+                    summary_parts.append(f"⚠️  {skipped_count} skipped")
+
+                logging.info(" | ".join(summary_parts))
+
+                if reused_count > 0:
+                    total_processed = download_count + reused_count + skipped_count
+                    dedup_percent = (reused_count / total_processed) * 100
+                    logging.info(f"✅ Deduplication saved {reused_count}/{total_processed} downloads ({dedup_percent:.1f}% reduction)")
 
                 # Update the data with local file paths
                 order_items_data = order_items_data.copy()
