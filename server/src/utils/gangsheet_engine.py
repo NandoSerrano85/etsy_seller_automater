@@ -475,25 +475,54 @@ def create_gang_sheets(
        # Ensure output directory exists
        os.makedirs(output_path, exist_ok=True)
        
-       # Pre-calculate common values with safety checks
-       try:
-           width_px = cached_inches_to_pixels(max_width_inches, dpi)
-           height_px = cached_inches_to_pixels(max_height_inches, dpi)
-           logging.info(f"Gang sheet dimensions: {max_width_inches}\"×{max_height_inches}\" = {width_px}×{height_px} pixels at {dpi} DPI")
-       except Exception as e:
-           logging.error(f"Error calculating dimensions: {e}")
-           return None
-       
-       # Validate dimensions are positive (but allow large dimensions for legitimate use cases)
-       if width_px <= 0 or height_px <= 0:
-           logging.error(f"Invalid dimensions: {width_px}x{height_px} (must be positive)")
-           return None
-       
-       # Calculate memory requirement and warn if very large
-       memory_gb = (width_px * height_px * 4) / (1024**3)  # 4 bytes per pixel (RGBA)
-       if memory_gb > 5.0:  # Warn for sheets > 5GB
+       # MEMORY OPTIMIZATION: Calculate optimal size instead of always using max
+       # This can reduce memory usage by 30-70% depending on content
+       use_dynamic_sizing = os.getenv('GANGSHEET_DYNAMIC_SIZING', 'true').lower() == 'true'
+
+       if use_dynamic_sizing:
+           from .gangsheet_memory_optimization import calculate_optimal_gang_sheet_size
+           try:
+               logging.info("🔍 Calculating optimal gang sheet size...")
+               width_px, height_px, memory_gb = calculate_optimal_gang_sheet_size(
+                   image_data=image_data,
+                   max_width_inches=max_width_inches,
+                   max_height_inches=max_height_inches,
+                   dpi=dpi,
+                   spacing_width_inches=spacing_width_inches or 0.125,
+                   spacing_height_inches=spacing_height_inches or 0.125
+               )
+
+               if width_px <= 0 or height_px <= 0:
+                   raise ValueError("Dynamic sizing returned invalid dimensions")
+
+               logging.info(f"✅ Using optimized dimensions: {width_px}x{height_px} ({memory_gb:.2f}GB)")
+
+           except Exception as e:
+               logging.warning(f"⚠️  Dynamic sizing failed ({e}), falling back to max dimensions")
+               use_dynamic_sizing = False
+
+       if not use_dynamic_sizing:
+           # Fallback to max dimensions
+           try:
+               width_px = cached_inches_to_pixels(max_width_inches, dpi)
+               height_px = cached_inches_to_pixels(max_height_inches, dpi)
+               logging.info(f"Gang sheet dimensions: {max_width_inches}\"×{max_height_inches}\" = {width_px}×{height_px} pixels at {dpi} DPI")
+           except Exception as e:
+               logging.error(f"Error calculating dimensions: {e}")
+               return None
+
+           # Validate dimensions are positive
+           if width_px <= 0 or height_px <= 0:
+               logging.error(f"Invalid dimensions: {width_px}x{height_px} (must be positive)")
+               return None
+
+           # Calculate memory requirement
+           memory_gb = (width_px * height_px * 4) / (1024**3)
+
+       # Warn if very large
+       if memory_gb > 5.0:
            logging.warning(f"Large gang sheet will use ~{memory_gb:.1f}GB of memory")
-       if memory_gb > 20.0:  # Error for sheets > 20GB
+       if memory_gb > 20.0:
            logging.error(f"Gang sheet too large: {memory_gb:.1f}GB would exceed reasonable memory limits")
            return None
 
@@ -612,22 +641,33 @@ def create_gang_sheets(
                    except Exception as cleanup_err:
                        logging.error(f"❌ Forced cleanup failed: {cleanup_err}")
 
-               # Use memory-mapped array for very large sheets
+               # Use memory-mapped array for sheets > 500MB (more aggressive)
                temp_filename = None
                logging.info(f"📦 Allocating gang sheet: {width_px}x{height_px} ({memory_gb:.2f}GB)")
 
-               if memory_gb > 1.0:  # Use memory mapping for sheets > 1GB
-                   logging.info(f"💾 Using memory-mapped file (size > 1GB)")
-                   temp_file = tempfile.NamedTemporaryFile(delete=False)
+               # MEMORY OPTIMIZATION: Lower threshold for memory mapping (500MB instead of 1GB)
+               memory_map_threshold = float(os.getenv('GANGSHEET_MEMMAP_THRESHOLD_GB', '0.5'))
+
+               if memory_gb > memory_map_threshold:
+                   logging.info(f"💾 Using memory-mapped file (size > {memory_map_threshold}GB)")
+                   temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.dat')
                    temp_filename = temp_file.name
                    temp_file.close()
-                   gang_sheet = np.memmap(temp_filename, dtype=np.uint8, mode='w+', shape=(height_px, width_px, 4))
-                   gang_sheet.fill(0)  # Initialize to transparent
-                   # Store filename for cleanup
-                   gang_sheet._temp_filename = temp_filename
-                   logging.info(f"✅ Memory-mapped gang sheet created: {temp_filename}")
+
+                   try:
+                       gang_sheet = np.memmap(temp_filename, dtype=np.uint8, mode='w+', shape=(height_px, width_px, 4))
+                       gang_sheet.fill(0)  # Initialize to transparent
+                       # Store filename for cleanup
+                       gang_sheet._temp_filename = temp_filename
+                       logging.info(f"✅ Memory-mapped gang sheet created: {temp_filename}")
+                   except Exception as e:
+                       logging.error(f"❌ Memory-mapped file creation failed: {e}")
+                       logging.info("⚠️  Falling back to in-memory array...")
+                       # Fallback to in-memory
+                       gang_sheet = np.zeros((height_px, width_px, 4), dtype=np.uint8)
+                       logging.info(f"✅ In-memory gang sheet created (fallback)")
                else:
-                   logging.info(f"💾 Using in-memory array (size < 1GB)")
+                   logging.info(f"💾 Using in-memory array (size < {memory_map_threshold}GB)")
                    # Use regular array for smaller sheets
                    gang_sheet = np.zeros((height_px, width_px, 4), dtype=np.uint8)
                    logging.info(f"✅ In-memory gang sheet created")
