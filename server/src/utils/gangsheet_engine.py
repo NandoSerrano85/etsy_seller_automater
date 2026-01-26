@@ -563,14 +563,19 @@ def create_gang_sheets(
        
        while len(visited) > 0 and iteration_count < max_iterations:
            iteration_count += 1
-           
+
+           logging.info(f"🔄 Starting iteration {iteration_count} for part {part}")
+           logging.info(f"📊 Remaining items to process: {len(visited)} keys")
+
            try:
                # Advanced memory optimization before allocation
                import gc
-               
+
+               logging.info("🧹 Pre-allocation cleanup: forcing garbage collection...")
                # Force aggressive garbage collection
                for _ in range(3):  # Multiple GC cycles
                    gc.collect()
+               logging.info("✅ Garbage collection complete")
                
                # Check available memory if psutil is available
                if PSUTIL_AVAILABLE:
@@ -590,9 +595,29 @@ def create_gang_sheets(
                else:
                    logging.info(f"Memory monitoring unavailable (install psutil for detailed memory info)")
                
+               # Verify gang_sheet was cleaned up from previous iteration
+               if 'gang_sheet' in locals():
+                   logging.error(f"❌ CRITICAL: gang_sheet still exists from previous iteration!")
+                   logging.error(f"📋 This indicates cleanup failed. Forcing deletion...")
+                   try:
+                       if hasattr(gang_sheet, '_temp_filename'):
+                           temp_fn = gang_sheet._temp_filename
+                           del gang_sheet
+                           os.unlink(temp_fn)
+                       else:
+                           del gang_sheet
+                       import gc
+                       gc.collect()
+                       logging.info("✅ Forced cleanup completed")
+                   except Exception as cleanup_err:
+                       logging.error(f"❌ Forced cleanup failed: {cleanup_err}")
+
                # Use memory-mapped array for very large sheets
                temp_filename = None
+               logging.info(f"📦 Allocating gang sheet: {width_px}x{height_px} ({memory_gb:.2f}GB)")
+
                if memory_gb > 1.0:  # Use memory mapping for sheets > 1GB
+                   logging.info(f"💾 Using memory-mapped file (size > 1GB)")
                    temp_file = tempfile.NamedTemporaryFile(delete=False)
                    temp_filename = temp_file.name
                    temp_file.close()
@@ -600,11 +625,12 @@ def create_gang_sheets(
                    gang_sheet.fill(0)  # Initialize to transparent
                    # Store filename for cleanup
                    gang_sheet._temp_filename = temp_filename
-                   logging.info(f"Using memory-mapped gang sheet: {memory_gb:.2f}GB -> {temp_filename}")
+                   logging.info(f"✅ Memory-mapped gang sheet created: {temp_filename}")
                else:
+                   logging.info(f"💾 Using in-memory array (size < 1GB)")
                    # Use regular array for smaller sheets
                    gang_sheet = np.zeros((height_px, width_px, 4), dtype=np.uint8)
-                   logging.info(f"Using in-memory gang sheet: {memory_gb:.2f}GB")
+                   logging.info(f"✅ In-memory gang sheet created")
                
                # Verify allocation succeeded
                if PSUTIL_AVAILABLE:
@@ -897,44 +923,55 @@ def create_gang_sheets(
            finally:
                # PRIORITY: Dump main gang sheet memory IMMEDIATELY after save attempt
                # This is the critical 2.95GB memory that must be freed before next iteration
+               logging.info(f"🧹 CLEANUP: Starting cleanup for part {part}")
                try:
                    memory_before_main_dump = None
                    if PSUTIL_AVAILABLE:
                        try:
                            memory_before_main_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                           logging.info(f"📊 Memory before cleanup: {memory_before_main_dump:.2f}GB")
                        except:
                            pass
-                   
+
                    # Delete the main gang sheet array (2.95GB)
                    if 'gang_sheet' in locals():
+                       logging.info("🗑️  Deleting gang_sheet from memory...")
                        # Clean up memory-mapped file if used
                        if hasattr(gang_sheet, '_temp_filename'):
                            temp_filename = gang_sheet._temp_filename
+                           logging.info(f"💾 Cleaning up memory-mapped file: {temp_filename}")
                            del gang_sheet
                            try:
                                os.unlink(temp_filename)
-                               logging.debug(f"Cleaned up temporary memory-mapped file: {temp_filename}")
+                               logging.info(f"✅ Deleted memory-mapped file: {temp_filename}")
                            except Exception as e:
-                               logging.debug(f"Failed to clean up temp file {temp_filename}: {e}")
+                               logging.warning(f"⚠️  Failed to delete temp file {temp_filename}: {e}")
                        else:
                            del gang_sheet
-                   
+                           logging.info(f"✅ Deleted in-memory gang_sheet")
+                   else:
+                       logging.warning("⚠️  gang_sheet not found in locals() - may have been cleaned up already")
+
                    # Force immediate GC of the main gang sheet
+                   logging.info("🧹 Forcing garbage collection...")
                    import gc
-                   for _ in range(2):
-                       gc.collect()
-                   
+                   for i in range(2):
+                       collected = gc.collect()
+                       logging.info(f"🧹 GC cycle {i+1}: collected {collected} objects")
+
                    if PSUTIL_AVAILABLE and memory_before_main_dump:
                        try:
                            memory_after_main_dump = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
                            main_memory_freed = memory_before_main_dump - memory_after_main_dump
-                           logging.info(f"MAIN GANG SHEET: Freed {main_memory_freed:.2f}GB (gang sheet array)")
+                           logging.info(f"✅ CLEANUP COMPLETE: Freed {main_memory_freed:.2f}GB (from {memory_before_main_dump:.2f}GB to {memory_after_main_dump:.2f}GB)")
                        except:
-                           logging.info("MAIN GANG SHEET: Memory freed")
+                           logging.info("✅ CLEANUP COMPLETE: Memory freed")
                    else:
-                       logging.info("MAIN GANG SHEET: Memory freed")
+                       logging.info("✅ CLEANUP COMPLETE: Memory freed")
                except Exception as e:
-                   logging.debug(f"Main gang sheet cleanup error: {e}")
+                   logging.error(f"❌ Error during cleanup: {e}")
+                   import traceback
+                   logging.error(f"📋 Cleanup traceback:\n{traceback.format_exc()}")
                # Additional cleanup of processed images cache
                try:
                    memory_before = None
@@ -1002,10 +1039,13 @@ def create_gang_sheets(
            # Log remaining items for debugging
            remaining_items = sum(visited.values())
            if remaining_items > 0:
-               logging.info(f"Continuing to next part. Remaining items: {remaining_items}")
-               logging.info(f"Visited dictionary: {visited}")
+               logging.info(f"🔄 LOOP: Continuing to next part. Remaining items: {remaining_items}")
+               logging.info(f"📋 Visited dictionary has {len(visited)} keys")
+               logging.info(f"{'='*60}")
+               logging.info(f"🔁 LOOPING BACK to create part {part + 1}")
+               logging.info(f"{'='*60}")
            else:
-               logging.info("All items processed, finishing gang sheet creation")
+               logging.info("✅ All items processed, finishing gang sheet creation")
        
        # Check if we hit the iteration limit (potential infinite loop)
        if iteration_count >= max_iterations:
