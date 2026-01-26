@@ -597,6 +597,30 @@ def create_gang_sheets(
            logging.info(f"📊 Remaining items to process: {len(visited)} keys")
 
            try:
+               # CRITICAL: Check memory BEFORE attempting allocation
+               from .memory_emergency import get_memory_guard, log_memory_warning
+
+               memory_guard = get_memory_guard()
+               mem_status = memory_guard.check_memory()
+
+               if 'percent' in mem_status:
+                   log_memory_warning(mem_status['percent'])
+
+                   # If memory is dangerously high, refuse to proceed
+                   if mem_status['percent'] > 85:
+                       logging.error(f"🔥 ABORT: Memory at {mem_status['percent']:.1f}% - refusing to allocate gang sheet")
+                       logging.error(f"🔥 This would cause OOM kill. Stopping to prevent crash.")
+                       logging.error(f"💡 Solutions:")
+                       logging.error(f"   1. Enable aggressive optimizations: GANGSHEET_MEMMAP_THRESHOLD_GB=0.2")
+                       logging.error(f"   2. Process fewer orders per batch (select 10-15 orders instead)")
+                       logging.error(f"   3. Upgrade Railway to Pro plan (32GB RAM)")
+                       return {
+                           'success': False,
+                           'error': f'Insufficient memory: {mem_status["percent"]:.1f}% usage would cause OOM kill',
+                           'parts_created': part - 1,
+                           'recommendation': 'Reduce batch size or upgrade Railway plan'
+                       }
+
                # Advanced memory optimization before allocation
                import gc
 
@@ -605,6 +629,11 @@ def create_gang_sheets(
                for _ in range(3):  # Multiple GC cycles
                    gc.collect()
                logging.info("✅ Garbage collection complete")
+
+               # Check memory again after GC
+               mem_status_after_gc = memory_guard.check_memory()
+               if 'percent' in mem_status_after_gc:
+                   logging.info(f"💾 Memory after GC: {mem_status_after_gc['current_gb']:.2f}GB ({mem_status_after_gc['percent']:.1f}%)")
                
                # CRITICAL: Check memory limits and prevent OOM kills
                if PSUTIL_AVAILABLE:
@@ -1086,13 +1115,55 @@ def create_gang_sheets(
                    
                except Exception as e:
                    logging.debug(f"Memory cleanup error (non-critical): {e}")
-               
-               # Check if we're approaching memory limits
+
+               # CRITICAL: Check if we have enough memory to proceed with next iteration
+               # This prevents OOM kills by checking BEFORE starting next gang sheet
+               if len(visited) > 0 and sum(visited.values()) > 0:  # Only check if there's another iteration coming
+                   try:
+                       from .memory_emergency import get_memory_guard, log_memory_warning
+
+                       memory_guard = get_memory_guard()
+                       mem_status = memory_guard.check_memory()
+
+                       if 'percent' in mem_status:
+                           log_memory_warning(mem_status['percent'])
+
+                           # If memory is still too high after cleanup, abort before next iteration
+                           if mem_status['percent'] > 80:
+                               logging.error(f"🔥 ABORT AFTER CLEANUP: Memory still at {mem_status['percent']:.1f}%")
+                               logging.error(f"🔥 Not enough memory freed to continue with next gang sheet")
+                               logging.error(f"💡 Solutions:")
+                               logging.error(f"   1. Process fewer orders per batch (currently processing {len(visited)} remaining items)")
+                               logging.error(f"   2. Enable more aggressive optimizations: GANGSHEET_MEMMAP_THRESHOLD_GB=0.2")
+                               logging.error(f"   3. Upgrade Railway to Pro plan (32GB RAM)")
+
+                               # Return partial success - we created some parts
+                               logging.info(f"✅ Successfully created {part-1} gang sheet parts before running out of memory")
+                               return {
+                                   'success': False,
+                                   'error': f'Insufficient memory after part {part-1}: {mem_status["percent"]:.1f}% usage',
+                                   'parts_created': part - 1,
+                                   'recommendation': 'Reduce batch size or enable aggressive memory optimizations'
+                               }
+
+                           # Warn if getting close
+                           elif mem_status['percent'] > 70:
+                               logging.warning(f"⚠️  Memory still elevated after cleanup: {mem_status['percent']:.1f}%")
+                               logging.warning(f"⚠️  Next iteration might fail if gang sheet is large")
+
+                           # Log success if memory is good
+                           else:
+                               logging.info(f"✅ Memory check passed: {mem_status['percent']:.1f}% - safe to continue")
+
+                   except Exception as mem_check_error:
+                       logging.warning(f"Memory check error (non-critical): {mem_check_error}")
+
+               # Legacy check: if we're approaching memory limits
                if PSUTIL_AVAILABLE:
                    try:
                        available_memory = psutil.virtual_memory().available / (1024**3)
                        if available_memory < 2.0:  # Less than 2GB available
-                           logging.warning(f"Low memory warning: only {available_memory:.2f}GB available")
+                           logging.warning(f"⚠️  Low memory warning: only {available_memory:.2f}GB available")
                            # Force more aggressive cleanup if needed
                            processed_images.clear()
                            for _ in range(5):
