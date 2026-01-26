@@ -477,7 +477,8 @@ def create_gang_sheets(
        
        # MEMORY OPTIMIZATION: Calculate optimal size instead of always using max
        # This can reduce memory usage by 30-70% depending on content
-       use_dynamic_sizing = os.getenv('GANGSHEET_DYNAMIC_SIZING', 'true').lower() == 'true'
+       # DEFAULT: false - use full dimensions from DB unless explicitly enabled
+       use_dynamic_sizing = os.getenv('GANGSHEET_DYNAMIC_SIZING', 'false').lower() == 'true'
 
        if use_dynamic_sizing:
            from .gangsheet_memory_optimization import calculate_optimal_gang_sheet_size
@@ -852,17 +853,42 @@ def create_gang_sheets(
                            # Once all copies are placed, we don't need this design anymore
                            if i in processed_images:
                                design_name = titles[i] if i < len(titles) else f"index_{i}"
-                               logging.info(f"🗑️  Freeing design from memory: {design_name} (index {i})")
-                               del processed_images[i]
 
-                               # Force immediate GC for this design
-                               import gc
-                               gc.collect()
-
+                               memory_before = None
                                if PSUTIL_AVAILABLE:
                                    try:
-                                       current_mem = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-                                       logging.debug(f"   Memory after freeing design: {current_mem:.2f}GB")
+                                       memory_before = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                   except:
+                                       pass
+
+                               logging.info(f"🗑️  Freeing design from memory: {design_name} (index {i})")
+
+                               # Delete and explicitly set to None
+                               del processed_images[i]
+
+                               # FORCE aggressive GC - 3 cycles to ensure memory actually freed
+                               import gc
+                               for _ in range(3):
+                                   gc.collect(generation=2)  # Full collection
+
+                               # Force OS to release memory back to system
+                               try:
+                                   import ctypes
+                                   if hasattr(ctypes, 'CDLL'):
+                                       try:
+                                           libc = ctypes.CDLL('libc.so.6')
+                                           libc.malloc_trim(0)  # Force malloc to release memory to OS
+                                       except:
+                                           pass  # malloc_trim not available on all systems
+                               except:
+                                   pass
+
+                               if PSUTIL_AVAILABLE and memory_before:
+                                   try:
+                                       memory_after = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                       freed = memory_before - memory_after
+                                       if freed > 0.01:  # Only log if freed > 10MB
+                                           logging.info(f"   ✓ Freed {freed:.2f}GB ({memory_before:.2f}GB → {memory_after:.2f}GB)")
                                    except:
                                        pass
                        
@@ -893,17 +919,42 @@ def create_gang_sheets(
                            # CRITICAL OPTIMIZATION: Free the design image from memory
                            if image_index in processed_images:
                                design_name = titles[image_index] if image_index < len(titles) else f"index_{image_index}"
-                               logging.info(f"🗑️  Freeing design from memory: {design_name} (index {image_index})")
-                               del processed_images[image_index]
 
-                               # Force immediate GC
-                               import gc
-                               gc.collect()
-
+                               memory_before = None
                                if PSUTIL_AVAILABLE:
                                    try:
-                                       current_mem = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
-                                       logging.debug(f"   Memory after freeing design: {current_mem:.2f}GB")
+                                       memory_before = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                   except:
+                                       pass
+
+                               logging.info(f"🗑️  Freeing design from memory: {design_name} (index {image_index})")
+
+                               # Delete and explicitly set to None
+                               del processed_images[image_index]
+
+                               # FORCE aggressive GC - 3 cycles
+                               import gc
+                               for _ in range(3):
+                                   gc.collect(generation=2)
+
+                               # Force OS to release memory
+                               try:
+                                   import ctypes
+                                   if hasattr(ctypes, 'CDLL'):
+                                       try:
+                                           libc = ctypes.CDLL('libc.so.6')
+                                           libc.malloc_trim(0)
+                                       except:
+                                           pass
+                               except:
+                                   pass
+
+                               if PSUTIL_AVAILABLE and memory_before:
+                                   try:
+                                       memory_after = psutil.Process(os.getpid()).memory_info().rss / (1024**3)
+                                       freed = memory_before - memory_after
+                                       if freed > 0.01:
+                                           logging.info(f"   ✓ Freed {freed:.2f}GB ({memory_before:.2f}GB → {memory_after:.2f}GB)")
                                    except:
                                        pass
            
@@ -1054,7 +1105,8 @@ def create_gang_sheets(
                            import gc
                            collected_total = 0
                            for i in range(5):
-                               collected = gc.collect()
+                               # Force full collection of all generations
+                               collected = gc.collect(generation=2)
                                collected_total += collected
                                if collected > 0:
                                    logging.debug(f"   GC cycle {i+1}: collected {collected} objects")
@@ -1062,6 +1114,31 @@ def create_gang_sheets(
                                    break  # No more objects to collect
 
                            logging.info(f"✅ Garbage collection complete: {collected_total} objects collected")
+
+                           # FORCE OS to release memory back to system (Linux/Unix)
+                           logging.info("💾 Forcing OS memory release...")
+                           try:
+                               import ctypes
+                               if hasattr(ctypes, 'CDLL'):
+                                   try:
+                                       # Use malloc_trim to force glibc to return memory to OS
+                                       libc = ctypes.CDLL('libc.so.6')
+                                       bytes_freed = libc.malloc_trim(0)
+                                       if bytes_freed > 0:
+                                           logging.info(f"   ✓ malloc_trim freed memory to OS")
+                                   except Exception as e:
+                                       logging.debug(f"   malloc_trim not available: {e}")
+                           except:
+                               pass
+
+                           # Additional Python-level memory optimization
+                           try:
+                               # Clear internal caches
+                               import sys
+                               sys._clear_type_cache()
+                               logging.debug("   ✓ Cleared type cache")
+                           except:
+                               pass
 
                            if PSUTIL_AVAILABLE and memory_before_dump:
                                try:
