@@ -7,8 +7,6 @@ from . import model
 from . import service
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
-import functools
 from datetime import datetime, timezone
 import io
 from server.src.routes.designs.service import get_etsy_shop_name
@@ -17,17 +15,6 @@ router = APIRouter(
     prefix='/orders',
     tags=['Orders']
 )
-
-# Thread pool for background processing
-thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="orders-")
-
-def run_in_thread(func):
-    """Decorator to run sync functions in thread pool"""
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(thread_pool, functools.partial(func, *args, **kwargs))
-    return wrapper
 
 @router.get('/', response_model=model.OrdersResponse)
 async def get_orders(
@@ -45,17 +32,15 @@ async def get_orders(
         was_paid: Filter by paid status ('true', 'false', or omit for all)
         was_canceled: Filter by canceled status ('true', 'false', or omit for all)
     """
-    @run_in_thread
-    def get_orders_threaded():
-        return service.get_orders(
-            current_user,
-            db,
-            was_shipped=was_shipped,
-            was_paid=was_paid,
-            was_canceled=was_canceled
-        )
-
-    return await get_orders_threaded()
+    # Use asyncio.to_thread for cleaner threading
+    return await asyncio.to_thread(
+        service.get_orders,
+        current_user,
+        db,
+        was_shipped=was_shipped,
+        was_paid=was_paid,
+        was_canceled=was_canceled
+    )
 
 @router.post('/print-files')
 async def create_gang_sheets_from_mockups(
@@ -64,11 +49,13 @@ async def create_gang_sheets_from_mockups(
     db: Session = Depends(get_db)
 ):
     """Create gang sheets from mockups (threaded - heavy file processing)"""
-    @run_in_thread
-    def create_gang_sheets_threaded():
-        return service.create_gang_sheets_from_mockups(template_name, current_user, db)
-
-    return await create_gang_sheets_threaded()
+    # Use asyncio.to_thread for cleaner threading
+    return await asyncio.to_thread(
+        service.create_gang_sheets_from_mockups,
+        template_name,
+        current_user,
+        db
+    )
 
 @router.get('/print-files-debug')
 async def print_files_debug(
@@ -144,12 +131,16 @@ async def create_print_files(
     """Create print files (threaded - heavy file processing)"""
     logging.info(f"🎯 /create-print-files endpoint called by user: {current_user.get_uuid()}")
     try:
-        @run_in_thread
-        def create_print_files_threaded():
-            return service.create_print_files(current_user, db, format=format)
-
         logging.info("⏳ Starting threaded print file creation...")
-        result = await create_print_files_threaded()
+
+        # Use asyncio.to_thread for cleaner threading
+        result = await asyncio.to_thread(
+            service.create_print_files,
+            current_user,
+            db,
+            format=format
+        )
+
         logging.info(f"✅ Print file creation completed: {result}")
         return result
     except HTTPException as http_exc:
@@ -161,8 +152,6 @@ async def create_print_files(
         error_details = traceback.format_exc()
         logging.error(f"❌ Error in create_print_files controller: {str(e)}")
         logging.error(f"📋 Traceback: {error_details}")
-        print(f"❌ Error in create_print_files: {str(e)}")
-        print(f"📋 Traceback: {error_details}")
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create print files: {str(e)}"
@@ -188,19 +177,17 @@ async def get_all_orders(
         was_paid: Filter by paid status ('true', 'false', or omit for all)
         was_canceled: Filter by canceled status ('true', 'false', or omit for all)
     """
-    @run_in_thread
-    def get_all_orders_threaded():
-        return service.get_all_orders_with_details(
-            current_user,
-            db,
-            limit,
-            offset,
-            was_shipped=was_shipped,
-            was_paid=was_paid,
-            was_canceled=was_canceled
-        )
-
-    return await get_all_orders_threaded()
+    # Use asyncio.to_thread for cleaner threading
+    return await asyncio.to_thread(
+        service.get_all_orders_with_details,
+        current_user,
+        db,
+        limit,
+        offset,
+        was_shipped=was_shipped,
+        was_paid=was_paid,
+        was_canceled=was_canceled
+    )
 
 @router.post('/print-files-from-selection')
 async def create_print_files_from_selected_orders(
@@ -213,22 +200,26 @@ async def create_print_files_from_selected_orders(
     """
     logging.info(f"📦 Received request: order_ids={request_body.order_ids}, type={type(request_body.order_ids)}, template={request_body.template_name}")
 
-    print(f"📦 Received request: order_ids={request_body.order_ids}, type={type(request_body.order_ids)}, template={request_body.template_name}")
     # Ensure order_ids is always a list
     order_ids = request_body.order_ids if isinstance(request_body.order_ids, list) else [request_body.order_ids]
     logging.info(f"📦 Normalized order_ids: {order_ids}")
 
-    @run_in_thread
-    def create_from_selection_threaded():
-        return service.create_print_files_from_selected_orders(
+    # Use asyncio.to_thread for cleaner threading (Python 3.9+)
+    try:
+        result = await asyncio.to_thread(
+            service.create_print_files_from_selected_orders,
             order_ids,
             request_body.template_name,
             current_user,
             db,
             format=request_body.format
         )
-
-    return await create_from_selection_threaded()
+        return result
+    except Exception as e:
+        logging.error(f"❌ Error in create_print_files_from_selected_orders: {str(e)}")
+        import traceback
+        logging.error(f"📋 Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to create print files: {str(e)}")
 
 @router.get('/get-print-files')
 async def list_print_files(
