@@ -577,6 +577,48 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
 
         logging.info(f"Creating print files for {len(order_ids)} selected orders")
 
+        # CRITICAL: Check memory BEFORE starting - prevent OOM kills early
+        try:
+            from server.src.utils.memory_emergency import get_memory_guard, log_memory_warning, get_max_safe_batch_size
+
+            memory_guard = get_memory_guard()
+            initial_mem = memory_guard.check_memory()
+
+            if 'percent' in initial_mem:
+                log_memory_warning(initial_mem['percent'])
+
+                # If memory is already high, abort before downloading anything
+                if initial_mem['percent'] > 70:
+                    logging.error(f"🔥 ABORT: Memory already at {initial_mem['percent']:.1f}% before starting")
+                    logging.error(f"🔥 Cannot safely process {len(order_ids)} orders")
+                    logging.error(f"💡 Current memory: {initial_mem['current_gb']:.2f}GB / {initial_mem['total_gb']:.2f}GB")
+
+                    # Get recommendation for safe batch size
+                    recommendations = memory_guard.get_recommendations(needed_gb=3.0)
+                    if recommendations:
+                        logging.error(f"💡 Recommendations:")
+                        for rec in recommendations:
+                            logging.error(f"   {rec['priority']}: {rec['action']}")
+
+                    return {
+                        "success": False,
+                        "error": f"Insufficient memory: {initial_mem['percent']:.1f}% usage before starting",
+                        "current_memory_gb": initial_mem['current_gb'],
+                        "total_memory_gb": initial_mem['total_gb'],
+                        "recommendation": f"Reduce batch size to 10-15 orders (you selected {len(order_ids)})"
+                    }
+
+                # Calculate safe batch size
+                safe_batch = get_max_safe_batch_size(item_count=len(order_ids), avg_item_memory_mb=100)
+                if safe_batch < len(order_ids):
+                    logging.warning(f"⚠️  Selected {len(order_ids)} orders, but safe batch size is {safe_batch}")
+                    logging.warning(f"⚠️  Risk of OOM kill is HIGH - consider processing fewer orders")
+
+                logging.info(f"✅ Initial memory check passed: {initial_mem['percent']:.1f}%")
+
+        except Exception as mem_error:
+            logging.warning(f"Memory check error (non-critical): {mem_error}")
+
         # Fetch order items for selected orders only
         order_items_data = etsy_api.fetch_selected_order_items(
             shop_id=user.etsy_shop_id,
@@ -637,12 +679,38 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
 
                 updated_titles = []
                 download_count = 0
-                for design_file_path in order_items_data['Title']:
+                skipped_count = 0
+
+                # Memory monitoring during downloads
+                try:
+                    from server.src.utils.memory_emergency import get_memory_guard
+                    memory_guard = get_memory_guard()
+                except:
+                    memory_guard = None
+
+                for idx, design_file_path in enumerate(order_items_data['Title']):
+                    # Check memory every 5 downloads to avoid OOM during download phase
+                    if memory_guard and idx > 0 and idx % 5 == 0:
+                        mem_status = memory_guard.check_memory()
+                        if 'percent' in mem_status and mem_status['percent'] > 80:
+                            logging.error(f"🔥 ABORT DURING DOWNLOADS: Memory at {mem_status['percent']:.1f}% after {download_count} downloads")
+                            logging.error(f"🔥 Stopping downloads to prevent OOM kill")
+                            logging.error(f"💡 Successfully downloaded {download_count} files, skipping remaining {len(order_items_data['Title']) - idx}")
+                            logging.error(f"💡 Reduce batch size to process fewer orders at once")
+                            return {
+                                "success": False,
+                                "error": f"Memory limit reached during downloads: {mem_status['percent']:.1f}%",
+                                "downloads_completed": download_count,
+                                "downloads_total": len(order_items_data['Title']),
+                                "recommendation": "Reduce batch size - process 10-15 orders instead"
+                            }
+
                     if design_file_path:  # Skip empty paths
                         # Skip placeholder files that don't actually exist
                         if "MISSING_" in design_file_path:
                             logging.warning(f"Skipping download of placeholder file: {design_file_path}")
                             updated_titles.append(design_file_path)  # Keep placeholder path
+                            skipped_count += 1
                             continue
 
                         # Design file path is relative to shop (e.g., "UVDTF 16oz/UV840.png")
@@ -664,11 +732,15 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                             logging.error(f"Failed to download design file from NAS: {design_file_path}")
                             # Keep original path as fallback (though it might fail)
                             updated_titles.append(design_file_path)
+                            skipped_count += 1
                     else:
                         updated_titles.append(design_file_path)
 
                 download_duration = time.time() - download_start
-                logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s")
+                if skipped_count > 0:
+                    logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s ({skipped_count} skipped)")
+                else:
+                    logging.info(f"Downloaded {download_count} design files from NAS in {download_duration:.2f}s")
 
                 # Update the data with local file paths
                 order_items_data = order_items_data.copy()
