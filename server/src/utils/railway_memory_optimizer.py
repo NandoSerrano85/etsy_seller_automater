@@ -46,7 +46,7 @@ DESIGN_PROCESS_BATCH_SIZE = 20  # Process 20 designs before memory check
 
 
 class RailwayMemoryMonitor:
-    """Monitor and manage memory usage on Railway"""
+    """Monitor and manage memory usage on Railway (Docker container aware)"""
 
     def __init__(self):
         if PSUTIL_AVAILABLE:
@@ -57,33 +57,128 @@ class RailwayMemoryMonitor:
         self.warning_count = 0
         self.pause_count = 0
         self.cleanup_count = 0
+        self.using_cgroup = self._detect_cgroup()
+
+        # Log detection
+        logger.info(f"🚂 Railway Memory Monitor initialized")
+        logger.info(f"   Container memory limit detection: {'✅ cgroup' if self.using_cgroup else '⚠️  psutil fallback'}")
+
+    def _detect_cgroup(self):
+        """Detect if running in Docker container with cgroup memory limits"""
+        try:
+            # Check for cgroup v1 memory limit
+            if os.path.exists('/sys/fs/cgroup/memory/memory.limit_in_bytes'):
+                return True
+            # Check for cgroup v2 memory limit
+            if os.path.exists('/sys/fs/cgroup/memory.max'):
+                return True
+            return False
+        except Exception as e:
+            logger.debug(f"Could not detect cgroup: {e}")
+            return False
+
+    def _get_cgroup_memory_stats(self):
+        """Get memory stats from cgroup (Docker container limits)"""
+        try:
+            # Try cgroup v1 first (most common in Railway)
+            if os.path.exists('/sys/fs/cgroup/memory/memory.limit_in_bytes'):
+                with open('/sys/fs/cgroup/memory/memory.limit_in_bytes', 'r') as f:
+                    limit_bytes = int(f.read().strip())
+
+                with open('/sys/fs/cgroup/memory/memory.usage_in_bytes', 'r') as f:
+                    usage_bytes = int(f.read().strip())
+
+                # If limit is absurdly large, fall back to Railway default
+                if limit_bytes > 100 * 1024**3:  # > 100GB means no real limit
+                    limit_bytes = int(RAILWAY_TOTAL_MEMORY_GB * 1024**3)
+
+                limit_gb = limit_bytes / (1024**3)
+                usage_gb = usage_bytes / (1024**3)
+                available_gb = limit_gb - usage_gb
+                percent = (usage_gb / limit_gb) * 100
+
+                return {
+                    'current_gb': usage_gb,
+                    'total_gb': limit_gb,
+                    'available_gb': available_gb,
+                    'percent': percent,
+                    'source': 'cgroup_v1'
+                }
+
+            # Try cgroup v2
+            elif os.path.exists('/sys/fs/cgroup/memory.max'):
+                with open('/sys/fs/cgroup/memory.max', 'r') as f:
+                    limit = f.read().strip()
+                    if limit == 'max':
+                        limit_bytes = int(RAILWAY_TOTAL_MEMORY_GB * 1024**3)
+                    else:
+                        limit_bytes = int(limit)
+
+                with open('/sys/fs/cgroup/memory.current', 'r') as f:
+                    usage_bytes = int(f.read().strip())
+
+                limit_gb = limit_bytes / (1024**3)
+                usage_gb = usage_bytes / (1024**3)
+                available_gb = limit_gb - usage_gb
+                percent = (usage_gb / limit_gb) * 100
+
+                return {
+                    'current_gb': usage_gb,
+                    'total_gb': limit_gb,
+                    'available_gb': available_gb,
+                    'percent': percent,
+                    'source': 'cgroup_v2'
+                }
+
+        except Exception as e:
+            logger.debug(f"Could not read cgroup memory: {e}")
+
+        return None
 
     def get_memory_stats(self):
-        """Get current memory statistics"""
+        """
+        Get current memory statistics
+        Prefers cgroup stats (Docker container limits) over psutil (host memory)
+        """
+        # Try cgroup first (most accurate in Railway/Docker)
+        if self.using_cgroup:
+            cgroup_stats = self._get_cgroup_memory_stats()
+            if cgroup_stats:
+                # Track peak
+                if cgroup_stats['current_gb'] > self.peak_memory_gb:
+                    self.peak_memory_gb = cgroup_stats['current_gb']
+
+                cgroup_stats['peak_gb'] = self.peak_memory_gb
+                cgroup_stats['effective_gb'] = cgroup_stats['total_gb']  # In container, total = effective
+                return cgroup_stats
+
+        # Fallback to psutil
         if not PSUTIL_AVAILABLE or not self.process:
             return None
 
         try:
-            memory_info = self.process.memory_info()
-            virtual_memory = psutil.virtual_memory()
+            if PSUTIL_AVAILABLE:
+                memory_info = self.process.memory_info()
+                virtual_memory = psutil.virtual_memory()
 
-            current_gb = memory_info.rss / (1024**3)
-            total_gb = virtual_memory.total / (1024**3)
-            available_gb = virtual_memory.available / (1024**3)
-            percent = (current_gb / RAILWAY_EFFECTIVE_MEMORY_GB) * 100  # Percent of EFFECTIVE memory
+                current_gb = memory_info.rss / (1024**3)
+                total_gb = virtual_memory.total / (1024**3)
+                available_gb = virtual_memory.available / (1024**3)
+                percent = (current_gb / RAILWAY_EFFECTIVE_MEMORY_GB) * 100  # Percent of EFFECTIVE memory
 
-            # Track peak
-            if current_gb > self.peak_memory_gb:
-                self.peak_memory_gb = current_gb
+                # Track peak
+                if current_gb > self.peak_memory_gb:
+                    self.peak_memory_gb = current_gb
 
-            return {
-                'current_gb': current_gb,
-                'total_gb': total_gb,
-                'available_gb': available_gb,
-                'percent': percent,  # Percent of effective memory (7.5GB)
-                'peak_gb': self.peak_memory_gb,
-                'effective_gb': RAILWAY_EFFECTIVE_MEMORY_GB
-            }
+                return {
+                    'current_gb': current_gb,
+                    'total_gb': total_gb,
+                    'available_gb': available_gb,
+                    'percent': percent,  # Percent of effective memory (7.5GB)
+                    'peak_gb': self.peak_memory_gb,
+                    'effective_gb': RAILWAY_EFFECTIVE_MEMORY_GB,
+                    'source': 'psutil'
+                }
         except Exception as e:
             logger.error(f"Error getting memory stats: {e}")
             return None

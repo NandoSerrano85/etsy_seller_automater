@@ -485,10 +485,31 @@ def create_gang_sheets(
        # Initialize Railway memory monitor
        monitor = get_railway_memory_monitor()
 
-       # Log current memory state
+       # DIAGNOSTIC: Run Railway environment check on first gang sheet creation
+       # This helps debug OOM issues by logging the container environment
+       try:
+           if not hasattr(validate_gang_sheet_dimensions, '_diagnostic_run'):
+               from .railway_diagnostics import log_railway_environment
+               log_railway_environment()
+               validate_gang_sheet_dimensions._diagnostic_run = True
+       except Exception as e:
+           logging.debug(f"Could not run diagnostics: {e}")
+
+       # Log current memory state with detection method
        stats = monitor.get_memory_stats()
        if stats:
+           source = stats.get('source', 'unknown')
            logging.info(f"🚂 Railway Memory: {stats['current_gb']:.2f}GB / {stats['total_gb']:.2f}GB ({stats['percent']:.1f}%)")
+           logging.info(f"   Detection method: {source}")
+           if source.startswith('cgroup'):
+               logging.info(f"   ✅ Using container memory limits (accurate for Railway)")
+           else:
+               logging.warning(f"   ⚠️  Using host memory detection (may be inaccurate in containers)")
+               logging.warning(f"   This may cause OOM if Railway container limit is lower than detected")
+       else:
+           logging.error(f"❌ CRITICAL: Could not detect memory!")
+           logging.error(f"   Memory monitoring disabled - cannot prevent OOM")
+           logging.error(f"   Check that psutil is installed: pip install psutil")
 
        # Initialize dimension variables
        width_px = 0
