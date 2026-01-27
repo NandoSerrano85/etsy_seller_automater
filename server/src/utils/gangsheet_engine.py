@@ -475,6 +475,26 @@ def create_gang_sheets(
        # Ensure output directory exists
        os.makedirs(output_path, exist_ok=True)
        
+       # RAILWAY MEMORY OPTIMIZATION: Validate and auto-adjust dimensions for 8GB limit
+       from .railway_memory_optimizer import (
+           validate_gang_sheet_dimensions,
+           check_railway_memory_safe,
+           get_railway_memory_monitor
+       )
+
+       # Initialize Railway memory monitor
+       monitor = get_railway_memory_monitor()
+
+       # Log current memory state
+       stats = monitor.get_memory_stats()
+       if stats:
+           logging.info(f"🚂 Railway Memory: {stats['current_gb']:.2f}GB / {stats['total_gb']:.2f}GB ({stats['percent']:.1f}%)")
+
+       # Initialize dimension variables
+       width_px = 0
+       height_px = 0
+       memory_gb = 0.0
+
        # MEMORY OPTIMIZATION: Calculate optimal size instead of always using max
        # This can reduce memory usage by 30-70% depending on content
        # DEFAULT: false - use full dimensions from DB unless explicitly enabled
@@ -503,28 +523,22 @@ def create_gang_sheets(
                use_dynamic_sizing = False
 
        if not use_dynamic_sizing:
-           # Fallback to max dimensions
-           try:
-               width_px = cached_inches_to_pixels(max_width_inches, dpi)
-               height_px = cached_inches_to_pixels(max_height_inches, dpi)
-               logging.info(f"Gang sheet dimensions: {max_width_inches}\"×{max_height_inches}\" = {width_px}×{height_px} pixels at {dpi} DPI")
-           except Exception as e:
-               logging.error(f"Error calculating dimensions: {e}")
-               return None
+           # RAILWAY OPTIMIZATION: Validate and auto-adjust dimensions
+           logging.info(f"📐 Requested dimensions: {max_width_inches}\"×{max_height_inches}\" @ {dpi} DPI")
 
-           # Validate dimensions are positive
-           if width_px <= 0 or height_px <= 0:
-               logging.error(f"Invalid dimensions: {width_px}x{height_px} (must be positive)")
-               return None
+           width_px, height_px, dpi, memory_gb, was_adjusted = validate_gang_sheet_dimensions(
+               max_width_inches, max_height_inches, dpi
+           )
 
-           # Calculate memory requirement
-           memory_gb = (width_px * height_px * 4) / (1024**3)
+           if was_adjusted:
+               logging.warning(f"⚠️  Dimensions auto-adjusted for Railway memory limits")
+               max_width_inches = width_px / dpi
+               max_height_inches = height_px / dpi
 
-       # Warn if very large
-       if memory_gb > 5.0:
-           logging.warning(f"Large gang sheet will use ~{memory_gb:.1f}GB of memory")
-       if memory_gb > 20.0:
-           logging.error(f"Gang sheet too large: {memory_gb:.1f}GB would exceed reasonable memory limits")
+       # Check if we have enough memory for this gang sheet
+       if not check_railway_memory_safe(memory_gb):
+           logging.error(f"❌ Insufficient Railway memory for {memory_gb:.2f}GB gang sheet")
+           logging.error(f"   Current memory usage too high, cannot proceed")
            return None
 
        image_index, part = 0, 1
@@ -833,6 +847,20 @@ def create_gang_sheets(
                                    gang_sheet.flush()
 
                            images_processed_in_part += 1
+
+                           # RAILWAY OPTIMIZATION: Progressive memory monitoring
+                           # Check memory every 20 placements to detect issues early
+                           if images_processed_in_part % 20 == 0:
+                               if not check_railway_memory_safe(0.5):  # Need at least 0.5GB headroom
+                                   logging.warning(f"⚠️  Memory high after {images_processed_in_part} placements, running emergency cleanup")
+                                   monitor.force_memory_release()
+
+                                   # Re-check after cleanup
+                                   if not check_railway_memory_safe(0.5):
+                                       logging.error(f"❌ Memory still critical after cleanup, aborting to prevent OOM")
+                                       logging.error(f"   Processed {images_processed_in_part} items successfully")
+                                       logging.error(f"   Reduce gang sheet height or process fewer orders")
+                                       return None
                        except Exception as e:
                            logging.warning(f"Error placing image on gang sheet: {e}")
                            

@@ -26,6 +26,15 @@ class PrinterService:
     ) -> Printer:
         """Create a new printer for user"""
         try:
+            # RAILWAY MEMORY OPTIMIZATION: Enforce max 400 DPI to prevent OOM
+            # Higher DPI exponentially increases gang sheet memory usage
+            # 400 DPI: 16"×215" = 2.1GB
+            # 720 DPI: 16"×215" = 6.8GB (OOM on 8GB Railway)
+            MAX_DPI = 400
+            if printer_data.dpi > MAX_DPI:
+                logger.warning(f"DPI {printer_data.dpi} exceeds maximum {MAX_DPI}, capping to {MAX_DPI}")
+                printer_data.dpi = MAX_DPI
+
             # If setting as default, unset other defaults
             if printer_data.is_default:
                 query = db.query(Printer).filter(Printer.user_id == user_id)
@@ -132,7 +141,13 @@ class PrinterService:
             printer = db.query(Printer).filter(Printer.id == printer_id).first()
             if not printer:
                 return None
-            
+
+            # RAILWAY MEMORY OPTIMIZATION: Enforce max 400 DPI to prevent OOM
+            MAX_DPI = 400
+            if hasattr(printer_data, 'dpi') and printer_data.dpi and printer_data.dpi > MAX_DPI:
+                logger.warning(f"DPI {printer_data.dpi} exceeds maximum {MAX_DPI}, capping to {MAX_DPI}")
+                printer_data.dpi = MAX_DPI
+
             # If setting as default, unset other defaults for same user
             if printer_data.is_default:
                 query = db.query(Printer).filter(
