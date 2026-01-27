@@ -29,10 +29,11 @@ RAILWAY_SYSTEM_OVERHEAD_GB = 0.5  # OS + Node.js/Python baseline
 RAILWAY_EFFECTIVE_MEMORY_GB = RAILWAY_TOTAL_MEMORY_GB - RAILWAY_SYSTEM_OVERHEAD_GB  # 7.5GB
 
 # Memory thresholds (percentage of EFFECTIVE memory, not total)
+# NOTE: Railway containers without cgroup access need more aggressive thresholds
 MEMORY_WARNING_THRESHOLD = 0.70  # 70% of 7.5GB = 5.25GB - Start monitoring closely
-MEMORY_CRITICAL_THRESHOLD = 0.80  # 80% of 7.5GB = 6.00GB - Abort new allocations
-MEMORY_PAUSE_THRESHOLD = 0.87     # 87% of 7.5GB = 6.50GB - PAUSE work, cleanup, resume
-MEMORY_EMERGENCY_THRESHOLD = 0.93 # 93% of 7.5GB = 7.00GB - Emergency cleanup or abort
+MEMORY_CRITICAL_THRESHOLD = 0.75  # 75% of 7.5GB = 5.62GB - Abort new allocations (was 80%)
+MEMORY_PAUSE_THRESHOLD = 0.80     # 80% of 7.5GB = 6.00GB - PAUSE work, cleanup, resume (was 87%, lowered for Railway)
+MEMORY_EMERGENCY_THRESHOLD = 0.87 # 87% of 7.5GB = 6.50GB - Emergency cleanup or abort (was 93%)
 MEMORY_OOM_THRESHOLD = 0.95       # 95% of 8.0GB = 7.60GB - Railway will OOM kill soon
 
 # Gang sheet limits
@@ -164,7 +165,23 @@ class RailwayMemoryMonitor:
                 current_gb = memory_info.rss / (1024**3)
                 total_gb = virtual_memory.total / (1024**3)
                 available_gb = virtual_memory.available / (1024**3)
-                percent = (current_gb / RAILWAY_EFFECTIVE_MEMORY_GB) * 100  # Percent of EFFECTIVE memory
+
+                # CRITICAL FIX: If total_gb is very large, we're seeing host memory not container
+                # Railway containers have 8GB limit but psutil may show host (32-256GB)
+                # Force Railway limit to prevent wrong threshold calculations
+                in_railway = os.getenv('RAILWAY_ENVIRONMENT') is not None
+                in_container = os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv')
+
+                if total_gb > 16 and (in_railway or in_container):
+                    # Seeing host memory, force Railway default
+                    logger.warning(f"⚠️  psutil shows {total_gb:.0f}GB (host memory), forcing Railway 8GB limit")
+                    total_gb = RAILWAY_TOTAL_MEMORY_GB
+                    effective_gb = RAILWAY_EFFECTIVE_MEMORY_GB
+                    available_gb = max(0.5, total_gb - current_gb)  # Estimate available
+                else:
+                    effective_gb = total_gb - RAILWAY_SYSTEM_OVERHEAD_GB
+
+                percent = (current_gb / effective_gb) * 100  # Percent of EFFECTIVE memory
 
                 # Track peak
                 if current_gb > self.peak_memory_gb:
@@ -174,10 +191,10 @@ class RailwayMemoryMonitor:
                     'current_gb': current_gb,
                     'total_gb': total_gb,
                     'available_gb': available_gb,
-                    'percent': percent,  # Percent of effective memory (7.5GB)
+                    'percent': percent,  # Percent of effective memory
                     'peak_gb': self.peak_memory_gb,
-                    'effective_gb': RAILWAY_EFFECTIVE_MEMORY_GB,
-                    'source': 'psutil'
+                    'effective_gb': effective_gb,
+                    'source': 'psutil_railway_corrected' if total_gb == RAILWAY_TOTAL_MEMORY_GB else 'psutil'
                 }
         except Exception as e:
             logger.error(f"Error getting memory stats: {e}")

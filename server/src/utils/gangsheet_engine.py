@@ -870,8 +870,8 @@ def create_gang_sheets(
                            images_processed_in_part += 1
 
                            # RAILWAY OPTIMIZATION: Progressive memory monitoring with pause/resume
-                           # Check every 10 placements for faster detection
-                           if images_processed_in_part % 10 == 0:
+                           # Check every 5 placements for faster detection (Railway doesn't have cgroups)
+                           if images_processed_in_part % 5 == 0:
                                # Use new pause-and-cleanup mechanism
                                can_continue = monitor.pause_and_cleanup_if_needed(
                                    current_phase=f"Gang sheet part {part}, {images_processed_in_part} items placed"
