@@ -848,19 +848,28 @@ def create_gang_sheets(
 
                            images_processed_in_part += 1
 
-                           # RAILWAY OPTIMIZATION: Progressive memory monitoring
-                           # Check memory every 20 placements to detect issues early
-                           if images_processed_in_part % 20 == 0:
-                               if not check_railway_memory_safe(0.5):  # Need at least 0.5GB headroom
-                                   logging.warning(f"⚠️  Memory high after {images_processed_in_part} placements, running emergency cleanup")
-                                   monitor.force_memory_release()
+                           # RAILWAY OPTIMIZATION: Progressive memory monitoring with pause/resume
+                           # Check every 10 placements for faster detection
+                           if images_processed_in_part % 10 == 0:
+                               # Use new pause-and-cleanup mechanism
+                               can_continue = monitor.pause_and_cleanup_if_needed(
+                                   current_phase=f"Gang sheet part {part}, {images_processed_in_part} items placed"
+                               )
 
-                                   # Re-check after cleanup
-                                   if not check_railway_memory_safe(0.5):
-                                       logging.error(f"❌ Memory still critical after cleanup, aborting to prevent OOM")
-                                       logging.error(f"   Processed {images_processed_in_part} items successfully")
-                                       logging.error(f"   Reduce gang sheet height or process fewer orders")
-                                       return None
+                               if not can_continue:
+                                   logging.error(f"❌ Memory critical after cleanup, cannot continue")
+                                   logging.error(f"   Successfully placed {images_processed_in_part} items before abort")
+                                   logging.error(f"   💡 Solutions:")
+                                   logging.error(f"      1. Reduce printer max_height_inches (current: {max_height_inches}\")")
+                                   logging.error(f"      2. Process fewer orders per batch (try 5-10 orders)")
+                                   logging.error(f"      3. Upgrade Railway to 16GB plan")
+                                   return None
+
+                               # Log progress every 50 items
+                               if images_processed_in_part % 50 == 0:
+                                   stats = monitor.get_memory_stats()
+                                   if stats:
+                                       logging.info(f"   Progress: {images_processed_in_part} items placed, Memory: {stats['current_gb']:.2f}GB ({stats['percent']:.1f}%)")
                        except Exception as e:
                            logging.warning(f"Error placing image on gang sheet: {e}")
                            
@@ -1350,6 +1359,32 @@ def create_gang_sheets(
            return None
        
        sheets_created = part - 1
+
+       # RAILWAY MEMORY SUMMARY
+       try:
+           final_stats = monitor.get_memory_stats()
+           if final_stats:
+               logging.info(f"")
+               logging.info(f"{'='*70}")
+               logging.info(f"🚂 RAILWAY MEMORY SUMMARY")
+               logging.info(f"{'='*70}")
+               logging.info(f"✅ Gang sheet creation completed successfully")
+               logging.info(f"📊 Total parts created: {sheets_created}")
+               logging.info(f"")
+               logging.info(f"💾 Final Memory Usage:")
+               logging.info(f"   Current: {final_stats['current_gb']:.2f}GB / {final_stats['effective_gb']:.2f}GB ({final_stats['percent']:.1f}%)")
+               logging.info(f"   Peak: {final_stats['peak_gb']:.2f}GB")
+               logging.info(f"   Available: {final_stats['available_gb']:.2f}GB")
+               logging.info(f"")
+               if monitor.pause_count > 0 or monitor.cleanup_count > 0:
+                   logging.info(f"🧹 Memory Management:")
+                   logging.info(f"   Pauses for cleanup: {monitor.pause_count}")
+                   logging.info(f"   Total cleanups: {monitor.cleanup_count}")
+                   logging.info(f"")
+               logging.info(f"{'='*70}")
+       except Exception as e:
+           logging.debug(f"Could not generate memory summary: {e}")
+
        logging.info(f"Successfully created {sheets_created} gang sheet parts")
        return {"success": True, "sheets_created": sheets_created}
        
