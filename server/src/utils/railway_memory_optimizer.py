@@ -36,10 +36,14 @@ MEMORY_PAUSE_THRESHOLD = 0.80     # 80% of 7.5GB = 6.00GB - PAUSE work, cleanup,
 MEMORY_EMERGENCY_THRESHOLD = 0.87 # 87% of 7.5GB = 6.50GB - Emergency cleanup or abort (was 93%)
 MEMORY_OOM_THRESHOLD = 0.95       # 95% of 8.0GB = 7.60GB - Railway will OOM kill soon
 
-# Gang sheet limits
+# Gang sheet limits (Railway 8GB optimized)
 MAX_DPI = 400  # Enforce 400 DPI max (memory grows with DPI²)
-MAX_GANG_SHEET_MEMORY_GB = 3.0  # Single gang sheet max size
+MAX_GANG_SHEET_MEMORY_GB = 2.0  # Single gang sheet max size (lowered from 3.0 for Railway)
 MAX_GANG_SHEET_DIMENSION_PIXELS = 100000  # 100k pixels max per dimension
+
+# Railway-specific batch limits
+RAILWAY_MAX_HEIGHT_INCHES = 100  # Max height for Railway (instead of 215")
+RAILWAY_MAX_ITEMS_PER_BATCH = 15  # Max unique designs per batch
 
 # Batch processing
 DESIGN_DOWNLOAD_BATCH_SIZE = 10  # Download 10 designs at a time

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from server.src.entities.user import User
 from . import model
 from server.src.utils.gangsheet_engine import create_gang_sheets_from_db, create_gang_sheets
+from server.src.utils.memory_aware_batch_splitter import process_with_memory_aware_splitting
 from server.src.utils.etsy_api_engine import EtsyAPI
 from server.src.utils.nas_storage import nas_storage
 from server.src.entities.template import EtsyProductTemplate
@@ -271,6 +272,14 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
         else:
             gang_sheet_max_height = 215
 
+        # RAILWAY MEMORY OPTIMIZATION: Cap height to 100" in Railway environment
+        # 215" gang sheets = 2.1GB, 100" gang sheets = 0.98GB (less than half!)
+        if os.getenv('RAILWAY_ENVIRONMENT'):
+            RAILWAY_MAX_HEIGHT = 100
+            if gang_sheet_max_height > RAILWAY_MAX_HEIGHT:
+                logging.warning(f"🚂 Railway: Capping height from {gang_sheet_max_height}\" to {RAILWAY_MAX_HEIGHT}\" (memory optimization)")
+                gang_sheet_max_height = RAILWAY_MAX_HEIGHT
+
         logging.info(f"📐 Gang sheet config: {gang_sheet_max_width}\"W × {gang_sheet_max_height}\"H @ {gang_sheet_dpi} DPI")
         if printer:
             logging.info(f"   Source: Printer '{printer.name}' (ID: {printer.id})")
@@ -393,11 +402,12 @@ def create_print_files(current_user, db, printer_id=None, canvas_config_id=None,
                         }
 
                 logging.info("Starting gangsheet creation (all NAS connections now closed)")
-                result = create_gang_sheets(
-                    processed_item_data,
-                    template_name,
-                    temp_printfiles_dir + "/",
-                    item_summary["Total QTY"] if "Total QTY" in item_summary else 0,
+                result = process_with_memory_aware_splitting(
+                    order_items_data=processed_item_data,
+                    create_gang_sheets_func=create_gang_sheets,
+                    image_type=template_name,
+                    output_path=temp_printfiles_dir + "/",
+                    total_images=item_summary["Total QTY"] if "Total QTY" in item_summary else 0,
                     max_width_inches=gang_sheet_max_width,
                     max_height_inches=gang_sheet_max_height,
                     dpi=gang_sheet_dpi,
@@ -748,6 +758,14 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
         else:
             gang_sheet_max_height = 215
 
+        # RAILWAY MEMORY OPTIMIZATION: Cap height to 100" in Railway environment
+        # 215" gang sheets = 2.1GB, 100" gang sheets = 0.98GB (less than half!)
+        if os.getenv('RAILWAY_ENVIRONMENT'):
+            RAILWAY_MAX_HEIGHT = 100
+            if gang_sheet_max_height > RAILWAY_MAX_HEIGHT:
+                logging.warning(f"🚂 Railway: Capping height from {gang_sheet_max_height}\" to {RAILWAY_MAX_HEIGHT}\" (memory optimization)")
+                gang_sheet_max_height = RAILWAY_MAX_HEIGHT
+
         logging.info(f"📐 Gang sheet config: {gang_sheet_max_width}\"W × {gang_sheet_max_height}\"H @ {gang_sheet_dpi} DPI")
         if printer:
             logging.info(f"   Source: Printer '{printer.name}' (ID: {printer.id})")
@@ -879,8 +897,9 @@ def create_print_files_from_selected_orders(order_ids, template_name, current_us
                 order_items_data['Title'] = updated_titles
 
             gangsheet_start = time.time()
-            result = create_gang_sheets(
-                image_data=order_items_data,
+            result = process_with_memory_aware_splitting(
+                order_items_data=order_items_data,
+                create_gang_sheets_func=create_gang_sheets,
                 image_type=template_name,
                 output_path=output_dir,
                 total_images=len(order_items_data.get('Title', [])),
